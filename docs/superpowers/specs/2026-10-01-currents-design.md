@@ -103,7 +103,7 @@ docs/                                  architecture, configuration, ADRs, client
    - `Id`: deterministic GUID from (itemId, stream identity — infoHash+fileIdx, else filename+size, else url hash).
    - `Name`: e.g. `2160p DV · Atmos · 18.4 GB · cached`.
    - `MediaStreams`: pre-filled from `parsedFile` (+ RemuxDB, §5.5).
-   - `Path`: signed internal resolve URL `{InternalBaseUrl}/Currents/play/s/{token}`; `Protocol=Http`; `SupportsDirectPlay=false`, `SupportsDirectStream=true`, `SupportsTranscoding=true` so clients always stream through Jellyfin. (Flags confirmed in M0.)
+   - `Path`: signed internal resolve URL `{StrmBaseUrl}/Currents/play/s/{token}`; `Protocol=Http`; `SupportsDirectPlay=false`, `SupportsDirectStream=true`, `SupportsTranscoding=true` so clients always stream through Jellyfin. (Flags confirmed in M0.)
 3. **Synthetic ids must resolve as items.** The web client looks up every MediaSource id as a library item (`GET /Items/{id}`) before PlaybackInfo, so an `Integration/` MVC filter resolves synthetic version ids to the base item. Every version must carry `MediaStreams` (parsed data / RemuxDB, with a one-time cached probe as fallback), or ffmpeg gets no codec arguments. The base item must get `RunTimeTicks` (metadata runtime or first probe), or resume never works. See `docs/spikes/2026-10-m0-findings.md` S1b, S1c.
 4. **PlaybackInfo**: decorated `GetPlaybackMediaSources` returns the same list; probes only the chosen source when track info is insufficient.
 5. **Stream**: Jellyfin fetches the resolve URL → plugin validates token, gets the AIOStreams playback URL from cache (re-searches if missing/expired), follows redirects, detects placeholders, fails over to next-ranked stream (max `FailoverAttempts`, default 3), then 302s to the final URL — or proxies when the stream requires headers.
@@ -212,7 +212,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 | Clients render versions differently | Auto-select mode; client matrix; document per-client behavior |
 | AIOStreams rate limits with many users | Global throttle, per-user cache, docs for self-hosted limit tuning |
 | Search auto-add clutter | `addedBySearch` tag, per-user toggle, purge-by-tag |
-| Segment data unavailable | Feature dropped from v1 after M0 |
+| Segment data unavailable | IntroDB/AniSkip (optional PublicMetaDB) queried directly (M0 S3); feature degrades to no markers when a title has none |
 
 ## 12. Out of scope (v1)
 P2P/torrent streams without debrid; Live TV; tracker sync (Trakt/Simkl — use existing Jellyfin plugins); non-AIOStreams stream backends; per-user catalogs; editing AIOStreams/AIOMetadata configs from Jellyfin.
