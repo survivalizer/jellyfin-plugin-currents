@@ -1,0 +1,60 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{csproj,props,targets,xml,yml,yaml,json,html}]
+indent_size = 2
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+
+# --- Documented analyzer decisions (keep this list short; justify every line) ---
+# ASP.NET Core (Jellyfin's host) has no SynchronizationContext.
+dotnet_diagnostic.CA2007.severity = none
+# LoggerMessage source generation is not worth it at plugin log volume.
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1873.severity = none
+# Nullable reference types already describe argument nullability.
+dotnet_diagnostic.CA1062.severity = none
+# DTOs mirror external JSON and Jellyfin's XmlSerializer config: settable List<T>/arrays are intended.
+dotnet_diagnostic.CA1002.severity = none
+dotnet_diagnostic.CA2227.severity = none
+dotnet_diagnostic.CA1819.severity = none
+# Jellyfin config and APIs use string URLs.
+dotnet_diagnostic.CA1054.severity = none
+dotnet_diagnostic.CA1055.severity = none
+dotnet_diagnostic.CA1056.severity = none
+# Types are created by DI/reflection; Jellyfin discovers plugin types through public reflection.
+dotnet_diagnostic.CA1812.severity = none
+dotnet_diagnostic.CA1515.severity = none
+# Messages are English-only; no localisation resources.
+dotnet_diagnostic.CA1303.severity = none
+# Frequent false positives with pattern matching.
+dotnet_diagnostic.CA1508.severity = none
+dotnet_diagnostic.CA1716.severity = none
+# StyleCop: house style (no this., underscore fields allowed, no file headers, usings outside namespace).
+dotnet_diagnostic.SA1101.severity = none
+dotnet_diagnostic.SA1309.severity = none
+dotnet_diagnostic.SA1633.severity = none
+dotnet_diagnostic.SA1200.severity = none
+dotnet_diagnostic.SA1413.severity = none
+dotnet_diagnostic.SA1201.severity = none
+dotnet_diagnostic.SA1202.severity = none
+dotnet_diagnostic.SA1204.severity = none
+# Documentation: public types get an intent-level <summary>; member docs are optional.
+dotnet_diagnostic.CS1591.severity = none
+dotnet_diagnostic.SA1600.severity = none
+dotnet_diagnostic.SA1601.severity = none
+dotnet_diagnostic.SA1602.severity = none
+dotnet_diagnostic.SA1611.severity = none
+dotnet_diagnostic.SA1615.severity = none
+dotnet_diagnostic.SA1623.severity = none
+dotnet_diagnostic.SA1629.severity = none

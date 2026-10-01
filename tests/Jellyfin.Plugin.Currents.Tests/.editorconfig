@@ -1,0 +1,4 @@
+[*.cs]
+# Test method names use underscores.
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA2007.severity = none

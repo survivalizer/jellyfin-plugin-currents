@@ -1,0 +1,12 @@
+bin/
+obj/
+artifacts/
+*.user
+.vs/
+.idea/
+TestResults/
+dev/data/
+dev/.env
+*.tmp
+.claude/worktrees/
+.superpowers/
