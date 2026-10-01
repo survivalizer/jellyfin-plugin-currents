@@ -1,0 +1,21 @@
+name: currents-dev
+
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:${JELLYFIN_TAG:-12.1}
+    ports:
+      - "8097:8096"
+    environment:
+      JELLYFIN_PublishedServerUrl: "http://localhost:8097"
+    volumes:
+      - ./data/config:/config
+      - ./data/cache:/cache
+      - ./data/currents:/currents
+      - ./data/media:/media-out
+    restart: unless-stopped
+
+  media:
+    image: nginx:1.29-alpine
+    volumes:
+      - ./data/media:/usr/share/nginx/html:ro
+    restart: unless-stopped
