@@ -69,7 +69,7 @@ docs/                                  architecture, configuration, ADRs, client
 | `Streams/` | Per-user stream fetch + cache + single-flight, ranking, `MediaSourceInfo` mapping, resolve/failover, placeholder detection, signed tokens | resolve controller |
 | `Users/` | Config layering, per-user store (`users.json`), preferences, validation | plugin configuration |
 | `Features/` | Subtitles, segments, collections, maintenance tasks, version-compat guard | `ISubtitleProvider`, `IMediaSegmentProvider`, `ICollectionManager`, `IScheduledTask` |
-| `Integration/` | **All** code touching Jellyfin internals: `IMediaSourceManager` decorator, search hook, DTO URL scrubbing | DI decoration, `ISearchProvider` or MVC action filter |
+| `Integration/` | **All** code touching Jellyfin internals: `IMediaSourceManager` decorator, MVC filters (item-id resolution in M2, search in M3), DTO URL scrubbing | DI decoration, MVC action filters |
 | `Web/` | Admin config page, self-service user page, diagnostics | `IHasWebPages`, API controllers |
 
 ### Boundaries
@@ -86,7 +86,7 @@ docs/                                  architecture, configuration, ADRs, client
    - `Movies/Title (2024) [imdbid-tt123]/Title (2024).strm` + `movie.nfo` (all `uniqueid`s)
    - `Shows/Title (2019) [imdbid-tt456]/tvshow.nfo` + `Season 01/Title S01E01.strm` per released episode
    - Folder tags use the canonical provider (`[imdbid-…]`, `[tmdbid-…]`, `[tvdbid-…]`).
-4. `.strm` content: `{InternalBaseUrl}/Currents/play/{type}/{canonicalId}` where `InternalBaseUrl` defaults to `http://127.0.0.1:8096` (server-side only; external hostname never baked in).
+4. `.strm` content: `{StrmBaseUrl}/Currents/play/{type}/{urlEncodedId}?sig={hmac}` (non-expiring signature). `StrmBaseUrl` defaults to `http://127.0.0.1:8096`; see `docs/spikes/2026-10-m0-findings.md` S4 for when it must be client-reachable. Sync rewrites `.strm` files when it changes.
 5. State store (`state.json` in plugin data dir, atomic writes): per title — key, source catalogs, `addedBySearch`, `lastSeenSync`, `missCount`. Writes are idempotent (only changed files rewritten, temp-file + rename). Afterwards refresh only the plugin roots.
 6. "Update ongoing series" task adds newly released episodes from meta `videos[]`.
 7. Pruning (D4): remove a title only when absent from all its catalogs for **N consecutive successful syncs** (default 3), not search-added, and not played by any user.
@@ -94,7 +94,7 @@ docs/                                  architecture, configuration, ADRs, client
 ### 4.2 Search auto-add (D3)
 1. Jellyfin search additionally queries AIOMetadata search catalogs; results not in the library are returned alongside local results.
 2. Opening a remote result materializes it (4.1 step 3–5 for one title, `addedBySearch=true`), refreshes that folder, and returns the real item.
-3. Mechanism: Jellyfin 12 `ISearchProvider` if it can surface remote results and an open hook; otherwise MVC action filters (Gelato's pattern). Decided in M0.
+3. Mechanism: MVC action filters on the search and item endpoints (Jellyfin 12 `ISearchProvider` cannot return items that are not yet in the library — M0 S2).
 4. Per-user toggle; admin can disable per user.
 
 ### 4.3 Playback
@@ -103,13 +103,14 @@ docs/                                  architecture, configuration, ADRs, client
    - `Id`: deterministic GUID from (itemId, stream identity — infoHash+fileIdx, else filename+size, else url hash).
    - `Name`: e.g. `2160p DV · Atmos · 18.4 GB · cached`.
    - `MediaStreams`: pre-filled from `parsedFile` (+ RemuxDB, §5.5).
-   - `Path`: signed internal resolve URL `{InternalBaseUrl}/Currents/play/s/{token}`; `Protocol=Http`; `SupportsDirectPlay=false`, `SupportsDirectStream=true`, `SupportsTranscoding=true` so clients always stream through Jellyfin. (Exact flags confirmed in M0.)
-3. **PlaybackInfo**: decorated `GetPlaybackMediaSources` returns the same list; probes only the chosen source when track info is insufficient.
-4. **Stream**: Jellyfin fetches the resolve URL → plugin validates token, gets the AIOStreams playback URL from cache (re-searches if missing/expired), follows redirects, detects placeholders, fails over to next-ranked stream (max `FailoverAttempts`, default 3), then 302s to the final URL — or proxies when the stream requires headers.
-5. **Watch state** is recorded on the base `.strm` item (one item, no per-version split).
+   - `Path`: signed internal resolve URL `{InternalBaseUrl}/Currents/play/s/{token}`; `Protocol=Http`; `SupportsDirectPlay=false`, `SupportsDirectStream=true`, `SupportsTranscoding=true` so clients always stream through Jellyfin. (Flags confirmed in M0.)
+3. **Synthetic ids must resolve as items.** The web client looks up every MediaSource id as a library item (`GET /Items/{id}`) before PlaybackInfo, so an `Integration/` MVC filter resolves synthetic version ids to the base item. Every version must carry `MediaStreams` (parsed data / RemuxDB, with a one-time cached probe as fallback), or ffmpeg gets no codec arguments. The base item must get `RunTimeTicks` (metadata runtime or first probe), or resume never works. See `docs/spikes/2026-10-m0-findings.md` S1b, S1c.
+4. **PlaybackInfo**: decorated `GetPlaybackMediaSources` returns the same list; probes only the chosen source when track info is insufficient.
+5. **Stream**: Jellyfin fetches the resolve URL → plugin validates token, gets the AIOStreams playback URL from cache (re-searches if missing/expired), follows redirects, detects placeholders, fails over to next-ranked stream (max `FailoverAttempts`, default 3), then 302s to the final URL — or proxies when the stream requires headers.
+6. **Watch state** is recorded on the base `.strm` item (one item, no per-version split).
 
 ### 4.4 Degraded mode
-`.strm` resolve URLs carry no user. If the decorator is disabled (manually or by the compat guard), playing a title uses the global default config with auto-selection. Titles, metadata, and watch state are unaffected.
+`.strm` resolve URLs carry no user. If the decorator is disabled (manually or by the compat guard), playing a title uses the global default config with auto-selection. Titles, metadata, and watch state are unaffected. `StrmBaseUrl` must be reachable by clients, because clients may direct-play the resolve URL themselves and follow its redirect (M0 S4).
 
 ## 5. Features
 
@@ -117,7 +118,7 @@ docs/                                  architecture, configuration, ADRs, client
 `ISubtitleProvider` queries AIOStreams `subtitles` for the title (user from HTTP context when available, else default config). Stream-embedded `subtitles` become external tracks on that version, served via a plugin proxy route so URLs stay hidden. Error entries are filtered.
 
 ### 5.2 Skip intro / credits
-`IMediaSegmentProvider` (incl. `CleanupExtractedData`) sourcing markers from AIOMetadata. Applied only when the playing version's runtime is within tolerance (default ±2%) of the reference runtime. **M0 confirms the data source; if none is usable, this feature is dropped from v1 and the spec is amended.**
+`IMediaSegmentProvider` (incl. `CleanupExtractedData`) sourcing markers from IntroDB and AniSkip (and PublicMetaDB when a key is configured). Applied only when the playing version's runtime is within tolerance (default ±2%) of the reference runtime.
 
 ### 5.3 Trailers
 AIOMetadata `trailers` → item `RemoteTrailers` via the metadata provider.
@@ -194,7 +195,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 
 | Milestone | Contents | Exit criterion |
 |---|---|---|
-| **M0 Spike** | Throwaway proofs on 12.1: synthetic version IDs through item DTO → PlaybackInfo → direct stream + transcode; `ISearchProvider` remote results; AIOMetadata segment data | Written findings; spec amended if any assumption fails (user informed before continuing) |
+| **M0 Spike** | Synthetic versions (S1) and `.strm` client behaviour (S4); S2/S3 answered from source | Written findings; spec amended if any assumption fails (user informed before continuing) |
 | **M1 Foundation & core** | Repo scaffolding, CI, clients, catalog sync, `.strm`/`.nfo`, metadata provider, resolve endpoint (degraded mode), admin page | Titles appear and play via default config |
 | **M2 Versions & users** | Decorator, user store + precedence, self-service page, ranker, failover, placeholder detection | Per-user versions in dropdown; isolation test passes |
 | **M3 Search** | Search + auto-add | Search result opens as library item |
@@ -206,7 +207,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 
 | Risk | Mitigation |
 |---|---|
-| Synthetic (non-persisted) version IDs rejected by some Jellyfin path | M0 spike; fallback: persist version rows only (Gelato-style), keeping `.strm` base items |
+| Synthetic (non-persisted) version IDs rejected by some Jellyfin path | M0 spike (`docs/spikes/2026-10-m0-findings.md`): ids must resolve as items via an `Integration/` MVC filter; fallback: persist version rows only (Gelato-style), keeping `.strm` base items |
 | Decorator breaks on Jellyfin upgrade | Isolated in `Integration/`, contract tests, compat guard → degraded mode |
 | Clients render versions differently | Auto-select mode; client matrix; document per-client behavior |
 | AIOStreams rate limits with many users | Global throttle, per-user cache, docs for self-hosted limit tuning |
