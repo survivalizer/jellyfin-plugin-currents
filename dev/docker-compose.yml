@@ -7,6 +7,7 @@ services:
       - "8097:8096"
     environment:
       JELLYFIN_PublishedServerUrl: "http://localhost:8097"
+      CURRENTS_SPIKE_DECORATOR: "${CURRENTS_SPIKE_DECORATOR:-1}"
     volumes:
       - ./data/config:/config
       - ./data/cache:/cache

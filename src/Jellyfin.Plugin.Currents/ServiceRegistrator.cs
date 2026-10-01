@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.Currents.Spike;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +10,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
-        // Services are added by later tasks.
+        if (Environment.GetEnvironmentVariable("CURRENTS_SPIKE_DECORATOR") != "0")
+        {
+            serviceCollection.Decorate<MediaBrowser.Controller.Library.IMediaSourceManager, Spike.SpikeMediaSourceManager>();
+        }
     }
 }
