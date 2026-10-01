@@ -21,7 +21,7 @@
 | D6 | v1 scope | Core + all seven features (subtitles, segments, trailers, smart selection, probing/pre-fill, collections, upgrade safety) |
 | D7 | Test backends | User's self-hosted AIOStreams + AIOMetadata; throwaway Jellyfin 12.1 in a dev compose stack |
 | D8 | Architecture | Approach 1: real `.strm`/`.nfo` titles + ephemeral per-user synthetic versions via a single decorator |
-| D9 | Name | **Currents** — repo `adamlippert/jellyfin-plugin-currents`, assembly `Jellyfin.Plugin.Currents`, routes `/Currents/...` |
+| D9 | Name | **Currents** — repo `survivalizer/jellyfin-plugin-currents`, assembly `Jellyfin.Plugin.Currents`, routes `/Currents/...` |
 | D10 | License | GPL-3.0 |
 
 ### Why this plugin exists (vs. alternatives)
@@ -184,11 +184,11 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 
 ## 9. Repository & delivery
 
-- Public GitHub repo `adamlippert/jellyfin-plugin-currents`, GPL-3.0.
+- Public GitHub repo `survivalizer/jellyfin-plugin-currents`, GPL-3.0.
 - Tooling: `global.json` (.NET 10), `Directory.Build.props` (version, `Nullable`, `TreatWarningsAsErrors`, `AnalysisMode=All`, StyleCop, SerilogAnalyzer, MultithreadingAnalyzer, doc generation), `.editorconfig`, Renovate.
 - Packaging: `build.yaml` for jprm (`targetAbi: 12.0.0.0`, `framework: net10.0`).
 - Docs: `README.md`, `docs/` (architecture, configuration, self-service, troubleshooting, client matrix), ADRs in `docs/adr/` (record D1, D3, D5, D8), `CLAUDE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue/PR templates, `CODEOWNERS`.
-- CI (GitHub Actions): build + test + format check + CodeQL on push/PR; on release tag: jprm build, GitHub Release with zip, update `manifest.json` on `gh-pages` (`https://adamlippert.github.io/jellyfin-plugin-currents/manifest.json`). Conventional Commits + release-please.
+- CI (GitHub Actions): build + test + format check + CodeQL on push/PR; on release tag: jprm build, GitHub Release with zip, update `manifest.json` on `gh-pages` (`https://survivalizer.github.io/jellyfin-plugin-currents/manifest.json`). Conventional Commits + release-please.
 
 ## 10. Milestones
 
