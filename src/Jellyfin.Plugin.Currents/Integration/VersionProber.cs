@@ -48,7 +48,15 @@ public sealed class VersionProber
         if (item.RunTimeTicks is null or <= 0 && runtime is > 0)
         {
             item.RunTimeTicks = runtime;
-            await _library.UpdateItemAsync(item, item.GetParent(), ItemUpdateType.MetadataEdit, CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                await _library.UpdateItemAsync(item, item.GetParent(), ItemUpdateType.MetadataEdit, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Best-effort: playback must not fail because the runtime could not be saved. The in-memory value still helps this request.
+                _logger.LogWarning("Could not save the runtime of {Id}: {Reason}", entry.Title.StremioId, SecretMasker.Mask(ex.Message));
+            }
         }
     }
 

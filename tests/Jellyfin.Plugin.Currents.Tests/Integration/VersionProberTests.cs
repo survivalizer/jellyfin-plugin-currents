@@ -143,6 +143,19 @@ public class VersionProberTests
     }
 
     [Fact]
+    public async Task Failing_runtime_save_does_not_fail_playback()
+    {
+        ProbeFills(TimeSpan.FromMinutes(95).Ticks);
+        _library.Fake.On(nameof(ILibraryManager.UpdateItemAsync), _ => Task.FromException(new InvalidOperationException("db locked")));
+        var movie = new Movie { Id = Item };
+
+        await Create().PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None);
+
+        Assert.Equal(TimeSpan.FromMinutes(95).Ticks, movie.RunTimeTicks);
+        Assert.Contains(_logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("runtime", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Existing_item_runtime_is_left_alone()
     {
         ProbeFills(TimeSpan.FromMinutes(95).Ticks);
