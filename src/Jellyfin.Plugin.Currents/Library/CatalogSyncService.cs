@@ -113,6 +113,10 @@ public sealed class CatalogSyncService
             progress.Report((i + 1) * 90.0 / catalogs.Count);
         }
 
+        var (refreshed, kept) = await RefreshSearchAddedSeriesAsync(endpoint, writer, seen, cancellationToken).ConfigureAwait(false);
+        written += refreshed;
+        unchanged += kept;
+
         var pruned = 0;
         if (catalogs.Count == 0)
         {
@@ -274,5 +278,56 @@ public sealed class CatalogSyncService
         }
 
         return pruned;
+    }
+
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "One search-added series must never stop the sync; cancellation still propagates.")]
+    private async Task<(int Written, int Unchanged)> RefreshSearchAddedSeriesAsync(AioMetadataEndpoint endpoint, LibraryWriter writer, HashSet<string> seen, CancellationToken cancellationToken)
+    {
+        int written = 0, unchanged = 0;
+        var titles = _titles.Use(s => s.Titles.Where(t => t.AddedBySearch && t.Kind == MediaKind.Series && !seen.Contains(t.StateId)).ToList());
+        foreach (var title in titles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!TitleKey.TryParse(MediaKind.Series, title.StremioId, out var key))
+            {
+                continue;
+            }
+
+            try
+            {
+                var meta = await _client.GetMetaAsync(endpoint, key.StremioType, key.StremioId, cancellationToken).ConfigureAwait(false);
+                if (meta is null)
+                {
+                    _logger.LogWarning("AIOMetadata has no meta for search-added series {Folder}; leaving it as it is", title.Folder);
+                    continue;
+                }
+
+                var changed = _titles.Use(state =>
+                {
+                    var result = writer.WriteSeries(key, meta, title.Folder);
+                    if (state.Get(title.StateId) is { } entry)
+                    {
+                        entry.Folder = result.RelativeFolder;
+                        entry.LastSeen = _time.GetUtcNow();
+                    }
+
+                    return result.Changed;
+                });
+                if (changed)
+                {
+                    written++;
+                }
+                else
+                {
+                    unchanged++;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "Could not update search-added series {Folder}; leaving it as it is", title.Folder);
+            }
+        }
+
+        return (written, unchanged);
     }
 }

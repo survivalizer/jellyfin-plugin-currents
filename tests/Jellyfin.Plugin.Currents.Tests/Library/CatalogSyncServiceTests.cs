@@ -463,6 +463,68 @@ public sealed class CatalogSyncServiceTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_root, "library", "Shows", "Cowboy Bebop (1998) [mal-1]", "Season 01", "Cowboy Bebop (1998) S01E01.strm")));
     }
 
+    [Fact]
+    public async Task Search_added_series_get_new_episodes()
+    {
+        _settings.Current.Catalogs = [];
+        var key = new TitleKey(MediaKind.Series, "imdb", "tt0944947");
+        _titles.AddFromSearch(key, new StremioMeta
+        {
+            Id = "tt0944947",
+            Name = "Game of Thrones",
+            ReleaseInfo = "2011",
+            Videos = [new StremioVideo { Id = "tt0944947:1:1", Season = 1, Episode = 1, Released = "2011-04-17T00:00:00Z" }],
+        });
+        _client.Metas["series/tt0944947"] = new StremioMeta
+        {
+            Id = "tt0944947",
+            Name = "Game of Thrones",
+            ReleaseInfo = "2011",
+            Videos =
+            [
+                new StremioVideo { Id = "tt0944947:1:1", Season = 1, Episode = 1, Released = "2011-04-17T00:00:00Z" },
+                new StremioVideo { Id = "tt0944947:1:2", Season = 1, Episode = 2, Released = "2011-04-24T00:00:00Z" },
+            ],
+        };
+
+        var report = await SyncAsync();
+
+        Assert.Equal(1, report.Written);
+        Assert.True(File.Exists(Path.Combine(_root, "library", "Shows", "Game of Thrones (2011) [imdbid-tt0944947]", "Season 01", "Game of Thrones (2011) S01E02.strm")));
+        Assert.True(_titles.Get("series/tt0944947")!.AddedBySearch);
+    }
+
+    [Fact]
+    public async Task A_failing_search_added_series_is_left_alone()
+    {
+        _settings.Current.Catalogs = [];
+        _titles.AddFromSearch(new TitleKey(MediaKind.Series, "imdb", "tt0944947"), new StremioMeta
+        {
+            Id = "tt0944947",
+            Name = "Game of Thrones",
+            ReleaseInfo = "2011",
+            Videos = [new StremioVideo { Id = "tt0944947:1:1", Season = 1, Episode = 1, Released = "2011-04-17T00:00:00Z" }],
+        });
+        _client.FailingMetas.Add("series/tt0944947");
+
+        var report = await SyncAsync();
+
+        Assert.Equal(0, report.Written);
+        Assert.Empty(report.FailedCatalogs);
+        Assert.True(File.Exists(Path.Combine(_root, "library", "Shows", "Game of Thrones (2011) [imdbid-tt0944947]", "Season 01", "Game of Thrones (2011) S01E01.strm")));
+    }
+
+    [Fact]
+    public async Task Search_added_movies_are_not_refetched()
+    {
+        _settings.Current.Catalogs = [];
+        _titles.AddFromSearch(new TitleKey(MediaKind.Movie, "imdb", "tt9"), Movie("tt9", "Searched"));
+
+        await SyncAsync();
+
+        Assert.Empty(_client.MetaRequests);
+    }
+
     private sealed class FakePlayedLookup : IPlayedLookup
     {
         public HashSet<string> PlayedFolderNames { get; } = new(StringComparer.Ordinal);
