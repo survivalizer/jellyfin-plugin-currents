@@ -1,76 +1,111 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
-using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Common;
+using Jellyfin.Plugin.Currents.Users;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Currents.Streams;
 
-/// <summary>Degraded-mode resolver: default AIOStreams config, AIOStreams order, failover past dead links and placeholders.</summary>
+/// <summary>Follows a stream's redirects, skips dead links and placeholder videos, and fails over to the next-ranked stream.</summary>
 public sealed class StreamResolver : IStreamResolver
 {
     private const int MaxRedirects = 5;
+    private const string AutoKey = "auto";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
-    private readonly IAioStreamsClient _streams;
+    private static readonly TimeSpan SearchWait = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(45);
+    private readonly IStreamService _streams;
+    private readonly StreamProfileResolver _profiles;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ICurrentsSettings _settings;
+    private readonly TimeProvider _time;
     private readonly ILogger<StreamResolver> _logger;
     private readonly TtlCache<string, Uri> _cache;
+    private readonly ConcurrentDictionary<string, Lazy<Task<ResolveResult>>> _inFlight = new(StringComparer.Ordinal);
 
-    /// <summary>Initializes a new instance of the <see cref="StreamResolver"/> class.</summary>
-    /// <param name="streams">The AIOStreams client.</param>
-    /// <param name="httpClientFactory">The HTTP client factory.</param>
-    /// <param name="settings">The plugin settings.</param>
-    /// <param name="time">The time provider.</param>
-    /// <param name="logger">The logger.</param>
-    public StreamResolver(IAioStreamsClient streams, IHttpClientFactory httpClientFactory, ICurrentsSettings settings, TimeProvider time, ILogger<StreamResolver> logger)
+    public StreamResolver(IStreamService streams, StreamProfileResolver profiles, IHttpClientFactory httpClientFactory, ICurrentsSettings settings, TimeProvider time, ILogger<StreamResolver> logger)
     {
         _streams = streams;
+        _profiles = profiles;
         _httpClientFactory = httpClientFactory;
         _settings = settings;
+        _time = time;
         _logger = logger;
         _cache = new TtlCache<string, Uri>(time);
     }
 
     /// <inheritdoc />
-    public async Task<ResolveResult> ResolveAsync(string type, string stremioId, CancellationToken cancellationToken)
+    public Task<ResolveResult> ResolveAsync(string type, string stremioId, CancellationToken cancellationToken) =>
+        ResolveAsync(_profiles.For(null), type, stremioId, null, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<ResolveResult> ResolveAsync(VersionTicket ticket, CancellationToken cancellationToken) =>
+        ResolveAsync(_profiles.For(ticket.UserId == Guid.Empty ? null : ticket.UserId), ticket.Type, ticket.StremioId, ticket.StreamKey, cancellationToken);
+
+    private static string Origin(Uri uri) => $"{uri.Scheme}://{uri.Host}";
+
+    private static string AddonName(StreamResult candidate) =>
+        string.IsNullOrWhiteSpace(candidate.Addon) ? "unknown addon" : candidate.Addon;
+
+    private async Task<ResolveResult> ResolveAsync(StreamProfile profile, string type, string stremioId, string? streamKey, CancellationToken cancellationToken)
     {
-        var cacheKey = $"{type}/{stremioId}";
-        if (_cache.TryGet(cacheKey, out var cached))
+        if (!profile.CanPlay)
+        {
+            // The stream service owns the user-facing wording for disabled / unconfigured profiles.
+            var reason = await _streams.GetAsync(profile, type, stremioId, SearchWait, cancellationToken).ConfigureAwait(false);
+            return ResolveResult.Fail(reason.Error ?? "Streams are not available.");
+        }
+
+        var key = $"{profile.Credentials!.Fingerprint()}/{type}/{stremioId}/{streamKey ?? AutoKey}";
+        if (_cache.TryGet(key, out var cached))
         {
             return new ResolveResult(cached, null);
         }
 
-        var config = _settings.Current;
-        if (!AioStreamsCredentials.TryParse(config.AioStreamsManifestUrl, out var credentials, out _))
-        {
-            return ResolveResult.Fail("AIOStreams is not configured. Set the default AIOStreams manifest URL in the Currents settings.");
-        }
-
-        SearchOutcome outcome;
+        var lazy = _inFlight.GetOrAdd(key, _ => new Lazy<Task<ResolveResult>>(() => AttemptAsync(key, profile, type, stremioId, streamKey)));
+        var attempt = lazy.Value;
+        _ = attempt.ContinueWith(_ => _inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<ResolveResult>>>(key, lazy)), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         try
         {
-            outcome = await _streams.SearchAsync(credentials, type, stremioId, cancellationToken).ConfigureAwait(false);
+            return await attempt.WaitAsync(Deadline, _time, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is AioStreamsException or HttpRequestException
-            || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        catch (TimeoutException)
         {
-            _logger.LogWarning(ex, "AIOStreams search failed for {Type} {Id}", type, stremioId);
-            return ResolveResult.Fail($"AIOStreams search failed: {SecretMasker.Mask(ex.Message)}");
+            return ResolveResult.Fail("Timed out finding a playable stream.");
+        }
+    }
+
+    // Shared by concurrent callers, so it never observes any single caller's cancellation; HttpClient timeouts bound it.
+    private async Task<ResolveResult> AttemptAsync(string cacheKey, StreamProfile profile, string type, string stremioId, string? streamKey)
+    {
+        var lookup = await _streams.GetAsync(profile, type, stremioId, SearchWait, CancellationToken.None).ConfigureAwait(false);
+        if (lookup.Error is not null || lookup.Streams.Count == 0)
+        {
+            return ResolveResult.Fail(lookup.Error ?? "No streams found for this title.");
         }
 
-        var candidates = StreamRanker.Rank(outcome.Results)
-            .Where(r => r.RequestHeaders is null || r.RequestHeaders.Count == 0)
-            .Take(Math.Max(1, config.FailoverAttempts))
-            .ToList();
+        var ordered = lookup.Streams.ToList();
+        var chosen = streamKey is null ? -1 : ordered.FindIndex(s => s.Key == streamKey);
+        if (chosen > 0)
+        {
+            var stream = ordered[chosen];
+            ordered.RemoveAt(chosen);
+            ordered.Insert(0, stream);
+        }
+        else if (streamKey is not null && chosen < 0)
+        {
+            _logger.LogInformation("The chosen version of {Id} is no longer offered; using the best available stream", stremioId);
+        }
 
+        var candidates = ordered.Take(Math.Max(1, _settings.Current.FailoverAttempts)).ToList();
         for (var index = 0; index < candidates.Count; index++)
         {
             // Candidate and final URLs carry debrid keys or tokens: only scheme://host, position and addon are logged.
-            var candidate = candidates[index];
+            var candidate = candidates[index].Result;
             var requested = new Uri(candidate.Url!);
-            var final = await FollowAsync(requested, cancellationToken).ConfigureAwait(false);
+            var final = await FollowAsync(requested).ConfigureAwait(false);
             if (final is null)
             {
                 _logger.LogInformation(
@@ -82,7 +117,7 @@ public sealed class StreamResolver : IStreamResolver
                 continue;
             }
 
-            if (PlaceholderDetector.IsPlaceholder(final, credentials.BaseUri, requested))
+            if (PlaceholderDetector.IsPlaceholder(final, profile.Credentials!.BaseUri, requested))
             {
                 _logger.LogInformation(
                     "Stream candidate {Index} ({Addon}, {Origin}) for {Id} returned a placeholder video; trying the next one",
@@ -97,17 +132,10 @@ public sealed class StreamResolver : IStreamResolver
             return new ResolveResult(final, null);
         }
 
-        return ResolveResult.Fail(outcome.Results.Count == 0
-            ? "No streams found for this title."
-            : "All streams failed or are not ready yet (still downloading?). Try again shortly.");
+        return ResolveResult.Fail("All streams failed or are not ready yet (still downloading?). Try again shortly.");
     }
 
-    private static string Origin(Uri uri) => $"{uri.Scheme}://{uri.Host}";
-
-    private static string AddonName(StreamResult candidate) =>
-        string.IsNullOrWhiteSpace(candidate.Addon) ? "unknown addon" : candidate.Addon;
-
-    private async Task<Uri?> FollowAsync(Uri start, CancellationToken cancellationToken)
+    private async Task<Uri?> FollowAsync(Uri start)
     {
         var client = _httpClientFactory.CreateClient(HttpClientNames.Resolve);
         var current = start;
@@ -123,10 +151,9 @@ public sealed class StreamResolver : IStreamResolver
             HttpResponseMessage response;
             try
             {
-                response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, CancellationToken.None).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is HttpRequestException
-                || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
             {
                 return null;
             }

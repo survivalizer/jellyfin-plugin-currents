@@ -70,5 +70,13 @@ public class PlayControllerTests
             LastRequest = (type, stremioId);
             return Task.FromResult(Result);
         }
+
+        public VersionTicket? LastTicket { get; private set; }
+
+        public Task<ResolveResult> ResolveAsync(VersionTicket ticket, CancellationToken cancellationToken)
+        {
+            LastTicket = ticket;
+            return Task.FromResult(Result);
+        }
     }
 }

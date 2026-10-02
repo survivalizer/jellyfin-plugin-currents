@@ -3,15 +3,17 @@ using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
+using Jellyfin.Plugin.Currents.Users;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Streams;
 
-public class StreamResolverTests
+public sealed class StreamResolverTests : IDisposable
 {
     private const string Aio = "https://aio.example.com";
+    private const string UserId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private readonly FakeAioStreamsClient _streams = new();
     private readonly FakeSettings _settings = new();
     private readonly Dictionary<string, Func<HttpResponseMessage>> _routes = new(StringComparer.Ordinal);
@@ -25,8 +27,36 @@ public class StreamResolverTests
         _factory = new FakeHttpClientFactory(_http);
     }
 
-    private StreamResolver Create(ILogger<StreamResolver>? logger = null) =>
-        new(_streams, _factory, _settings, new ManualTimeProvider(DateTimeOffset.UnixEpoch), logger ?? NullLogger<StreamResolver>.Instance);
+    private StreamResolver Create(ILogger<StreamResolver>? logger = null)
+    {
+        var time = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var users = new UserStore(_settings, NullLogger<UserStore>.Instance);
+        return new(
+            new StreamService(_streams, _settings, time, NullLogger<StreamService>.Instance),
+            new StreamProfileResolver(users, _settings),
+            _factory,
+            _settings,
+            time,
+            logger ?? NullLogger<StreamResolver>.Instance);
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            if (Directory.Exists(_settings.DataFolderPath))
+            {
+                Directory.Delete(_settings.DataFolderPath, true);
+            }
+        }
+        catch (IOException)
+        {
+            // Best-effort test cleanup.
+        }
+    }
+
+    private string KeyOf(string url) =>
+        StreamIdentity.Keys(_streams.Outcome.Results)[_streams.Outcome.Results.ToList().FindIndex(r => r.Url == url)];
 
     [Fact]
     public async Task Skipped_candidates_are_logged_without_their_url_path()
@@ -190,5 +220,87 @@ public class StreamResolverTests
 
         Assert.Null(result.Url);
         Assert.True(_http.Requests.Count <= 6);
+    }
+
+    [Fact]
+    public async Task Version_ticket_plays_its_own_stream_first()
+    {
+        _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream($"{Aio}/play/1"), FakeAioStreamsClient.Stream($"{Aio}/play/2")], []);
+        _routes[$"{Aio}/play/1"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+        _routes[$"{Aio}/play/2"] = () => StubHttpHandler.Redirect("https://cdn.example.com/two.mkv", HttpStatusCode.TemporaryRedirect);
+        _routes["https://cdn.example.com/two.mkv"] = () => new HttpResponseMessage(HttpStatusCode.PartialContent);
+
+        var result = await Create().ResolveAsync(new VersionTicket(Guid.Empty, "movie", "tt1", KeyOf($"{Aio}/play/2")), CancellationToken.None);
+
+        Assert.Equal(new Uri("https://cdn.example.com/two.mkv"), result.Url);
+    }
+
+    [Fact]
+    public async Task Dead_chosen_stream_fails_over_in_ranked_order()
+    {
+        _streams.Outcome = new SearchOutcome(
+            [FakeAioStreamsClient.Stream($"{Aio}/play/1"), FakeAioStreamsClient.Stream($"{Aio}/play/2"), FakeAioStreamsClient.Stream($"{Aio}/play/3")],
+            []);
+        _routes[$"{Aio}/play/1"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+        _routes[$"{Aio}/play/3"] = () => StubHttpHandler.Redirect($"{Aio}/static/downloading.mp4", HttpStatusCode.TemporaryRedirect);
+        _routes[$"{Aio}/static/downloading.mp4"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+
+        var result = await Create().ResolveAsync(new VersionTicket(Guid.Empty, "movie", "tt1", KeyOf($"{Aio}/play/3")), CancellationToken.None);
+
+        Assert.Equal(new Uri($"{Aio}/play/1"), result.Url);
+    }
+
+    [Fact]
+    public async Task Vanished_stream_falls_back_to_ranked_order()
+    {
+        _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream($"{Aio}/play/1")], []);
+        _routes[$"{Aio}/play/1"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+
+        var result = await Create().ResolveAsync(new VersionTicket(Guid.Empty, "movie", "tt1", "00000000000000000000000000000000"), CancellationToken.None);
+
+        Assert.Equal(new Uri($"{Aio}/play/1"), result.Url);
+    }
+
+    [Fact]
+    public async Task Ticket_resolves_with_that_users_own_config()
+    {
+        var users = new UserStore(_settings, NullLogger<UserStore>.Instance);
+        users.Update(Guid.ParseExact(UserId, "N"), r => r.Self.AioStreamsManifestUrl = $"{Aio}/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/alicepw/manifest.json");
+        _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream($"{Aio}/play/1")], []);
+        _routes[$"{Aio}/play/1"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+
+        await Create().ResolveAsync(new VersionTicket(Guid.ParseExact(UserId, "N"), "movie", "tt1", KeyOf($"{Aio}/play/1")), CancellationToken.None);
+
+        Assert.Equal("alicepw", _streams.LastCredentials!.Password);
+    }
+
+    [Fact]
+    public async Task Disabled_user_cannot_resolve()
+    {
+        var users = new UserStore(_settings, NullLogger<UserStore>.Instance);
+        users.Update(Guid.ParseExact(UserId, "N"), r => r.StreamsDisabled = true);
+
+        var result = await Create().ResolveAsync(new VersionTicket(Guid.ParseExact(UserId, "N"), "movie", "tt1", "k"), CancellationToken.None);
+
+        Assert.Null(result.Url);
+        Assert.Contains("disabled", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, _streams.Calls);
+    }
+
+    [Fact]
+    public async Task Concurrent_resolves_of_one_version_share_one_attempt()
+    {
+        _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream($"{Aio}/play/1")], []);
+        _routes[$"{Aio}/play/1"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+        var resolver = Create();
+        var ticket = new VersionTicket(Guid.Empty, "movie", "tt1", KeyOf($"{Aio}/play/1"));
+        _streams.Gate = new TaskCompletionSource<SearchOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var pending = Enumerable.Range(0, 5).Select(_ => resolver.ResolveAsync(ticket, CancellationToken.None)).ToList();
+        _streams.Gate.SetResult(_streams.Outcome);
+        var results = await Task.WhenAll(pending);
+
+        Assert.All(results, r => Assert.NotNull(r.Url));
+        Assert.Single(_http.Requests, u => u.AbsoluteUri == $"{Aio}/play/1");
     }
 }
