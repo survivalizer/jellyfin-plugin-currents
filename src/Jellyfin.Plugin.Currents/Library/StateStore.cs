@@ -32,10 +32,22 @@ public sealed class StateStore
             var list = JsonSerializer.Deserialize<List<TitleState?>>(File.ReadAllText(path), JsonDefaults.Options) ?? [];
             foreach (var title in list)
             {
-                if (title is not null && !string.IsNullOrEmpty(title.StateId))
+                if (title is null || string.IsNullOrEmpty(title.StateId))
                 {
-                    titles[title.StateId] = title;
+                    continue;
                 }
+
+                Normalize(title);
+                if (titles.TryGetValue(title.StateId, out var existing))
+                {
+                    logger.LogWarning("Currents sync state has duplicate entries for {StateId}; merging", title.StateId);
+                    title.AddedBySearch |= existing.AddedBySearch;
+                    title.Catalogs = existing.Catalogs.Concat(title.Catalogs).Distinct(StringComparer.Ordinal).ToList();
+                    title.MissCount = Math.Min(existing.MissCount, title.MissCount);
+                    title.LastSeen = title.LastSeen > existing.LastSeen ? title.LastSeen : existing.LastSeen;
+                }
+
+                titles[title.StateId] = title;
             }
         }
         catch (JsonException ex)
@@ -46,6 +58,16 @@ public sealed class StateStore
         }
 
         return new StateStore(path, titles);
+    }
+
+    private static void Normalize(TitleState title)
+    {
+        // The file is untrusted JSON: null values can land in non-nullable properties.
+#pragma warning disable CS8600, CS8601, IDE0074
+        title.Folder ??= string.Empty;
+        title.StremioId ??= string.Empty;
+        title.Catalogs = (title.Catalogs ?? []).Where(c => !string.IsNullOrEmpty(c)).ToList();
+#pragma warning restore CS8600, CS8601, IDE0074
     }
 
     public TitleState? Get(string stateId) => _titles.GetValueOrDefault(stateId);

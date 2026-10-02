@@ -73,6 +73,50 @@ public sealed class StateStoreTests : IDisposable
         Assert.Null(store.Get("movie/tt1"));
     }
 
+    [Fact]
+    public void Null_fields_are_normalised_on_load()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(StatePath, "[{\"stateId\":\"movie/tt1\",\"catalogs\":null,\"folder\":null,\"stremioId\":null}]");
+
+        var title = StateStore.Load(StatePath, NullLogger.Instance).Get("movie/tt1");
+
+        Assert.NotNull(title);
+        Assert.Empty(title!.Catalogs);
+        Assert.Equal(string.Empty, title.Folder);
+        Assert.Equal(string.Empty, title.StremioId);
+    }
+
+    [Fact]
+    public void Null_catalog_entries_are_dropped()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(StatePath, "[{\"stateId\":\"movie/tt1\",\"catalogs\":[null,\"\",\"a\"]}]");
+
+        var title = StateStore.Load(StatePath, NullLogger.Instance).Get("movie/tt1");
+
+        Assert.Equal(new[] { "a" }, title!.Catalogs);
+    }
+
+    [Fact]
+    public void Duplicate_state_ids_are_merged_conservatively()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(
+            StatePath,
+            "[{\"stateId\":\"movie/tt1\",\"addedBySearch\":true,\"missCount\":5,\"catalogs\":[\"a\"],\"lastSeen\":\"2026-01-02T00:00:00Z\"},"
+            + "{\"stateId\":\"movie/tt1\",\"addedBySearch\":false,\"missCount\":1,\"catalogs\":[\"b\"],\"lastSeen\":\"2026-01-01T00:00:00Z\"}]");
+
+        var store = StateStore.Load(StatePath, NullLogger.Instance);
+        var title = store.Get("movie/tt1");
+
+        Assert.Single(store.Titles);
+        Assert.True(title!.AddedBySearch);
+        Assert.Equal(1, title.MissCount);
+        Assert.Equal(new[] { "a", "b" }, title.Catalogs);
+        Assert.Equal(DateTimeOffset.Parse("2026-01-02T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture), title.LastSeen);
+    }
+
     [Theory]
     [InlineData("null", 0)]
     [InlineData("[null]", 0)]
