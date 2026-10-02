@@ -50,7 +50,7 @@
             <input is="emby-input" type="number" min="1" max="10" id="FailoverAttempts" label="Streams to try before giving up" />
           </div>
 
-          <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+          <button is="emby-button" type="submit" id="SaveButton" class="raised button-submit block"><span>Save</span></button>
           <button is="emby-button" type="button" id="SyncNow" class="raised block"><span>Sync now</span></button>
         </form>
       </div>
@@ -144,12 +144,20 @@
         function loadCatalogs() {
           const url = $('#AioMetadataManifestUrl').value.trim();
           setText('#CatalogStatus', 'Loading…');
-          ApiClient.getJSON(ApiClient.getUrl('Currents/admin/catalogs', { manifestUrl: url }))
+          ApiClient.ajax({
+            type: 'POST',
+            url: ApiClient.getUrl('Currents/admin/catalogs'),
+            data: JSON.stringify({ ManifestUrl: url }),
+            contentType: 'application/json',
+            dataType: 'json'
+          })
             .then((options) => { renderCatalogs(options); setText('#CatalogStatus', options.length + ' catalogs available.'); })
             .catch((err) => errorText(err, 'Could not load catalogs.').then((msg) => setText('#CatalogStatus', msg)));
         }
 
         page.addEventListener('pageshow', () => {
+          config = null;
+          $('#SaveButton').disabled = true;
           Dashboard.showLoadingMsg();
           ApiClient.getPluginConfiguration(pluginId).then((c) => {
             config = c;
@@ -162,7 +170,11 @@
             renderCatalogs([]);
             loadPaths();
             if (c.AioMetadataManifestUrl) { loadCatalogs(); }
+            $('#SaveButton').disabled = false;
             Dashboard.hideLoadingMsg();
+          }).catch(() => {
+            Dashboard.hideLoadingMsg();
+            setText('#CatalogStatus', 'Could not load the saved configuration. Reload the page.');
           });
         });
 
@@ -172,7 +184,9 @@
           setText('#TestStreamsResult', 'Testing…');
           ApiClient.ajax({
             type: 'POST',
-            url: ApiClient.getUrl('Currents/admin/test-streams', { manifestUrl: $('#AioStreamsManifestUrl').value.trim() }),
+            url: ApiClient.getUrl('Currents/admin/test-streams'),
+            data: JSON.stringify({ ManifestUrl: $('#AioStreamsManifestUrl').value.trim() }),
+            contentType: 'application/json',
             dataType: 'json'
           })
             .then((result) => setText('#TestStreamsResult', result.Message))
@@ -186,6 +200,7 @@
 
         $('#CurrentsConfigForm').addEventListener('submit', (e) => {
           e.preventDefault();
+          if (!config) { return false; }
           Dashboard.showLoadingMsg();
           config.AioMetadataManifestUrl = $('#AioMetadataManifestUrl').value.trim();
           config.AioStreamsManifestUrl = $('#AioStreamsManifestUrl').value.trim();

@@ -31,10 +31,10 @@ public sealed class AdminController : ControllerBase
         _taskManager = taskManager;
     }
 
-    [HttpGet("catalogs")]
-    public async Task<ActionResult<IReadOnlyList<CatalogOption>>> GetCatalogs([FromQuery] string manifestUrl, CancellationToken cancellationToken)
+    [HttpPost("catalogs")]
+    public async Task<ActionResult<IReadOnlyList<CatalogOption>>> GetCatalogs([FromBody] ManifestUrlRequest? request, CancellationToken cancellationToken)
     {
-        if (!AioMetadataEndpoint.TryParse(manifestUrl, out var endpoint, out var error))
+        if (!AioMetadataEndpoint.TryParse(request?.ManifestUrl, out var endpoint, out var error))
         {
             return BadRequest(new StatusMessage(SecretMasker.Mask(error!)));
         }
@@ -55,9 +55,9 @@ public sealed class AdminController : ControllerBase
     }
 
     [HttpPost("test-streams")]
-    public async Task<ActionResult<StatusMessage>> TestStreams([FromQuery] string manifestUrl, CancellationToken cancellationToken)
+    public async Task<ActionResult<StatusMessage>> TestStreams([FromBody] ManifestUrlRequest? request, CancellationToken cancellationToken)
     {
-        if (!AioStreamsCredentials.TryParse(manifestUrl, out var credentials, out var error))
+        if (!AioStreamsCredentials.TryParse(request?.ManifestUrl, out var credentials, out var error))
         {
             return BadRequest(new StatusMessage(SecretMasker.Mask(error!)));
         }
