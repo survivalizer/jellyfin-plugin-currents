@@ -113,6 +113,7 @@ public sealed class CatalogSyncService
             progress.Report((i + 1) * 90.0 / catalogs.Count);
         }
 
+        _titles.Use(state => ForgetDeletedSearchTitles(state, paths, seen));
         var (refreshed, kept) = await RefreshSearchAddedSeriesAsync(endpoint, writer, seen, cancellationToken).ConfigureAwait(false);
         written += refreshed;
         unchanged += kept;
@@ -278,6 +279,27 @@ public sealed class CatalogSyncService
         }
 
         return pruned;
+    }
+
+    /// <summary>
+    /// A search-added title whose folder is gone was deleted in Jellyfin; it is forgotten rather than written again. A
+    /// missing kind root (e.g. an unmounted share) is not a deletion, so its titles are kept.
+    /// </summary>
+    private void ForgetDeletedSearchTitles(StateStore state, LibraryPaths paths, HashSet<string> seen)
+    {
+        foreach (var title in state.Titles)
+        {
+            if (!title.AddedBySearch || seen.Contains(title.StateId) || !Directory.Exists(paths.RootFor(title.Kind)))
+            {
+                continue;
+            }
+
+            if (!Directory.Exists(Path.Combine(paths.Root, title.Folder)))
+            {
+                state.Remove(title.StateId);
+                _logger.LogInformation("Search-added title {Folder} was deleted in Jellyfin; forgetting it", title.Folder);
+            }
+        }
     }
 
     [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "One search-added series must never stop the sync; cancellation still propagates.")]

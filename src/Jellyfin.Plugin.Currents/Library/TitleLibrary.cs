@@ -66,6 +66,16 @@ public sealed class TitleLibrary
         return state.IsKnownSearchId(searchId);
     }
 
+    /// <summary>Gets whether a title's files are gone from disk: no folder, or a movie folder without its .strm.</summary>
+    /// <param name="title">The title.</param>
+    /// <returns>True when the title must be written again before Jellyfin can show it.</returns>
+    public bool IsMissingOnDisk(TitleState title)
+    {
+        var folder = Path.Combine(LibraryPaths.FromSettings(_settings).Root, title.Folder);
+        return !Directory.Exists(folder)
+            || (title.Kind == MediaKind.Movie && !Directory.EnumerateFiles(folder, "*.strm").Any());
+    }
+
     public LibraryWriter CreateWriter()
     {
         var config = _settings.Current;

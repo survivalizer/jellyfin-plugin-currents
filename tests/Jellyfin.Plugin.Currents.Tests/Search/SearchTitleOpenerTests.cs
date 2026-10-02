@@ -260,14 +260,65 @@ public sealed class SearchTitleOpenerTests : IDisposable
     [Fact]
     public async Task Known_title_missing_from_jellyfin_is_added_from_its_folder()
     {
-        _titles.Use(s => s.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]", AddedBySearch = true }));
+        var folder = _titles.AddFromSearch(new TitleKey(MediaKind.Movie, "imdb", "tt1"), new StremioMeta { Id = "tt1", Name = "A" }).RelativeFolder;
         _library.AddResult = (_, _) => Item;
 
         var outcome = await Create().OpenAsync(SearchItemId.For(FakeSettings.Secret, "movie/tt1"), Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenOutcome.Opened(Item), outcome);
-        Assert.Equal((MediaKind.Movie, "Movies/A [imdbid-tt1]"), Assert.Single(_library.Added));
+        Assert.Equal((MediaKind.Movie, folder), Assert.Single(_library.Added));
         Assert.Empty(_client.MetaRequests);
+    }
+
+    [Fact]
+    public async Task A_known_movie_whose_folder_was_deleted_is_added_again()
+    {
+        var matrix = new StremioMeta { Id = "tt0133093", Name = "The Matrix", Year = "1999" };
+        var folder = _titles.AddFromSearch(new TitleKey(MediaKind.Movie, "imdb", "tt0133093"), matrix).RelativeFolder;
+        Directory.Delete(Path.Combine(_settings.Current.LibraryRoot, folder), recursive: true); // deleted in Jellyfin
+        _client.Metas["movie/tt0133093"] = matrix;
+        _library.AddResult = (_, _) => Item;
+
+        // After a restart: the result registry is empty, the state still knows the title.
+        var opener = new SearchTitleOpener(_titles, new SearchResultRegistry(_time), _library, _client, _settings, NullLogger<SearchTitleOpener>.Instance);
+        var outcome = await opener.OpenAsync(SearchItemId.For(FakeSettings.Secret, "movie/tt0133093"), Alice, () => true, CancellationToken.None);
+
+        Assert.Equal(OpenOutcome.Opened(Item), outcome);
+        Assert.Equal(new[] { "movie/tt0133093" }, _client.MetaRequests);
+        Assert.True(File.Exists(Path.Combine(_settings.Current.LibraryRoot, folder, "The Matrix (1999).strm")));
+        Assert.Equal((MediaKind.Movie, folder), Assert.Single(_library.Added));
+        Assert.True(_titles.Get("movie/tt0133093")!.AddedBySearch);
+    }
+
+    [Fact]
+    public async Task A_known_movie_whose_strm_was_deleted_is_written_again_from_the_shown_result()
+    {
+        var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
+        var folder = _titles.AddFromSearch(shown.Key, shown.Meta).RelativeFolder;
+        var strm = Path.Combine(_settings.Current.LibraryRoot, folder, "The Matrix (1999).strm");
+        File.Delete(strm);
+        _client.FailingMetas.Add("movie/tt0133093");
+        _library.AddResult = (_, _) => Item;
+
+        var outcome = await Create().OpenAsync(shown.Id, Alice, () => true, CancellationToken.None);
+
+        Assert.Equal(OpenOutcome.Opened(Item), outcome);
+        Assert.True(File.Exists(strm));
+        Assert.Equal((MediaKind.Movie, folder), Assert.Single(_library.Added));
+    }
+
+    [Fact]
+    public async Task A_known_series_whose_folder_was_deleted_fails_without_a_meta_and_writes_nothing()
+    {
+        var key = new TitleKey(MediaKind.Series, "imdb", "tt0944947");
+        var folder = _titles.AddFromSearch(key, new StremioMeta { Id = "tt0944947", Name = "Game of Thrones", ReleaseInfo = "2011" }).RelativeFolder;
+        Directory.Delete(Path.Combine(_settings.Current.LibraryRoot, folder), recursive: true);
+
+        var outcome = await Create().OpenAsync(SearchItemId.For(FakeSettings.Secret, "series/tt0944947"), Alice, () => true, CancellationToken.None);
+
+        Assert.Equal(OpenStatus.Failed, outcome.Status);
+        Assert.False(Directory.Exists(Path.Combine(_settings.Current.LibraryRoot, folder)));
+        Assert.Empty(_library.Added);
     }
 
     [Fact]

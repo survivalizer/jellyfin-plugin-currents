@@ -44,8 +44,9 @@ public sealed class SearchTitleOpener
             return OpenOutcome.NotSearchId;
         }
 
+        // The shown result (if still registered) also helps re-add a known title whose files were deleted.
         var known = isKnown ? _titles.FindBySearchId(id) : null;
-        if (known is null && shown is null && !_registry.TryGet(id, out shown))
+        if (shown is null && !_registry.TryGet(id, out shown) && known is null)
         {
             return OpenOutcome.NotSearchId;
         }
@@ -86,17 +87,28 @@ public sealed class SearchTitleOpener
             // Paused before any file is written, so the monitor ignores our own tmp+move writes too.
             using (_library.PauseMonitoring(key.Kind))
             {
-                var folder = known?.Folder;
+                // A known title whose files are gone (deleted in Jellyfin) is written again like a new one, in its old folder.
+                var folder = known is null || _titles.IsMissingOnDisk(known) ? null : known.Folder;
                 if (folder is null)
                 {
-                    var meta = await FetchMetaAsync(key, shown!).ConfigureAwait(false);
+                    var meta = await FetchMetaAsync(key, shown).ConfigureAwait(false);
                     if (meta is null)
                     {
-                        return OpenOutcome.Failed($"AIOMetadata has no episode list for {shown!.Name} right now.");
+                        var name = shown?.Name ?? Path.GetFileName(known!.Folder);
+                        return OpenOutcome.Failed(key.Kind == MediaKind.Series
+                            ? $"AIOMetadata has no episode list for {name} right now."
+                            : $"AIOMetadata has no details for {name} right now.");
                     }
 
                     folder = _titles.AddFromSearch(key, meta).RelativeFolder;
-                    _logger.LogInformation("Added {Folder} from search", folder);
+                    if (known is null)
+                    {
+                        _logger.LogInformation("Added {Folder} from search", folder);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Wrote {Folder} again from search; its files were gone", folder);
+                    }
                 }
 
                 var itemId = await _library.AddAsync(key.Kind, folder, CancellationToken.None).ConfigureAwait(false);
@@ -112,18 +124,22 @@ public sealed class SearchTitleOpener
         }
     }
 
-    /// <summary>The title's own type first (AIOMetadata's meta route branches on the id), then the search catalog's; a movie may use the search meta itself.</summary>
-    private async Task<StremioMeta?> FetchMetaAsync(TitleKey key, SearchResult shown)
+    /// <summary>
+    /// The title's own type first (AIOMetadata's meta route branches on the id), then the search catalog's when a
+    /// result was shown; a movie may use the shown search meta itself.
+    /// </summary>
+    private async Task<StremioMeta?> FetchMetaAsync(TitleKey key, SearchResult? shown)
     {
         StremioMeta? meta = null;
+        var id = shown?.Meta.Id ?? key.StremioId;
         if (AioMetadataEndpoint.TryParse(_settings.Current.AioMetadataManifestUrl, out var endpoint, out _))
         {
             try
             {
-                meta = await _client.GetMetaAsync(endpoint, key.StremioType, shown.Meta.Id, CancellationToken.None).ConfigureAwait(false);
-                if (meta is null && !string.Equals(shown.CatalogType, key.StremioType, StringComparison.Ordinal))
+                meta = await _client.GetMetaAsync(endpoint, key.StremioType, id, CancellationToken.None).ConfigureAwait(false);
+                if (meta is null && shown is not null && !string.Equals(shown.CatalogType, key.StremioType, StringComparison.Ordinal))
                 {
-                    meta = await _client.GetMetaAsync(endpoint, shown.CatalogType, shown.Meta.Id, CancellationToken.None).ConfigureAwait(false);
+                    meta = await _client.GetMetaAsync(endpoint, shown.CatalogType, id, CancellationToken.None).ConfigureAwait(false);
                 }
             }
             catch (Exception ex) when (ex is AioMetadataException or HttpRequestException or OperationCanceledException)
@@ -132,6 +148,6 @@ public sealed class SearchTitleOpener
             }
         }
 
-        return meta ?? (key.Kind == MediaKind.Movie ? shown.Meta : null);
+        return meta ?? (key.Kind == MediaKind.Movie ? shown?.Meta : null);
     }
 }

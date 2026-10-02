@@ -176,6 +176,11 @@ misconfiguration above a leaked log line is replayable from outside until it exp
 
 Series added by search get new episodes on every catalog sync. Search-added titles are never pruned.
 
+Deleting a search-added title in Jellyfin removes its folder. The next catalog sync then forgets it (`state.json`
+entry removed, logged at Information) instead of writing it again, unless the kind's Currents root itself is missing
+(an unmounted share is not a deletion). Opening its search id before that sync, or a known title whose files are gone
+(no folder, or a movie folder without its `.strm`), writes it again like a new add, in its old folder name.
+
 ### Request walkthrough (web client)
 1. **Search**: `GET /Items?searchTerm=T&includeItemTypes=...&limit=800&userId=U` (after jellyfin-web's 500 ms
    debounce; it never calls `/Search/Hints`). `SearchResultsFilter` checks the user's search switch, starts the remote

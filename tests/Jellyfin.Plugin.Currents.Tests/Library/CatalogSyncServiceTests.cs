@@ -20,6 +20,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
     private readonly FakeRefresher _refresher = new();
     private readonly FakeSettings _settings;
     private readonly TitleLibrary _titles;
+    private readonly ListLogger<CatalogSyncService> _logger = new();
 
     public CatalogSyncServiceTests()
     {
@@ -43,7 +44,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
     }
 
     private CatalogSyncService CreateService() =>
-        new(_client, _played, _refresher, _settings, _titles, Time, NullLogger<CatalogSyncService>.Instance);
+        new(_client, _played, _refresher, _settings, _titles, Time, _logger);
 
     private Task<SyncReport> SyncAsync() => CreateService().SyncAsync(new Progress<double>(), CancellationToken.None);
 
@@ -523,6 +524,59 @@ public sealed class CatalogSyncServiceTests : IDisposable
         await SyncAsync();
 
         Assert.Empty(_client.MetaRequests);
+    }
+
+    [Fact]
+    public async Task A_search_added_series_deleted_in_jellyfin_is_forgotten_and_not_recreated()
+    {
+        _settings.Current.Catalogs = [];
+        var meta = new StremioMeta
+        {
+            Id = "tt0944947",
+            Name = "Game of Thrones",
+            ReleaseInfo = "2011",
+            Videos = [new StremioVideo { Id = "tt0944947:1:1", Season = 1, Episode = 1, Released = "2011-04-17T00:00:00Z" }],
+        };
+        var folder = _titles.AddFromSearch(new TitleKey(MediaKind.Series, "imdb", "tt0944947"), meta).RelativeFolder;
+        _client.Metas["series/tt0944947"] = meta;
+        Directory.Delete(Path.Combine(_root, "library", folder), recursive: true);
+
+        await SyncAsync();
+
+        Assert.Null(_titles.Get("series/tt0944947"));
+        Assert.Null(new TitleLibrary(_settings, Time, NullLogger<TitleLibrary>.Instance).Get("series/tt0944947")); // saved
+        Assert.False(Directory.Exists(Path.Combine(_root, "library", folder)));
+        Assert.Empty(_client.MetaRequests);
+        Assert.Contains(_logger.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Information && e.Message.Contains("was deleted in Jellyfin; forgetting it", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_search_added_movie_deleted_in_jellyfin_is_forgotten()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Alpha")];
+        var folder = _titles.AddFromSearch(new TitleKey(MediaKind.Movie, "imdb", "tt9"), Movie("tt9", "Searched")).RelativeFolder;
+        Directory.Delete(Path.Combine(_root, "library", folder), recursive: true);
+
+        await SyncAsync();
+
+        Assert.Null(_titles.Get("movie/tt9"));
+        Assert.NotNull(_titles.Get("movie/tt1"));
+        Assert.Equal(new[] { "Alpha (2000) [imdbid-tt1]" }, MovieFolders());
+    }
+
+    [Fact]
+    public async Task Search_added_titles_are_kept_when_the_kind_root_itself_is_missing()
+    {
+        _settings.Current.Catalogs = [];
+        _titles.AddFromSearch(new TitleKey(MediaKind.Series, "imdb", "tt0944947"), new StremioMeta { Id = "tt0944947", Name = "Game of Thrones", ReleaseInfo = "2011" });
+        _titles.AddFromSearch(new TitleKey(MediaKind.Movie, "imdb", "tt9"), Movie("tt9", "Searched"));
+        Directory.Delete(Path.Combine(_root, "library", "Shows"), recursive: true); // e.g. an unmounted share
+        Directory.Delete(MoviesDir, recursive: true);
+
+        await SyncAsync();
+
+        Assert.NotNull(_titles.Get("series/tt0944947"));
+        Assert.NotNull(_titles.Get("movie/tt9"));
     }
 
     private sealed class FakePlayedLookup : IPlayedLookup
