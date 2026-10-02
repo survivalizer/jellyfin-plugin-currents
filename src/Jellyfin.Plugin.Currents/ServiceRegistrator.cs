@@ -47,6 +47,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<MetaCache>();
         serviceCollection.AddSingleton<UserStore>();
         serviceCollection.AddSingleton<StreamProfileResolver>();
+        serviceCollection.AddSingleton<IUserDirectory, JellyfinUserDirectory>();
         serviceCollection.AddSingleton<IStreamService, StreamService>();
         serviceCollection.AddSingleton<VersionRegistry>();
         serviceCollection.AddSingleton<VersionCatalog>();
