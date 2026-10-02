@@ -10,27 +10,64 @@ into your library as real titles and plays them through [AIOStreams](https://git
 - A self-hosted (or hosted) AIOStreams instance with a debrid service configured
 - An AIOMetadata instance and a saved configuration
 
-## Setup (M1)
+## Setup
 1. Install the plugin: Dashboard -> Plugins -> Repositories -> **+**, name it `Currents`, URL
    `https://survivalizer.github.io/jellyfin-plugin-currents/manifest.json`. Then Dashboard -> Plugins -> Catalog ->
    **Currents** -> Install, and restart Jellyfin. (Developers can also build with `dev/deploy-plugin.sh`.)
 2. Dashboard -> Plugins -> Currents:
    - paste your AIOMetadata manifest URL, click **Load catalogs**, tick catalogs, choose Movies/Shows;
-   - paste your AIOStreams manifest URL and click **Test connection**;
+   - paste your AIOStreams manifest URL and click **Test connection** (this is the default for every user; leave it
+     empty if every user brings their own);
    - **Save**, then **Sync now**.
    Unticking a catalog removes its unwatched titles after the configured number of syncs (`PruneAfterMisses`,
    default 3). If no catalog is ticked at all, sync skips pruning and keeps every title.
 3. Add the two folders shown on the settings page as a Movies library and a Shows library.
    In each library's settings enable the **Currents (AIOMetadata)** metadata and image fetchers and the NFO reader.
-4. Set *Jellyfin address written into .strm files* (`StrmBaseUrl`) to an address that **both your clients and
-   the Jellyfin server itself** can reach, normally the server's LAN address, e.g. `http://192.168.x.y:8096`
-   (or your public URL). If Jellyfin has a base URL configured (Dashboard -> Networking -> Base URL), include it,
-   e.g. `http://192.168.x.y:8096/jellyfin`. Jellyfin's own ffmpeg opens the `.strm` URL whenever it transcodes or remuxes, and
-   clients may open it directly when they can play the source as-is. `localhost`/`127.0.0.1` works for neither
-   case in common setups: inside a Docker container it does not reach the published host port, and on a remote
-   client it points at the client itself. In this degraded mode clients that direct-play may also follow the
-   redirect to the final stream URL themselves rather than streaming through Jellyfin. This is fixed in M2 (see
-   `docs/spikes/2026-10-m0-findings.md`, S4, and `docs/architecture.md`).
+
+## Versions: every stream in the Version menu
+Opening a Currents title searches AIOStreams with **that user's** config and lists every stream as an entry in
+Jellyfin's native **Version** dropdown, named like `2160p DV · Atmos · 18.4 GB · cached` and ranked by the user's
+preferences (cached only, maximum size, excluded resolutions/visual tags, resolution order, HDR/DV, audio and
+subtitle languages; ties keep AIOStreams' own order). Pick a version and press Play; Jellyfin always streams it
+through itself (remux or transcode), fails over to the next-ranked stream if a link is dead or a placeholder, and
+records watch state and resume on the title, not the version. Two users see their own versions and never each
+other's streams or credentials. **Show only the best stream** (auto-select) reduces the menu to the top stream.
+
+Each user's settings come from, field by field: their own self-service settings (if self-service is allowed and the
+admin has not locked them) -> an admin per-user override -> the server default -> nothing (titles then show a single
+"Streams are not configured" version). Admin settings live under **Versions** and **Users** on the plugin page:
+`EnableVersions` (default on), `AllowSelfService` (default on), default preferences, `MaxVersions` (20),
+`StreamCacheMinutes` (60), `VersionTokenHours` (24), and per user an override config, preferences, auto-select
+(Inherit/Only best/Show all), lock self-service, and streams disabled.
+
+### Self-service page
+Users manage their own AIOStreams manifest URL and preferences at **`/Currents/user`** on your Jellyfin address
+(for example `http://192.168.x.y:8096/Currents/user`, including Jellyfin's base URL path if you set one); the admin
+page shows the exact URL. The saved manifest URL is never shown again, only its host. Saving a URL makes the
+Jellyfin server contact that address to validate it.
+
+Jellyfin has no plugin API for a user-menu entry. To add one, edit jellyfin-web's `config.json` and add:
+```json
+"menuLinks": [{ "name": "Currents", "icon": "tune", "url": "/Currents/user" }]
+```
+In the official Docker image the file is `/jellyfin/jellyfin-web/config.json`. Jellyfin overwrites it on every
+upgrade, so keep a copy (or mount your own file over it).
+
+### `StrmBaseUrl` and degraded mode
+With versions on, Jellyfin's own ffmpeg reaches streams through an internal loopback URL and `StrmBaseUrl` is not
+used. It matters only in **degraded mode** (`EnableVersions` off), where every title plays the server default config
+via its `.strm` file. Then set *Jellyfin address written into .strm files* (`StrmBaseUrl`) to an address that
+**both your clients and the Jellyfin server itself** can reach, normally the server's LAN address, e.g.
+`http://192.168.x.y:8096` (or your public URL), including Jellyfin's base URL path if one is configured (e.g.
+`http://192.168.x.y:8096/jellyfin`). `localhost`/`127.0.0.1` works for neither case in common setups: inside a Docker
+container it does not reach the published host port, and on a remote client it points at the client itself. In
+degraded mode clients that direct-play may also follow the redirect to the final stream URL themselves rather than
+streaming through Jellyfin (see `docs/spikes/2026-10-m0-findings.md`, S4, and `docs/architecture.md`).
+
+### Reverse proxies
+If Jellyfin sits behind a reverse proxy on the same host, add the proxy to Dashboard -> Networking -> **Known
+proxies**. Otherwise every request looks local to Jellyfin and the internal stream endpoint is protected only by its
+signed, expiring token (see `docs/architecture.md`).
 
 Currents only manages title folders that carry its `.currents` marker file:
 - **Writing**: a new title folder gets the marker. An existing folder without the marker is adopted only when it

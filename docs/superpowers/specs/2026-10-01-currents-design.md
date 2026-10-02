@@ -109,8 +109,18 @@ docs/                                  architecture, configuration, ADRs, client
 5. **Stream**: Jellyfin fetches the resolve URL → plugin validates token, gets the AIOStreams playback URL from cache (re-searches if missing/expired), follows redirects, detects placeholders, fails over to next-ranked stream (max `FailoverAttempts`, default 3), then 302s to the final URL — or proxies when the stream requires headers.
 6. **Watch state** is recorded on the base `.strm` item (one item, no per-version split).
 
+> **M2 amendment (2026-10-01).**
+> - **Version ids** are derived from (item, **user**, stream), not (item, stream). Jellyfin looks versions up by id with no user (streaming, session reporting, subtitles, attachments, some from timers with no request), and two users with different debrid accounts must never share an id. A process-wide registry (`Streams/VersionRegistry`) resolves ids to their version.
+> - **Paths**: client-facing `Path` values are redacted to `currents://version/{id}` (whenever Jellyfin passes `enablePathSubstitution`). Only Jellyfin's ffmpeg/ffprobe get the real path, a loopback URL `{internal base}/Currents/play/s/{token}` built from Jellyfin's bind addresses (not `StrmBaseUrl`). The token is HMAC-signed, domain-separated from `.strm` signatures, and expires after `VersionTokenHours` (default 24 h). `/Currents/play/s/{token}` answers only loopback or the server's own addresses.
+> - **Search budget**: list views (home screens, library grids, `Fields=MediaSources`) never search AIOStreams; they use cached results or show a single pending source. Only item detail and PlaybackInfo search (10 s wait), plus version resolution during playback for a known user.
+> - **Failure cache**: a failed search, or an empty result because AIOStreams' addons failed, is cached for only 30 s; a successful result for `StreamCacheMinutes` (default 60).
+> - **PlaybackInfo** (an `Integration/` MVC filter) maps a stale or item-level `MediaSourceId` to the user's version (same stream when still offered, else the best one), probes that version when its parsed info is not enough (§5.5), and saves the item runtime when it is missing.
+> - **Pre-filled tracks** use `Index = -1` (no guessed stream index for ffmpeg to map), an estimated video bitrate and an explicit HDR range; without them remux turns into a full transcode or maps the wrong tracks.
+
 ### 4.4 Degraded mode
 `.strm` resolve URLs carry no user. If the decorator is disabled (manually or by the compat guard), playing a title uses the global default config with auto-selection. Titles, metadata, and watch state are unaffected. `StrmBaseUrl` must be reachable by clients, because clients may direct-play the resolve URL themselves and follow its redirect (M0 S4).
+
+> **M2 amendment (2026-10-01).** With versions on (`EnableVersions = true`, the default) Jellyfin never plays the `.strm` URL; degraded mode is what `EnableVersions = false` (or, from M5, the compat guard) gives. `StrmBaseUrl` therefore matters only in degraded mode; versions never use it.
 
 ## 5. Features
 
@@ -132,6 +142,10 @@ Auto-select mode exposes only the top version. Placeholder detection at resolve:
 
 ### 5.5 Probing / pre-fill
 Map `parsedFile` → `MediaStream`s (video codec, resolution, HDR type, audio codec/channels/languages, subtitle tracks). Optional RemuxDB lookup by infoHash/NZB for full track lists and runtime (configurable, on by default). ffprobe only on the selected version when needed, with raised `probesize`/`analyzeduration` (defaults 40M/5M), cached by stream identity.
+
+> **M2 amendment (2026-10-01).**
+> - The **selected-version probe** and the **runtime fallback** moved into M2, because M0 showed that versions without tracks cannot play. The probe runs in the PlaybackInfo filter (never in the synchronous decorator, which list views reach), times out after 20 s with `AnalyzeDurationMs` 5000, remembers failures for 10 min and caches results in memory for 7 days. RemuxDB and persisting probe results across restarts stay in M4.
+> - **Runtimes from AIOMetadata** are set by a custom metadata provider (`Metadata/AioRuntimeProvider`), because Jellyfin's metadata merge drops `RunTimeTicks` for videos. When a title still has no runtime, the first probe (or the AIOStreams duration) saves it; without one, resume and HLS fail.
 
 ### 5.6 Collections
 Per catalog, optional Jellyfin BoxSet kept in sync with catalog membership each run.
@@ -161,6 +175,8 @@ AIOStreams credentials (parsed from a pasted manifest URL: base URL, UUID, encry
 ### Self-service page
 Served by the plugin at `/Currents/user` (same origin), authenticated with the user's Jellyfin session; endpoints are `[Authorize]` and scoped to the caller's own record. Docs explain adding a custom menu link; the admin page shows the URL.
 
+> **M2 amendment (2026-10-01).** The menu entry is a jellyfin-web `config.json` `menuLinks` entry (`{"name": "Currents", "icon": "tune", "url": "/Currents/user"}`); there is no plugin API for a user-menu entry (plugin pages appear only in the admin dashboard). The page itself is served anonymously (a browser navigation carries no Jellyfin auth header); its API calls are authenticated. Saving a manifest URL validates it, which makes the **server** contact the URL the user entered (any signed-in user can therefore make the server send one request to a host of their choice; see `docs/architecture.md`).
+
 ### Visibility & shared limits
 Library visibility uses Jellyfin's native permissions. All users share the server's AIOStreams rate limit bucket; global throttle + per-user cache absorb load; docs recommend raising limits / `TRUSTED_IPS` on self-hosted instances.
 
@@ -171,6 +187,8 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 - **AIOStreams envelopes**: `errors[]`/`statistics[]` logged structurally; user-facing message surfaced where applicable.
 - **Catalog sync**: per-catalog isolation; failed pages retried next run; prune only after N consecutive successful syncs; atomic file writes.
 - **Playback**: failover on dead/placeholder/expired; when exhausted, a clear Jellyfin playback error.
+
+> **M2 amendment (2026-10-01).** Streams that require request headers (`requestHeaders`) are still skipped; proxying them moves to M4.
 - **Tokens**: HMAC-SHA256 with a per-install secret, embedded expiry (default 24h).
 - **Security**: secret-masking log enricher (UUIDs, passwords, tokens, debrid keys); assert no internal/debrid URLs in DTO/PlaybackInfo responses; self-service endpoints scoped to caller.
 - **Diagnostics panel**: connection tests, cache hit rate, recent errors, decorator active/degraded.

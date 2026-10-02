@@ -11,3 +11,17 @@ Result of manual playback testing per milestone. Legend: works / works with cave
 | Infuse | | — | |
 | Streamyfin | | — | |
 | External player (VLC/MX) | | — | |
+
+## M2: per-user versions
+
+Versions on (`EnableVersions = true`), a user with their own AIOStreams config. "Versions shown": the Version
+dropdown lists the user's streams. "Switch works": picking another version keeps it selected with no error.
+"Plays": playback starts through Jellyfin (HLS). "Resume": stopping and reopening offers Resume at the right position.
+
+| Client | Version | Versions shown | Switch works | Plays | Resume | Notes |
+|---|---|---|---|---|---|---|
+| Jellyfin Web | 12.1 (Chromium) | to test | to test | to test | to test | |
+| Android TV | | to test | to test | to test | to test | needs the maintainer's device |
+| Swiftfin | | to test | to test | to test | to test | needs the maintainer's device |
+| Findroid | | to test | to test | to test | to test | needs the maintainer's device |
+| Infuse | | to test | to test | to test | to test | needs the maintainer's device |
