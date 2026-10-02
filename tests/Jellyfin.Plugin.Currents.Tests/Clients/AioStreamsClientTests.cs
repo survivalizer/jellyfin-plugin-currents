@@ -37,6 +37,21 @@ public class AioStreamsClientTests
     }
 
     [Fact]
+    public async Task Oversized_bodies_are_refused()
+    {
+        var body = $$"""{ "success": true, "data": { "results": [], "errors": [], "pad": "{{new string('x', 4096)}}" } }""";
+        var client = new AioStreamsClient(new FakeHttpClientFactory(new StubHttpHandler(_ => StubHttpHandler.Json(body))), NullLogger<AioStreamsClient>.Instance, maxBodyBytes: 1024);
+        var unsized = new AioStreamsClient(new FakeHttpClientFactory(new StubHttpHandler(_ => new HttpResponseMessage { Content = new StreamContent(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(body))) })), NullLogger<AioStreamsClient>.Instance, maxBodyBytes: 1024);
+
+        var sized = await Assert.ThrowsAsync<AioStreamsException>(() => client.SearchAsync(Creds(), "movie", "tt1", CancellationToken.None));
+        var streamed = await Assert.ThrowsAsync<AioStreamsException>(() => unsized.SearchAsync(Creds(), "movie", "tt1", CancellationToken.None));
+
+        Assert.Equal("AIOStreams returned a response larger than 16 MB.", sized.Message);
+        Assert.Equal(sized.Message, streamed.Message);
+        Assert.Equal(16 * 1024 * 1024, AioStreamsClient.MaxBodyBytes);
+    }
+
+    [Fact]
     public async Task Failed_envelope_throws_with_server_message()
     {
         var (client, _) = Create(_ => StubHttpHandler.Json(Fixture.Read("aiostreams/search-failed.json"), HttpStatusCode.BadRequest));

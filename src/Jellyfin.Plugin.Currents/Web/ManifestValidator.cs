@@ -8,11 +8,16 @@ public static class ManifestValidator
 {
     private const string ProbeTitle = "tt0111161";
 
-    public static async Task<string?> ValidateAsync(IAioStreamsClient client, string manifestUrl, CancellationToken cancellationToken)
+    /// <summary>Validates a manifest URL.</summary>
+    /// <param name="client">The AIOStreams client.</param>
+    /// <param name="manifestUrl">The URL to check.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>Null when the config works; otherwise the problem (masked).</returns>
+    public static async Task<ManifestProblem?> ValidateAsync(IAioStreamsClient client, string manifestUrl, CancellationToken cancellationToken)
     {
         if (!AioStreamsCredentials.TryParse(manifestUrl, out var credentials, out var error))
         {
-            return error;
+            return new ManifestProblem(error ?? "The manifest URL is not valid.", Remote: false);
         }
 
         try
@@ -23,7 +28,7 @@ public static class ManifestValidator
         catch (Exception ex) when (ex is AioStreamsException or HttpRequestException
             || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
-            return $"AIOStreams did not accept this config: {SecretMasker.Mask(ex.Message)}";
+            return new ManifestProblem($"AIOStreams did not accept this config: {SecretMasker.Mask(ex.Message)}", Remote: true);
         }
     }
 

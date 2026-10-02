@@ -81,7 +81,7 @@ public sealed class AdminUsersControllerTests : IDisposable
         var invalid = await Create().Update(Bob, new AdminUserUpdate { AioStreamsManifestUrl = OverrideUrl }, CancellationToken.None);
 
         Assert.IsType<NotFoundResult>(unknown.Result);
-        Assert.IsType<BadRequestObjectResult>(invalid.Result);
+        Assert.Contains("Invalid password", ((StatusMessage)Assert.IsType<BadRequestObjectResult>(invalid.Result).Value!).Message, StringComparison.Ordinal);
         Assert.Null(_users.Get(Bob).Admin.AioStreamsManifestUrl);
     }
 

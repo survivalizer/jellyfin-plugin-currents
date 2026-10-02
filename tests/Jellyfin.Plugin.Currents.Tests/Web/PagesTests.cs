@@ -31,7 +31,7 @@ public sealed class PagesTests : IDisposable
     public void User_page_is_served_as_html_without_auth()
     {
         var users = new UserStore(_settings, NullLogger<UserStore>.Instance);
-        var controller = new UserSettingsController(users, new StreamProfileResolver(users, _settings), new FakeAioStreamsClient(), _settings);
+        var controller = new UserSettingsController(users, new StreamProfileResolver(users, _settings), new FakeAioStreamsClient(), _settings, NullLogger<UserSettingsController>.Instance);
 
         var result = Assert.IsType<FileStreamResult>(controller.Page());
 

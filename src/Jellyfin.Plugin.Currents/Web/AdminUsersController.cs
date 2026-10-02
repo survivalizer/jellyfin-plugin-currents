@@ -46,7 +46,7 @@ public sealed class AdminUsersController : ControllerBase
         var url = update.AioStreamsManifestUrl?.Trim();
         if (!string.IsNullOrEmpty(url) && await ManifestValidator.ValidateAsync(_streams, url, cancellationToken).ConfigureAwait(false) is { } error)
         {
-            return BadRequest(new StatusMessage(SecretMasker.Mask(error)));
+            return BadRequest(new StatusMessage(SecretMasker.Mask(error.Message)));
         }
 
         update.Preferences?.Normalize();

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 using Jellyfin.Plugin.Currents.Clients.Http;
@@ -10,13 +11,23 @@ namespace Jellyfin.Plugin.Currents.Clients.AioStreams;
 /// <summary>HTTP implementation of <see cref="IAioStreamsClient"/>.</summary>
 public sealed class AioStreamsClient : IAioStreamsClient
 {
+    /// <summary>The largest response body read from AIOStreams (16 MB).</summary>
+    internal const int MaxBodyBytes = 16 * 1024 * 1024;
+    private const string TooLarge = "AIOStreams returned a response larger than 16 MB.";
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<AioStreamsClient> _logger;
+    private readonly int _maxBodyBytes;
 
     public AioStreamsClient(IHttpClientFactory httpClientFactory, ILogger<AioStreamsClient> logger)
+        : this(httpClientFactory, logger, MaxBodyBytes)
+    {
+    }
+
+    internal AioStreamsClient(IHttpClientFactory httpClientFactory, ILogger<AioStreamsClient> logger, int maxBodyBytes)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _maxBodyBytes = maxBodyBytes;
     }
 
     public async Task<SearchOutcome> SearchAsync(AioStreamsCredentials credentials, string type, string id, CancellationToken cancellationToken)
@@ -31,7 +42,7 @@ public sealed class AioStreamsClient : IAioStreamsClient
         ApiEnvelope<SearchData>? envelope = null;
         try
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var body = await ReadBodyAsync(response.Content, cancellationToken).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(body))
             {
                 envelope = JsonSerializer.Deserialize<ApiEnvelope<SearchData>>(body, JsonDefaults.Options);
@@ -64,6 +75,33 @@ public sealed class AioStreamsClient : IAioStreamsClient
         }
 
         throw new AioStreamsException($"AIOStreams returned {(int)response.StatusCode} for {SecretMasker.Mask(uri)}.");
+    }
+
+    private async Task<string> ReadBodyAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength > _maxBodyBytes)
+        {
+            throw new AioStreamsException(TooLarge);
+        }
+
+        var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using (stream.ConfigureAwait(false))
+        {
+            using var buffer = new MemoryStream();
+            var chunk = new byte[81920];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                if (buffer.Length + read > _maxBodyBytes)
+                {
+                    throw new AioStreamsException(TooLarge);
+                }
+
+                await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            }
+
+            return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+        }
     }
 
     private static string Describe(JsonElement error)

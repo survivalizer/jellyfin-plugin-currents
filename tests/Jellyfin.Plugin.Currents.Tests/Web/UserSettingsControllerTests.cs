@@ -37,8 +37,10 @@ public sealed class UserSettingsControllerTests : IDisposable
         return new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Custom")) } };
     }
 
+    private readonly ListLogger<UserSettingsController> _logger = new();
+
     private UserSettingsController Create(Guid? user) =>
-        new(_users, new StreamProfileResolver(_users, _settings), _streams, _settings) { ControllerContext = As(user) };
+        new(_users, new StreamProfileResolver(_users, _settings), _streams, _settings, _logger) { ControllerContext = As(user) };
 
     private static T Ok<T>(ActionResult<T> result) => Assert.IsType<T>(Assert.IsType<OkObjectResult>(result.Result).Value);
 
@@ -83,9 +85,13 @@ public sealed class UserSettingsControllerTests : IDisposable
         var unparsable = await Create(Alice).UpdateSettings(new UserSettingsUpdate { AioStreamsManifestUrl = "https://aio.example.com/stremio/u/alias" }, CancellationToken.None);
 
         var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
-        Assert.DoesNotContain("alicepw", ((StatusMessage)bad.Value!).Message, StringComparison.Ordinal);
-        Assert.IsType<BadRequestObjectResult>(unparsable.Result);
+        Assert.Equal("AIOStreams did not accept this config. Check the URL and try again.", ((StatusMessage)bad.Value!).Message);
+        var unparsableMessage = ((StatusMessage)Assert.IsType<BadRequestObjectResult>(unparsable.Result).Value!).Message;
+        Assert.DoesNotContain("did not accept", unparsableMessage, StringComparison.Ordinal);
         Assert.Null(_users.Get(Alice).Self.AioStreamsManifestUrl);
+        var logged = Assert.Single(_logger.Entries).Message;
+        Assert.Contains("Invalid password", logged, StringComparison.Ordinal);
+        Assert.DoesNotContain("alicepw", logged, StringComparison.Ordinal);
     }
 
     [Fact]

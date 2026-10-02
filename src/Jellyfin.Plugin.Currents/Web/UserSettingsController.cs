@@ -5,6 +5,7 @@ using Jellyfin.Plugin.Currents.Users;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Currents.Web;
 
@@ -13,17 +14,20 @@ namespace Jellyfin.Plugin.Currents.Web;
 [Route("Currents/user")]
 public sealed class UserSettingsController : ControllerBase
 {
+    private const string NotAccepted = "AIOStreams did not accept this config. Check the URL and try again.";
     private readonly UserStore _users;
     private readonly StreamProfileResolver _profiles;
     private readonly IAioStreamsClient _streams;
     private readonly ICurrentsSettings _settings;
+    private readonly ILogger<UserSettingsController> _logger;
 
-    public UserSettingsController(UserStore users, StreamProfileResolver profiles, IAioStreamsClient streams, ICurrentsSettings settings)
+    public UserSettingsController(UserStore users, StreamProfileResolver profiles, IAioStreamsClient streams, ICurrentsSettings settings, ILogger<UserSettingsController> logger)
     {
         _users = users;
         _profiles = profiles;
         _streams = streams;
         _settings = settings;
+        _logger = logger;
     }
 
     /// <summary>Serves the self-service page. Anonymous: a browser navigation carries no Jellyfin auth header; the page's API calls do.</summary>
@@ -66,9 +70,16 @@ public sealed class UserSettingsController : ControllerBase
         }
 
         var url = update.AioStreamsManifestUrl?.Trim();
-        if (!string.IsNullOrEmpty(url) && await ManifestValidator.ValidateAsync(_streams, url, cancellationToken).ConfigureAwait(false) is { } error)
+        if (!string.IsNullOrEmpty(url) && await ManifestValidator.ValidateAsync(_streams, url, cancellationToken).ConfigureAwait(false) is { } problem)
         {
-            return BadRequest(new StatusMessage(SecretMasker.Mask(error)));
+            if (!problem.Remote)
+            {
+                return BadRequest(new StatusMessage(SecretMasker.Mask(problem.Message)));
+            }
+
+            // The remote detail stays in the server log: returning it would let users probe arbitrary hosts through the server.
+            _logger.LogWarning("Self-service config for user {UserId} was refused: {Detail}", userId, SecretMasker.Mask(problem.Message));
+            return BadRequest(new StatusMessage(NotAccepted));
         }
 
         update.Preferences?.Normalize();
