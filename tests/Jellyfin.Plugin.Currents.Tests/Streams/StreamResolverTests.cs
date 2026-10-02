@@ -123,6 +123,37 @@ public class StreamResolverTests
     }
 
     [Fact]
+    public async Task Non_http_redirect_is_treated_as_dead_and_next_stream_wins()
+    {
+        _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream("https://bad.example.com/a"), FakeAioStreamsClient.Stream("https://ok.example.com/b.mkv")], []);
+        _routes["https://bad.example.com/a"] = () => StubHttpHandler.Redirect("file:///etc/passwd", HttpStatusCode.TemporaryRedirect);
+        _routes["https://ok.example.com/b.mkv"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+
+        var result = await Create().ResolveAsync("movie", "tt1", CancellationToken.None);
+
+        Assert.Equal(new Uri("https://ok.example.com/b.mkv"), result.Url);
+    }
+
+    [Fact]
+    public async Task Detects_placeholder_behind_a_proxy_on_a_different_host()
+    {
+        _settings.Current.AioStreamsManifestUrl = "https://aio.internal:3000/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/pw/manifest.json";
+        _streams.Outcome = new SearchOutcome(
+            [
+                FakeAioStreamsClient.Stream("https://proxy.example.com/api/v1/debrid/playback/x/a.mkv"),
+                FakeAioStreamsClient.Stream("https://ok.example.com/b.mkv"),
+            ],
+            []);
+        _routes["https://proxy.example.com/api/v1/debrid/playback/x/a.mkv"] = () => StubHttpHandler.Redirect("https://proxy.example.com/static/some_new_error.mp4", HttpStatusCode.TemporaryRedirect);
+        _routes["https://proxy.example.com/static/some_new_error.mp4"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+        _routes["https://ok.example.com/b.mkv"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+
+        var result = await Create().ResolveAsync("movie", "tt1", CancellationToken.None);
+
+        Assert.Equal(new Uri("https://ok.example.com/b.mkv"), result.Url);
+    }
+
+    [Fact]
     public async Task Gives_up_on_redirect_loops()
     {
         _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream("https://loop.example.com/a")], []);

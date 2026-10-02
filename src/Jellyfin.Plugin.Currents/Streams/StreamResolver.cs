@@ -56,7 +56,7 @@ public sealed class StreamResolver : IStreamResolver
             || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             _logger.LogWarning(ex, "AIOStreams search failed for {Type} {Id}", type, stremioId);
-            return ResolveResult.Fail($"AIOStreams search failed: {ex.Message}");
+            return ResolveResult.Fail($"AIOStreams search failed: {SecretMasker.Mask(ex.Message)}");
         }
 
         var candidates = StreamRanker.Rank(outcome.Results)
@@ -95,6 +95,11 @@ public sealed class StreamResolver : IStreamResolver
         var current = start;
         for (var hop = 0; hop <= MaxRedirects; hop++)
         {
+            if (current.Scheme != Uri.UriSchemeHttp && current.Scheme != Uri.UriSchemeHttps)
+            {
+                return null;
+            }
+
             using var request = new HttpRequestMessage(HttpMethod.Get, current);
             request.Headers.Range = new RangeHeaderValue(0, 0);
             HttpResponseMessage response;
