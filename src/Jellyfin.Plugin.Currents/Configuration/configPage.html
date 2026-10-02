@@ -221,10 +221,11 @@
           body.innerHTML = '';
           for (const user of rows) {
             const row = document.createElement('tr');
-            const using = user.Source === 'Self' ? `own (${user.OwnConfigHost})` : user.Source === 'Admin' ? `override (${user.OverrideHost})` : user.Source.toLowerCase();
+            // No template literals in this page: jellyfin-web's translateHtml rewrites dollar-brace placeholders before the script runs.
+            const using = user.Source === 'Self' ? 'own (' + user.OwnConfigHost + ')' : user.Source === 'Admin' ? 'override (' + user.OverrideHost + ')' : user.Source.toLowerCase();
             const url = document.createElement('input');
             url.type = 'url';
-            url.placeholder = user.OverrideHost ? `saved on ${user.OverrideHost}; paste to replace, "-" to remove` : 'none';
+            url.placeholder = user.OverrideHost ? 'saved on ' + user.OverrideHost + '; paste to replace, "-" to remove' : 'none';
             url.style.width = '100%';
             const box = (checked) => { const b = document.createElement('input'); b.type = 'checkbox'; b.checked = !!checked; return b; };
             const autoSelect = document.createElement('select');

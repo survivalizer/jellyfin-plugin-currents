@@ -45,6 +45,17 @@ public sealed class PagesTests : IDisposable
     }
 
     [Fact]
+    public void Admin_page_has_no_template_placeholders_that_jellyfin_web_would_translate()
+    {
+        // jellyfin-web runs plugin pages through translateHtml, which replaces every "${Key}" with a translation
+        // (or the key itself), so JavaScript template literals like `own (${user.OwnConfigHost})` render as
+        // "own (user.OwnConfigHost)". Found in the M2 end-to-end check.
+        var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
+
+        Assert.DoesNotContain("${", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Admin_page_has_the_versions_and_users_sections()
     {
         var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
