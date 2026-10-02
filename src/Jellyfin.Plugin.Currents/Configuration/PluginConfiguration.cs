@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.Currents.Streams;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.Currents.Configuration;
@@ -25,6 +26,23 @@ public class PluginConfiguration : BasePluginConfiguration
     public int PruneAfterMisses { get; set; } = 3;
 
     public int FailoverAttempts { get; set; } = 3;
+
+    /// <summary>Gets or sets a value indicating whether titles show per-user versions. Off is degraded mode: every title plays the default config's best stream.</summary>
+    public bool EnableVersions { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether users may set their own AIOStreams config and preferences on the Currents user page.</summary>
+    public bool AllowSelfService { get; set; } = true;
+
+    public StreamPreferences DefaultPreferences { get; set; } = new();
+
+    /// <summary>Gets or sets a value indicating whether users see only the best stream (true) or every ranked stream (false) by default.</summary>
+    public bool DefaultAutoSelect { get; set; }
+
+    public int StreamCacheMinutes { get; set; } = 60;
+
+    public int MaxVersions { get; set; } = 20;
+
+    public int VersionTokenHours { get; set; } = 24;
 
     public int AioStreamsPermitsPer10Seconds { get; set; } = 5;
 
