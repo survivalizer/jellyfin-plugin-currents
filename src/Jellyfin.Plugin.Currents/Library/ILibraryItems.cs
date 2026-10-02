@@ -1,0 +1,34 @@
+namespace Jellyfin.Plugin.Currents.Library;
+
+/// <summary>What search-add needs from Jellyfin's library. Implemented in Integration/ (JellyfinLibraryItems).</summary>
+public interface ILibraryItems
+{
+    /// <summary>Gets the Jellyfin item for a Currents title folder, if Jellyfin has it.</summary>
+    /// <param name="title">The Currents title.</param>
+    /// <returns>The item id, or null.</returns>
+    Guid? FindTitle(TitleState title);
+
+    /// <summary>Gets items the user can see with one of the keys' IMDb/TMDB/TVDB/Currents ids and the key's kind, by state id. One query.</summary>
+    /// <param name="userId">The user.</param>
+    /// <param name="keys">The title keys.</param>
+    /// <returns>Item ids keyed by state id.</returns>
+    IReadOnlyDictionary<string, Guid> FindExisting(Guid userId, IReadOnlyCollection<TitleKey> keys);
+
+    /// <summary>Gets whether the user can see a library whose locations include the Currents folder for this kind.</summary>
+    /// <param name="userId">The user.</param>
+    /// <param name="kind">The media kind.</param>
+    /// <returns>True when the user can see such a library.</returns>
+    bool CanAdd(Guid userId, MediaKind kind);
+
+    /// <summary>Creates (or finds) the Jellyfin item for a just-written title folder and refreshes it within a bounded time; null when no library holds the kind's folder.</summary>
+    /// <param name="kind">The media kind.</param>
+    /// <param name="relativeFolder">The title folder, relative to the Currents library root.</param>
+    /// <param name="cancellationToken">Cancels the wait.</param>
+    /// <returns>The item id, or null.</returns>
+    Task<Guid?> AddAsync(MediaKind kind, string relativeFolder, CancellationToken cancellationToken);
+
+    /// <summary>Gets the kinds whose Currents folder is a location of the library (collection folder) with this id.</summary>
+    /// <param name="libraryId">The library id.</param>
+    /// <returns>The kinds held.</returns>
+    IReadOnlyCollection<MediaKind> KindsIn(Guid libraryId);
+}
