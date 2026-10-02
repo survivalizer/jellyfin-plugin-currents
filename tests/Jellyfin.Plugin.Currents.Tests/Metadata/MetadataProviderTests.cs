@@ -93,4 +93,32 @@ public class MetadataProviderTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Cache().GetAsync("movie", "tt1", cts.Token));
     }
+
+    [Fact]
+    public async Task Meta_cache_shares_one_request_between_concurrent_callers()
+    {
+        var cache = Cache();
+
+        var metas = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => cache.GetAsync("series", "tt2", CancellationToken.None)));
+
+        Assert.All(metas, m => Assert.Equal("Show Two", m!.Name));
+        Assert.Single(_client.MetaRequests);
+    }
+
+    [Fact]
+    public async Task Meta_cache_remembers_misses_for_a_minute()
+    {
+        var time = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var cache = new MetaCache(_client, _settings, time, NullLogger<MetaCache>.Instance);
+        _client.FailingMetas.Add("movie/tt1");
+
+        Assert.Null(await cache.GetAsync("movie", "tt1", CancellationToken.None));
+        Assert.Null(await cache.GetAsync("movie", "tt1", CancellationToken.None));
+        _client.FailingMetas.Clear();
+        time.Advance(TimeSpan.FromMinutes(1) + TimeSpan.FromSeconds(1));
+        var recovered = await cache.GetAsync("movie", "tt1", CancellationToken.None);
+
+        Assert.Equal("Movie One", recovered!.Name);
+        Assert.Equal(2, _client.MetaRequests.Count);
+    }
 }
