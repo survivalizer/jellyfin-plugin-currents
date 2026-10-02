@@ -141,6 +141,9 @@ public sealed class JellyfinLibraryItems : ILibraryItems
             // A folder scan that listed the disk before this item existed deletes it as "removed" (Folder.cs:438-553).
             _logger.LogInformation("A library scan removed {Name} while Currents added it; adding it again", item.Name);
             _library.CreateItem(item, physical);
+
+            // The scan also removed the children the refresh made (a series' seasons and episodes); refresh it again.
+            _providers.QueueRefresh(item.Id, RefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.High);
         }
 
         return item.Id;
@@ -194,13 +197,15 @@ public sealed class JellyfinLibraryItems : ILibraryItems
         return item;
     }
 
+    private static MetadataRefreshOptions RefreshOptions(IDirectoryService directoryService) => new(directoryService)
+    {
+        MetadataRefreshMode = MetadataRefreshMode.Default,
+        ImageRefreshMode = MetadataRefreshMode.Default,
+    };
+
     private async Task RefreshAsync(BaseItem item, MediaKind kind, IDirectoryService directoryService, CancellationToken cancellationToken)
     {
-        var options = new MetadataRefreshOptions(directoryService)
-        {
-            MetadataRefreshMode = MetadataRefreshMode.Default,
-            ImageRefreshMode = MetadataRefreshMode.Default,
-        };
+        var options = RefreshOptions(directoryService);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(kind == MediaKind.Movie ? _movieRefresh : _seriesRefresh);
         try

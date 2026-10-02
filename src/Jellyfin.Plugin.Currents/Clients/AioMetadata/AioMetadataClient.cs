@@ -36,7 +36,7 @@ public sealed class AioMetadataClient : IAioMetadataClient
     public async Task<IReadOnlyList<StremioMeta>> GetCatalogPageAsync(AioMetadataEndpoint endpoint, string type, string catalogId, int skip, CancellationToken cancellationToken)
     {
         var response = await GetJsonAsync<CatalogResponse>(endpoint.Catalog(type, catalogId, skip), cancellationToken).ConfigureAwait(false);
-        return response?.Metas.Where(m => !string.IsNullOrWhiteSpace(m.Id)).ToList() ?? [];
+        return Usable(response);
     }
 
     public async Task<StremioMeta?> GetMetaAsync(AioMetadataEndpoint endpoint, string type, string id, CancellationToken cancellationToken)
@@ -48,8 +48,12 @@ public sealed class AioMetadataClient : IAioMetadataClient
     public async Task<IReadOnlyList<StremioMeta>> SearchAsync(AioMetadataEndpoint endpoint, string type, string catalogId, string query, CancellationToken cancellationToken)
     {
         var response = await GetJsonAsync<CatalogResponse>(endpoint.Search(type, catalogId, query), cancellationToken).ConfigureAwait(false);
-        return response?.Metas.Where(m => !string.IsNullOrWhiteSpace(m.Id)).ToList() ?? [];
+        return Usable(response);
     }
+
+    // The body is untrusted JSON: "metas" may be null and may hold null entries.
+    private static List<StremioMeta> Usable(CatalogResponse? response) =>
+        (response?.Metas ?? []).Where(m => m is not null && !string.IsNullOrWhiteSpace(m.Id)).ToList();
 
     private async Task<T?> GetJsonAsync<T>(Uri uri, CancellationToken cancellationToken)
         where T : class

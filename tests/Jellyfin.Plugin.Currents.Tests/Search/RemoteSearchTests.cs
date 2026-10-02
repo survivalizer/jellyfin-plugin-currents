@@ -181,4 +181,14 @@ public class RemoteSearchTests
         Assert.Equal(SearchItemId.For(_settings.Current.SigningSecret, "movie/tt0133093"), result.Id);
         Assert.NotEqual(SearchItemId.For(FakeSettings.Secret, "movie/tt0133093"), result.Id);
     }
+
+    [Fact]
+    public async Task Null_metas_are_skipped()
+    {
+        _client.Searches["movie/search.movie?matrix"] = [null!, Meta("tt0133093", "The Matrix")];
+
+        var results = await Create().SearchAsync("matrix", [MediaKind.Movie], CancellationToken.None);
+
+        Assert.Equal("movie/tt0133093", Assert.Single(results).Key.StateId);
+    }
 }

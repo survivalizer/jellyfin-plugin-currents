@@ -37,6 +37,9 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
 
     public List<string> SearchRequests { get; } = [];
 
+    /// <summary>Gets or sets an exception every search throws (an unexpected fault, not an upstream outage).</summary>
+    public Exception? SearchFault { get; set; }
+
     /// <summary>When set, a search request is recorded and then waits for this gate before answering.</summary>
     public TaskCompletionSource? SearchGate { get; set; }
 
@@ -94,6 +97,11 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
         if (SearchGate is { } gate)
         {
             await gate.Task.ConfigureAwait(false);
+        }
+
+        if (SearchFault is { } fault)
+        {
+            throw fault;
         }
 
         if (FailingSearches.Contains($"{type}/{catalogId}"))

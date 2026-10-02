@@ -27,8 +27,9 @@ into your library as real titles and plays them through [AIOStreams](https://git
 ## Search
 Search in Jellyfin also shows matching titles from AIOMetadata that are not in your library yet, in the Movies and
 Shows results with a poster. Opening one adds it to the Currents Movies/Shows folder and shows the real item,
-ready to play with your versions; a series gets its seasons and episodes within a minute. Titles you open from search
-are kept: they are never pruned, and a series receives new episodes on each catalog sync. If a title is already in
+ready to play with your versions; a series gets its seasons and episodes within a minute. Titles added by search are
+kept: they are never pruned, and a series receives new episodes on each catalog sync. (A title that was already in
+the library from a synced catalog and is only opened from search stays a catalog title and can still be pruned.) If a title is already in
 your library (a Currents title or your own file with the same IMDb, TMDB or TVDB id), opening it shows that item
 instead of adding a copy. Posters are fetched by the server; poster URLs never reach clients.
 

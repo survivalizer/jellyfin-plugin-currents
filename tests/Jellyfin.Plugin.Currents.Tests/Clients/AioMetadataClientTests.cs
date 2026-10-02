@@ -133,4 +133,20 @@ public class AioMetadataClientTests
 
         Assert.Equal("tt1", Assert.Single(await client.SearchAsync(Endpoint, "movie", "search.movie", "a", CancellationToken.None)).Id);
     }
+
+    [Theory]
+    [InlineData("""{"metas":null}""")]
+    [InlineData("""{"metas":[null,{"id":"tt1","name":"A"},null]}""")]
+    public async Task Null_metas_are_skipped_in_catalog_pages_and_searches(string body)
+    {
+        var (client, _, _) = Create(_ => StubHttpHandler.Json(body));
+
+        var page = await client.GetCatalogPageAsync(Endpoint, "movie", "top", 0, CancellationToken.None);
+        var found = await client.SearchAsync(Endpoint, "movie", "search.movie", "a", CancellationToken.None);
+
+        Assert.All(page, m => Assert.Equal("tt1", m.Id));
+        Assert.All(found, m => Assert.Equal("tt1", m.Id));
+        Assert.Equal(body.Contains("tt1", StringComparison.Ordinal) ? 1 : 0, page.Count);
+        Assert.Equal(page.Count, found.Count);
+    }
 }

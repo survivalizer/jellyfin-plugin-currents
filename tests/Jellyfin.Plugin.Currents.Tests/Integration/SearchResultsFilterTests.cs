@@ -262,8 +262,8 @@ public sealed class SearchResultsFilterTests : IDisposable
     [Fact]
     public async Task A_failing_remote_search_returns_local_results()
     {
-        // A null entry makes RemoteSearch's projection throw an unexpected NullReferenceException.
-        _client.Searches["movie/search.movie?matrix"] = [null!];
+        // Not an upstream outage RemoteSearch absorbs: an unexpected fault from inside the search.
+        _client.SearchFault = new InvalidOperationException("unexpected");
         var local = Guid.NewGuid();
 
         var page = await Run(Create(Alice), Context(Search()), Page(local));

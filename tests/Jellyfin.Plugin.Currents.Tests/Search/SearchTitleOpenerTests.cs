@@ -203,6 +203,21 @@ public sealed class SearchTitleOpenerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_signed_out_caller_never_adds_even_when_told_it_may()
+    {
+        var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
+        _client.Metas["movie/tt0133093"] = shown.Meta;
+
+        var outcome = await Create().OpenAsync(shown.Id, Guid.Empty, () => true, CancellationToken.None);
+
+        Assert.Equal(OpenStatus.NotAllowed, outcome.Status);
+        Assert.Null(_titles.Get("movie/tt0133093"));
+        Assert.False(Directory.Exists(MoviesDir));
+        Assert.Empty(_library.Added);
+        Assert.Empty(_client.MetaRequests);
+    }
+
+    [Fact]
     public async Task Concurrent_opens_add_the_title_once()
     {
         var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");

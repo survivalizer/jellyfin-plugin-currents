@@ -282,6 +282,24 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
     }
 
     [Fact]
+    public async Task A_series_added_back_after_a_scan_gets_a_queued_refresh_for_its_seasons()
+    {
+        var showsFolder = new Folder { Id = Guid.NewGuid(), Path = LibraryPaths.FromSettings(_settings).Shows };
+        var series = new Series { Id = Guid.NewGuid() };
+        _library.Fake
+            .On(nameof(ILibraryManager.FindByPath), args => (string)args[0]! == showsFolder.Path ? showsFolder : null)
+            .On(nameof(ILibraryManager.GetContentType), _ => CollectionType.tvshows)
+            .On(nameof(ILibraryManager.ResolvePath), _ => series)
+            .On(nameof(ILibraryManager.GetItemById), _ => null); // a scan removed it during the refresh
+
+        await Create().AddAsync(MediaKind.Series, Path.Combine("Shows", "B [imdbid-tt2]"), CancellationToken.None);
+
+        var queued = Assert.Single(_providers.Fake.Calls(nameof(IProviderManager.QueueRefresh)));
+        Assert.Equal(series.Id, queued[0]);
+        Assert.Equal(RefreshPriority.High, queued[2]);
+    }
+
+    [Fact]
     public async Task An_unresolvable_folder_throws()
     {
         _library.Fake.On(nameof(ILibraryManager.ResolvePath), _ => null);

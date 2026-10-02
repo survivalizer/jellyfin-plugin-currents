@@ -174,7 +174,8 @@ misconfiguration above a leaked log line is replayable from outside until it exp
   upstream fetch per id at a time, a poster kept for 1 h and a missing one for 5 min, at most 200 posters and 64 MB
   (the oldest go first).
 
-Series added by search get new episodes on every catalog sync. Search-added titles are never pruned.
+Series added by search get new episodes on every catalog sync. Titles added by search (`AddedBySearch`) are never
+pruned; a catalog title that was only opened from search keeps its catalog origin and is pruned as usual.
 
 Deleting a search-added title in Jellyfin removes its folder. The next catalog sync then forgets it (`state.json`
 entry removed, logged at Information) instead of writing it again, unless the kind's Currents root itself is missing
@@ -186,7 +187,7 @@ entry removed, logged at Information) instead of writing it again, unless the ki
    debounce; it never calls `/Search/Hints`). `SearchResultsFilter` checks the user's search switch, starts the remote
    search, lets Jellyfin answer, then appends cards for results not already present.
 2. **Card poster**: `GET /Items/{searchId}/Images/Primary`. `SearchItemFilter` answers with the proxied poster
-   (`image/jpeg`, png or webp); the poster URL is never in any response.
+   (`image/jpeg`, png, webp, gif or avif); the poster URL is never in any response.
 3. **Open**: the user clicks the card; `GET /Users/{U}/Items/{searchId}` (and `GET /Items/{searchId}?userId=U` from
    the theme-media player). `SearchItemFilter` calls `SearchTitleOpener`, which adds the title once (concurrent opens
    share one result), then rewrites the id. The returned DTO's `Id` is the real item.
