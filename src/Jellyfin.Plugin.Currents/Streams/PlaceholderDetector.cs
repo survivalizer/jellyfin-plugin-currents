@@ -1,6 +1,6 @@
 namespace Jellyfin.Plugin.Currents.Streams;
 
-/// <summary>Recognises AIOStreams' "error as a video" responses (e.g. /static/downloading.mp4).</summary>
+/// <summary>Recognises AIOStreams' "error as a video" responses (e.g. /static/downloading.mp4) and upstream slate videos (…/slate.mp4).</summary>
 public static class PlaceholderDetector
 {
     private static readonly string[] KnownNames =
@@ -17,6 +17,13 @@ public static class PlaceholderDetector
     public static bool IsPlaceholder(Uri finalUri, Uri aioStreamsBase, Uri? requestedUri = null)
     {
         var path = finalUri.AbsolutePath;
+
+        // Upstream addons (e.g. Comet on ElfHosted) redirect uncached titles to a rendered "slate" video.
+        if (string.Equals(Path.GetFileName(path), "slate.mp4", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         if (!path.Contains("/static/", StringComparison.OrdinalIgnoreCase)
             || !path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
         {

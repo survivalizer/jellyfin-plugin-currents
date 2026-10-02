@@ -49,6 +49,16 @@ public class PlaceholderDetectorTests
         Assert.Equal(expected, PlaceholderDetector.IsPlaceholder(new Uri(url), aio));
     }
 
+    [Theory]
+    [InlineData("https://slate.elfhosted.com/cache/3cb11ad9c7db/slate.mp4?preset=default&title=Still%20downloading", true)]
+    [InlineData("https://slate.example.org/SLATE.MP4", true)]
+    [InlineData("https://store-043.wnam.tb-cdn.io/dl/abc/slate.mkv", false)]
+    [InlineData("https://cdn.example.com/d/ABC/Slate.Movie.2019.1080p.mp4", false)]
+    public void Detects_slate_placeholder_videos_from_upstream_addons(string url, bool expected)
+    {
+        Assert.Equal(expected, PlaceholderDetector.IsPlaceholder(new Uri(url), AioBase));
+    }
+
     [Fact]
     public void Matching_is_case_insensitive()
     {
