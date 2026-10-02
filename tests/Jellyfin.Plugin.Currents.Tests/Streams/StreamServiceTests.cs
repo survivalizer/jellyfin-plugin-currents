@@ -190,4 +190,33 @@ public class StreamServiceTests
         Assert.Equal(3, service.Peek(Profile(), "movie", "tt1")!.Streams.Count);
         Assert.Equal(1, _client.Calls);
     }
+
+    [Fact]
+    public async Task Empty_results_with_addon_errors_are_cached_only_briefly()
+    {
+        _client.Outcome = new SearchOutcome([], ["Torrentio: Timed out"]);
+        var service = Create();
+
+        var first = await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+        await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+        Assert.Equal(1, _client.Calls);
+        _time.Advance(TimeSpan.FromSeconds(31));
+        await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+
+        Assert.Equal("No streams found for this title.", first.Error);
+        Assert.Equal(2, _client.Calls);
+    }
+
+    [Fact]
+    public async Task Empty_results_without_errors_keep_the_full_cache_ttl()
+    {
+        _client.Outcome = new SearchOutcome([], []);
+        var service = Create();
+
+        await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+        _time.Advance(TimeSpan.FromSeconds(31));
+        await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+
+        Assert.Equal(1, _client.Calls);
+    }
 }

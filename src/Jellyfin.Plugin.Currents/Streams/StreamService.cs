@@ -125,7 +125,12 @@ public sealed class StreamService : IStreamService
         {
             // Not tied to any caller: others may be waiting on it, and a late result still fills the cache.
             var outcome = await _client.SearchAsync(credentials, type, stremioId, CancellationToken.None).ConfigureAwait(false);
-            _results.Set(key, outcome, TimeSpan.FromMinutes(Math.Max(1, _settings.Current.StreamCacheMinutes)));
+
+            // Empty because addons failed is probably transient: retry soon rather than hiding the title for the full TTL.
+            var ttl = outcome.Results.Count == 0 && outcome.Errors.Count > 0
+                ? FailureTtl
+                : TimeSpan.FromMinutes(Math.Max(1, _settings.Current.StreamCacheMinutes));
+            _results.Set(key, outcome, ttl);
             return outcome;
         }
         catch (Exception ex) when (IsUpstreamFailure(ex, CancellationToken.None))
