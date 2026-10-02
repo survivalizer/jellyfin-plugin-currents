@@ -6,14 +6,14 @@ using System.Threading.RateLimiting;
 
 namespace Jellyfin.Plugin.Currents.Clients.Http;
 
-/// <summary>Rate-limits, retries transient failures (honouring Retry-After) and trips a circuit breaker.</summary>
+/// <summary>Rate-limits, retries transient failures (honouring Retry-After) and trips a circuit breaker per upstream host.</summary>
 public sealed class ResilientHttpHandler : DelegatingHandler
 {
     private static readonly TimeSpan MaxRetryAfter = TimeSpan.FromSeconds(30);
 
     [SuppressMessage("Usage", "CA2213:Disposable fields should be disposed", Justification = "Owned and disposed by OutboundPolicies.")]
     private readonly RateLimiter _limiter;
-    private readonly CircuitBreaker _breaker;
+    private readonly Func<Uri?, CircuitBreaker> _breakers;
     private readonly int _maxRetries;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly TimeSpan? _attemptTimeout;
@@ -24,9 +24,25 @@ public sealed class ResilientHttpHandler : DelegatingHandler
         int maxRetries = 2,
         Func<TimeSpan, CancellationToken, Task>? delay = null,
         TimeSpan? attemptTimeout = null)
+        : this(limiter, _ => breaker, maxRetries, delay, attemptTimeout)
+    {
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="ResilientHttpHandler"/> class whose breaker is chosen per request URI (per upstream host).</summary>
+    /// <param name="limiter">The shared rate limiter.</param>
+    /// <param name="breakers">Picks the circuit breaker for a request URI.</param>
+    /// <param name="maxRetries">Retries after the first attempt.</param>
+    /// <param name="delay">The backoff delay (tests replace it).</param>
+    /// <param name="attemptTimeout">The per-attempt timeout, if any.</param>
+    public ResilientHttpHandler(
+        RateLimiter limiter,
+        Func<Uri?, CircuitBreaker> breakers,
+        int maxRetries = 2,
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        TimeSpan? attemptTimeout = null)
     {
         _limiter = limiter;
-        _breaker = breaker;
+        _breakers = breakers;
         _maxRetries = maxRetries;
         _delay = delay ?? ((d, ct) => Task.Delay(d, ct));
         _attemptTimeout = attemptTimeout;
@@ -37,9 +53,10 @@ public sealed class ResilientHttpHandler : DelegatingHandler
     // After the last retry the original exception is rethrown. Caller cancellation is never retried or counted.
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        var breaker = _breakers(request.RequestUri);
         for (var attempt = 0; ; attempt++)
         {
-            _breaker.ThrowIfOpen();
+            breaker.ThrowIfOpen();
             HttpResponseMessage? response = null;
             Exception? error = null;
             using (var lease = await _limiter.AcquireAsync(1, cancellationToken).ConfigureAwait(false))
@@ -67,7 +84,7 @@ public sealed class ResilientHttpHandler : DelegatingHandler
 
             if (error is not null)
             {
-                _breaker.RecordFailure();
+                breaker.RecordFailure();
                 if (attempt >= _maxRetries)
                 {
                     ExceptionDispatchInfo.Capture(error).Throw();
@@ -80,13 +97,13 @@ public sealed class ResilientHttpHandler : DelegatingHandler
             var status = (int)response!.StatusCode;
             if (status < 500 && response.StatusCode != HttpStatusCode.TooManyRequests)
             {
-                _breaker.RecordSuccess();
+                breaker.RecordSuccess();
                 return response;
             }
 
             if (status >= 500)
             {
-                _breaker.RecordFailure();
+                breaker.RecordFailure();
             }
 
             if (attempt >= _maxRetries)

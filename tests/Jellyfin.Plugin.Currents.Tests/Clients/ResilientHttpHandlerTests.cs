@@ -223,6 +223,31 @@ public class ResilientHttpHandlerTests
         Assert.Equal(2, inner.Calls);
     }
 
+    [Fact]
+    public async Task Failures_open_only_the_failing_hosts_breaker()
+    {
+        var time = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var breakers = new Dictionary<string, CircuitBreaker>(StringComparer.Ordinal);
+        var stub = new StubHttpHandler(r => new HttpResponseMessage(r.RequestUri!.Host == "a.example.com" ? HttpStatusCode.BadGateway : HttpStatusCode.OK));
+        var limiter = new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = 10, QueueLimit = 10 });
+        var handler = new ResilientHttpHandler(
+            limiter,
+            uri => breakers.TryGetValue(uri!.Authority, out var b) ? b : breakers[uri.Authority] = new CircuitBreaker(3, TimeSpan.FromSeconds(30), time),
+            maxRetries: 2,
+            delay: (d, _) => { _delays.Add(d); return Task.CompletedTask; })
+        {
+            InnerHandler = stub,
+        };
+        using var invoker = new HttpMessageInvoker(handler);
+
+        using var failed = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, new Uri("https://a.example.com/x")), CancellationToken.None);
+        using var other = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, new Uri("https://b.example.com/x")), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.BadGateway, failed.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, other.StatusCode);
+        await Assert.ThrowsAsync<CircuitOpenException>(() => invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, new Uri("https://a.example.com/y")), CancellationToken.None));
+    }
+
     private sealed class FuncHandler : HttpMessageHandler
     {
         private readonly Func<int, CancellationToken, Task<HttpResponseMessage>> _send;

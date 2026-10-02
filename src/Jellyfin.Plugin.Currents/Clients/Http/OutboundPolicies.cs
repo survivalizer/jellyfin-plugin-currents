@@ -5,7 +5,7 @@ using Jellyfin.Plugin.Currents.Common;
 
 namespace Jellyfin.Plugin.Currents.Clients.Http;
 
-/// <summary>Holds one rate limiter and circuit breaker per upstream, shared by all handler instances.</summary>
+/// <summary>Holds one rate limiter per upstream client and one circuit breaker per (client, host[:port]), shared by all handler instances.</summary>
 public sealed class OutboundPolicies : IDisposable
 {
     private readonly ConcurrentDictionary<string, Policy> _policies = new(StringComparer.Ordinal);
@@ -21,8 +21,14 @@ public sealed class OutboundPolicies : IDisposable
     public DelegatingHandler CreateHandler(string clientName)
     {
         var policy = _policies.GetOrAdd(clientName, Create);
-        return new ResilientHttpHandler(policy.Limiter, policy.Breaker, attemptTimeout: AttemptTimeout(clientName));
+        return new ResilientHttpHandler(policy.Limiter, uri => Breaker(policy, uri), attemptTimeout: AttemptTimeout(clientName));
     }
+
+    /// <summary>Gets the breaker for one upstream host, so a dead self-hosted AIOStreams does not pause calls to other hosts.</summary>
+    /// <param name="clientName">The HttpClient name.</param>
+    /// <param name="uri">A request URI on that host.</param>
+    /// <returns>The shared breaker for (client, host[:port]).</returns>
+    internal CircuitBreaker BreakerFor(string clientName, Uri? uri) => Breaker(_policies.GetOrAdd(clientName, Create), uri);
 
     /// <summary>Gets the per-attempt timeout for a client, or null when it has none.</summary>
     /// <param name="clientName">The HttpClient name.</param>
@@ -64,8 +70,11 @@ public sealed class OutboundPolicies : IDisposable
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             AutoReplenishment = true,
         });
-        return new Policy(limiter, new CircuitBreaker(5, TimeSpan.FromSeconds(30), _time));
+        return new Policy(limiter, new ConcurrentDictionary<string, CircuitBreaker>(StringComparer.OrdinalIgnoreCase));
     }
 
-    private sealed record Policy(RateLimiter Limiter, CircuitBreaker Breaker);
+    private CircuitBreaker Breaker(Policy policy, Uri? uri) =>
+        policy.Breakers.GetOrAdd(uri is { IsAbsoluteUri: true } ? uri.Authority : string.Empty, _ => new CircuitBreaker(5, TimeSpan.FromSeconds(30), _time));
+
+    private sealed record Policy(RateLimiter Limiter, ConcurrentDictionary<string, CircuitBreaker> Breakers);
 }
