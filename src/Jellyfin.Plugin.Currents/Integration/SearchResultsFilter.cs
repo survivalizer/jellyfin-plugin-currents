@@ -150,6 +150,17 @@ public sealed class SearchResultsFilter : IAsyncActionFilter
         }
 
         var kinds = Kinds(args);
+
+        // A media-type filter means a video-only list: series cards are folders (MediaType Unknown) and never belong there.
+        if (args.TryGetValue("mediaTypes", out var mediaFilter) && mediaFilter is MediaType[] { Length: > 0 } filter)
+        {
+            kinds.Remove(MediaKind.Series);
+            if (!filter.Contains(MediaType.Video))
+            {
+                kinds.Remove(MediaKind.Movie);
+            }
+        }
+
         if (args.TryGetValue("parentId", out var parent) && parent is Guid parentId && parentId != Guid.Empty)
         {
             kinds.IntersectWith(_library.KindsIn(parentId));

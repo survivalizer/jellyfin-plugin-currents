@@ -10,3 +10,6 @@ dev/.env
 *.tmp
 .claude/worktrees/
 .superpowers/
+
+# Browser-automation snapshots can contain manifest URLs
+.playwright-mcp/

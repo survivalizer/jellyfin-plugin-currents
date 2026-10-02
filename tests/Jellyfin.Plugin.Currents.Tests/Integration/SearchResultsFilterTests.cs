@@ -272,6 +272,33 @@ public sealed class SearchResultsFilterTests : IDisposable
     }
 
     [Fact]
+    public async Task The_web_videos_query_gets_no_remote_cards()
+    {
+        var args = Search();
+        args["mediaTypes"] = new[] { MediaType.Video };
+        args["includeItemTypes"] = Array.Empty<BaseItemKind>();
+        args["excludeItemTypes"] = new[] { BaseItemKind.Movie, BaseItemKind.Episode, BaseItemKind.TvChannel };
+
+        var page = await Run(Create(Alice), Context(args), Page());
+
+        Assert.Empty(page.Items);
+        Assert.Empty(_client.SearchRequests);
+    }
+
+    [Fact]
+    public async Task Media_types_video_keeps_movies_but_not_series()
+    {
+        var args = Search();
+        args["mediaTypes"] = new[] { MediaType.Video };
+        args["includeItemTypes"] = new[] { BaseItemKind.Movie, BaseItemKind.Series };
+
+        var page = await Run(Create(Alice), Context(args), Page());
+
+        Assert.Equal(new[] { "The Matrix" }, page.Items.Select(i => i.Name));
+        Assert.Equal(new[] { "movie/search.movie?matrix" }, _client.SearchRequests);
+    }
+
+    [Fact]
     public async Task The_legacy_user_route_is_handled_too()
     {
         var page = await Run(Create(Alice), Context(Search(), action: "GetItemsByUserIdLegacy"), Page());
