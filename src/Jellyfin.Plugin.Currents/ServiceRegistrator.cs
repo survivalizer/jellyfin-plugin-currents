@@ -48,6 +48,8 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IStreamService, StreamService>();
         serviceCollection.AddSingleton<VersionRegistry>();
         serviceCollection.AddSingleton<VersionCatalog>();
+        serviceCollection.AddSingleton<ProbeCache>();
+        serviceCollection.AddSingleton<VersionSourceBuilder>();
         serviceCollection.AddHttpContextAccessor();
         serviceCollection.AddSingleton<RequestContext>();
         serviceCollection.AddSingleton<IInternalBaseUrl, InternalBaseUrl>();
