@@ -55,5 +55,7 @@ public sealed class PagesTests : IDisposable
         }
 
         Assert.Contains("Currents/admin/users", html, StringComparison.Ordinal);
+        Assert.Contains("ClearAutoSelect", html, StringComparison.Ordinal);
+        Assert.Contains("OverridePreferences", html, StringComparison.Ordinal);
     }
 }

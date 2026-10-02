@@ -72,7 +72,7 @@
           <h3>Users</h3>
           <div class="fieldDescription">Per-user overrides win over the default; a user's own settings win over overrides unless you lock them. Each row saves on its own.</div>
           <table id="UsersTable" class="detailTable" style="width:100%;margin:1em 0">
-            <thead><tr><th>User</th><th>Using</th><th>Override AIOStreams URL</th><th>Show only best</th><th>Lock</th><th>Streams off</th><th>Search add off</th><th></th></tr></thead>
+            <thead><tr><th>User</th><th>Using</th><th>Override AIOStreams URL</th><th>Preferences</th><th>Show only best</th><th>Lock</th><th>Streams off</th><th>Search add off</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
 
@@ -205,6 +205,17 @@
           $('#DefaultCachedOnly').checked = !!p.CachedOnly;
         }
 
+        function summarizePreferences(p) {
+          if (!p) { return 'default'; }
+          const parts = [];
+          if ((p.ResolutionOrder || []).length) { parts.push(joinList(p.ResolutionOrder)); }
+          if (p.Hdr && p.Hdr !== 'Any') { parts.push('HDR: ' + p.Hdr); }
+          if ((p.AudioLanguages || []).length) { parts.push(joinList(p.AudioLanguages)); }
+          if (p.CachedOnly) { parts.push('cached only'); }
+          if (p.MaxSizeGb > 0) { parts.push('\u2264 ' + p.MaxSizeGb + ' GB'); }
+          return parts.length ? parts.join(' \u00b7 ') : 'default';
+        }
+
         function renderUsers(rows) {
           const body = page.querySelector('#UsersTable tbody');
           body.innerHTML = '';
@@ -216,7 +227,14 @@
             url.placeholder = user.OverrideHost ? `saved on ${user.OverrideHost}; paste to replace, "-" to remove` : 'none';
             url.style.width = '100%';
             const box = (checked) => { const b = document.createElement('input'); b.type = 'checkbox'; b.checked = !!checked; return b; };
-            const autoSelect = box(user.OverrideAutoSelect);
+            const autoSelect = document.createElement('select');
+            for (const [value, label] of [['', 'Inherit'], ['true', 'Only best'], ['false', 'Show all']]) {
+              const opt = document.createElement('option');
+              opt.value = value;
+              opt.textContent = label;
+              autoSelect.appendChild(opt);
+            }
+            autoSelect.value = user.OverrideAutoSelect === true ? 'true' : user.OverrideAutoSelect === false ? 'false' : '';
             const lock = box(user.LockSelfService);
             const off = box(user.StreamsDisabled);
             const searchOff = box(user.SearchAutoAddDisabled);
@@ -233,7 +251,7 @@
                 url: ApiClient.getUrl('Currents/admin/users/' + user.Id),
                 data: JSON.stringify({
                   AioStreamsManifestUrl: value === '-' ? '' : (value || null),
-                  AutoSelect: autoSelect.checked,
+                  ...(autoSelect.value === '' ? { ClearAutoSelect: true } : { AutoSelect: autoSelect.value === 'true' }),
                   LockSelfService: lock.checked,
                   StreamsDisabled: off.checked,
                   SearchAutoAddDisabled: searchOff.checked
@@ -243,7 +261,7 @@
               }).then(() => { status.textContent = 'Saved'; loadUsers(); })
                 .catch((err) => errorText(err, 'Could not save.').then((msg) => { status.textContent = msg; }));
             });
-            row.append(cell(user.Name), cell(using), cell(url), cell(autoSelect), cell(lock), cell(off), cell(searchOff));
+            row.append(cell(user.Name), cell(using), cell(url), cell(summarizePreferences(user.OverridePreferences)), cell(autoSelect), cell(lock), cell(off), cell(searchOff));
             const last = document.createElement('td');
             last.append(save, status);
             row.append(last);
