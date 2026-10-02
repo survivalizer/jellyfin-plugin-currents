@@ -41,12 +41,13 @@ public sealed class UserStore
     {
         lock (_lock)
         {
-            var records = Records();
+            var records = new Dictionary<Guid, UserRecord>(Records());
             var record = records.TryGetValue(userId, out var existing) ? Clone(existing) : new UserRecord();
             change(record);
             Normalize(record);
             records[userId] = record;
             Save(records);
+            _records = records;
         }
     }
 
@@ -54,13 +55,14 @@ public sealed class UserStore
     {
         lock (_lock)
         {
-            var records = Records();
+            var records = new Dictionary<Guid, UserRecord>(Records());
             if (!records.Remove(userId))
             {
                 return false;
             }
 
             Save(records);
+            _records = records;
             return true;
         }
     }
@@ -85,34 +87,35 @@ public sealed class UserStore
             return _records;
         }
 
-        _records = [];
-        if (!File.Exists(FilePath))
+        var loaded = new Dictionary<Guid, UserRecord>();
+        if (File.Exists(FilePath) || Directory.Exists(FilePath))
         {
-            return _records;
-        }
-
-        try
-        {
-            var raw = JsonSerializer.Deserialize<Dictionary<string, UserRecord?>>(File.ReadAllText(FilePath), JsonDefaults.Options) ?? [];
-            foreach (var (key, record) in raw)
+            try
             {
-                if (record is null || !Guid.TryParse(key, out var userId))
+                var raw = JsonSerializer.Deserialize<Dictionary<string, UserRecord?>>(File.ReadAllText(FilePath), JsonDefaults.Options) ?? [];
+                foreach (var (key, record) in raw)
                 {
-                    continue;
-                }
+                    if (record is null || !Guid.TryParse(key, out var userId))
+                    {
+                        continue;
+                    }
 
-                Normalize(record);
-                _records[userId] = record;
+                    Normalize(record);
+                    loaded[userId] = record;
+                }
+            }
+            catch (JsonException ex)
+            {
+                var aside = FilePath + ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+                File.Move(FilePath, aside, overwrite: true);
+                _logger.LogError(ex, "Currents user settings were unreadable and were moved to {Path}; starting fresh", aside);
+                loaded.Clear();
             }
         }
-        catch (JsonException ex)
-        {
-            var aside = FilePath + ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
-            File.Move(FilePath, aside, overwrite: true);
-            _logger.LogError(ex, "Currents user settings were unreadable and were moved to {Path}; starting fresh", aside);
-        }
 
-        return _records;
+        // Cached only after a successful load (or completed move-aside); any other failure propagates and is retried.
+        _records = loaded;
+        return loaded;
     }
 
     private void Save(Dictionary<Guid, UserRecord> records)
@@ -120,10 +123,17 @@ public sealed class UserStore
         Directory.CreateDirectory(_settings.DataFolderPath);
         var temp = FilePath + ".tmp";
         var json = JsonSerializer.Serialize(records.ToDictionary(p => p.Key.ToString("N"), p => p.Value), JsonDefaults.Indented);
-        File.WriteAllText(temp, json);
+        File.Delete(temp);
+        var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };
         if (!OperatingSystem.IsWindows())
         {
-            File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        using (var stream = new FileStream(temp, options))
+        using (var writer = new StreamWriter(stream))
+        {
+            writer.Write(json);
         }
 
         File.Move(temp, FilePath, overwrite: true);

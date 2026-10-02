@@ -124,4 +124,44 @@ public sealed class UserStoreTests : IDisposable
 
         Assert.Equal(20, Create().All().Count);
     }
+
+    [Fact]
+    public void Unreadable_file_throws_and_is_never_replaced_by_an_empty_store()
+    {
+        Directory.CreateDirectory(FilePath);
+        var store = Create();
+
+        Assert.ThrowsAny<Exception>(() => store.Get(Alice));
+        Assert.ThrowsAny<Exception>(() => store.Update(Alice, r => r.StreamsDisabled = true));
+        Assert.True(Directory.Exists(FilePath));
+
+        Directory.Delete(FilePath);
+        File.WriteAllText(FilePath, "{ \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\": { \"streamsDisabled\": true } }");
+        store.Update(Alice, r => r.LockSelfService = true);
+
+        Assert.Equal(2, Create().All().Count);
+    }
+
+    [Fact]
+    public void No_temp_file_is_left_behind()
+    {
+        Create().Update(Alice, r => r.Self.AutoSelect = true);
+
+        Assert.False(File.Exists(FilePath + ".tmp"));
+    }
+
+    [Fact]
+    public void Failed_save_does_not_change_the_in_memory_state()
+    {
+        var store = Create();
+        store.Update(Alice, r => r.Self.AutoSelect = true);
+        Directory.CreateDirectory(FilePath + ".tmp");
+        File.WriteAllText(Path.Combine(FilePath + ".tmp", "x"), "x");
+
+        Assert.ThrowsAny<Exception>(() => store.Update(Alice, r => r.StreamsDisabled = true));
+        Assert.ThrowsAny<Exception>(() => store.Remove(Alice));
+
+        Assert.False(store.Get(Alice).StreamsDisabled);
+        Assert.Single(store.All());
+    }
 }
