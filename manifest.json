@@ -8,6 +8,14 @@
         "category": "General",
         "versions": [
             {
+                "version": "0.2.0.0",
+                "changelog": "Per-user versions: every AIOStreams stream appears in Jellyfin's Version menu, ranked by each user's preferences. Self-service page at /Currents/user; admin per-user overrides.",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://github.com/survivalizer/jellyfin-plugin-currents/releases/download/v0.2.0/currents_0.2.0.0.zip",
+                "checksum": "d7735beda78bdf015b9ef632a3ac1f26",
+                "timestamp": "2026-10-02T12:39:10Z"
+            },
+            {
                 "version": "0.1.0.0",
                 "changelog": "First preview (M1). Syncs AIOMetadata catalogs into Jellyfin libraries as .strm/.nfo titles and plays them through AIOStreams using the admin's default config. Per-user versions arrive in a later release.\n",
                 "targetAbi": "12.0.0.0",
