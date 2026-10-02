@@ -159,7 +159,9 @@ misconfiguration above a leaked log line is replayable from outside until it exp
     local results at once when the local page already fills `limit`, and on any remote failure.
   - `SearchItemFilter` (order -1001, ahead of `SyntheticVersionIdFilter`) sees a search id in an `itemId` argument,
     opens the title and rewrites the argument to the real id. Image requests for a search id get the proxied poster
-    until the title exists. Anonymous image requests never add a title.
+    until the title exists. Anonymous image requests never add a title. Every item request passes through it, so an
+    id that is neither in `TitleLibrary`'s lock-free search-id index nor in the result registry leaves at once, with no
+    state lock and no user lookup; the user's search switch is read only when a title would be added.
   - `JellyfinLibraryItems` implements `ILibraryItems`. A title is created with `ILibraryManager.ResolvePath` +
     `CreateItem` on the Currents folder, then refreshed (movie: its own refresh; series: `RefreshFullItem`, which
     creates seasons and episodes) with a timeout, falling back to a queued refresh. The realtime library monitor is

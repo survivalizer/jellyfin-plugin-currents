@@ -69,6 +69,43 @@ public sealed class TitleLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Knows_search_ids_after_add_upsert_remove_and_reload()
+    {
+        var titles = Create();
+        titles.AddFromSearch(Key("tt1"), new StremioMeta { Id = "tt1", Name = "Alpha" });
+        titles.Use(state => state.Upsert(new TitleState { StateId = "movie/tt2", StremioId = "tt2", Folder = "Movies/B [imdbid-tt2]" }));
+        titles.Use(state => state.Remove("movie/tt2"));
+
+        Assert.True(titles.IsKnownSearchId(SearchItemId.For(FakeSettings.Secret, "movie/tt1")));
+        Assert.False(titles.IsKnownSearchId(SearchItemId.For(FakeSettings.Secret, "movie/tt2")));
+        Assert.False(titles.IsKnownSearchId(Guid.NewGuid()));
+        Assert.True(Create().IsKnownSearchId(SearchItemId.For(FakeSettings.Secret, "movie/tt1"))); // loaded from disk
+    }
+
+    [Fact]
+    public async Task Is_known_search_id_does_not_wait_for_the_lock()
+    {
+        var titles = Create();
+        titles.AddFromSearch(Key("tt1"), new StremioMeta { Id = "tt1", Name = "Alpha" });
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var holder = Task.Run(() => titles.Use(_ =>
+        {
+            entered.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+        }));
+        entered.Wait(TimeSpan.FromSeconds(10));
+
+        var check = Task.Run(() => titles.IsKnownSearchId(SearchItemId.For(FakeSettings.Secret, "movie/tt1")));
+        var finishedWhileLocked = await Task.WhenAny(check, Task.Delay(TimeSpan.FromSeconds(5))) == check;
+        release.Set();
+        await holder;
+
+        Assert.True(finishedWhileLocked);
+        Assert.True(await check);
+    }
+
+    [Fact]
     public async Task Use_runs_one_caller_at_a_time()
     {
         var titles = Create();

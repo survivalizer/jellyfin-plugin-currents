@@ -48,9 +48,49 @@ public sealed class SearchTitleOpenerTests : IDisposable
     [Fact]
     public async Task Unknown_ids_are_not_search_ids()
     {
-        var outcome = await Create().OpenAsync(Guid.NewGuid(), Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(Guid.NewGuid(), Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenStatus.NotSearchId, outcome.Status);
+    }
+
+    [Fact]
+    public async Task An_unknown_id_needs_neither_the_state_lock_nor_the_users_permission()
+    {
+        _titles.AddFromSearch(new TitleKey(MediaKind.Movie, "imdb", "tt1"), new StremioMeta { Id = "tt1", Name = "Loaded" });
+        var opener = Create();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var holder = Task.Run(() => _titles.Use(_ =>
+        {
+            entered.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+        }));
+        entered.Wait(TimeSpan.FromSeconds(10));
+        var asked = false;
+
+        var open = Task.Run(() => opener.OpenAsync(Guid.NewGuid(), Alice, () => asked = true, CancellationToken.None));
+        var finishedWhileLocked = await Task.WhenAny(open, Task.Delay(TimeSpan.FromSeconds(5))) == open;
+        release.Set();
+        await holder;
+
+        Assert.True(finishedWhileLocked);
+        Assert.Equal(OpenStatus.NotSearchId, (await open).Status);
+        Assert.False(asked);
+    }
+
+    [Fact]
+    public async Task Opening_an_existing_title_never_asks_whether_the_user_may_add()
+    {
+        _titles.Use(s => s.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]", Catalogs = ["movie/top"] }));
+        _library.Titles["movie/tt1"] = Item;
+        var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
+        _library.Existing[(Alice, "movie/tt0133093")] = Item;
+        var asked = 0;
+
+        Assert.Equal(OpenOutcome.Opened(Item), await Create().OpenAsync(SearchItemId.For(FakeSettings.Secret, "movie/tt1"), Guid.Empty, () => ++asked > 0, CancellationToken.None));
+        Assert.Equal(OpenOutcome.Opened(Item), await Create().OpenAsync(shown.Id, Alice, () => ++asked > 0, CancellationToken.None));
+        Assert.Equal(OpenStatus.NotAllowed, (await Create().OpenAsync(Shown(MediaKind.Movie, "tt2", "B").Id, Guid.Empty, () => ++asked > 0, CancellationToken.None)).Status);
+        Assert.Equal(0, asked);
     }
 
     [Fact]
@@ -60,7 +100,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         _client.Metas["movie/tt0133093"] = new StremioMeta { Id = "tt0133093", Name = "The Matrix", Year = "1999" };
         _library.AddResult = (_, _) => Item;
 
-        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenOutcome.Opened(Item), outcome);
         Assert.True(File.Exists(Path.Combine(MoviesDir, "The Matrix (1999) [imdbid-tt0133093]", "The Matrix (1999).strm")));
@@ -74,7 +114,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
         _client.FailingMetas.Add("movie/tt0133093");
 
-        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenStatus.Opened, outcome.Status);
         Assert.True(Directory.Exists(Path.Combine(MoviesDir, "The Matrix (1999) [imdbid-tt0133093]")));
@@ -92,7 +132,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
             Videos = [new StremioVideo { Id = "tt0388629:1:1", Season = 1, Episode = 1, Released = "1999-10-20T00:00:00Z" }],
         };
 
-        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenStatus.Opened, outcome.Status);
         Assert.Equal(new[] { "series/tt0388629", "anime.series/tt0388629" }, _client.MetaRequests);
@@ -104,7 +144,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
     {
         var shown = Shown(MediaKind.Series, "tt0944947", "Game of Thrones", catalogType: "series");
 
-        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenStatus.Failed, outcome.Status);
         Assert.Equal("AIOMetadata has no episode list for Game of Thrones right now.", outcome.Message);
@@ -118,7 +158,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         _titles.Use(s => s.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]", Catalogs = ["movie/top"] }));
         _library.Titles["movie/tt1"] = Item;
 
-        var outcome = await Create().OpenAsync(SearchItemId.For(FakeSettings.Secret, "movie/tt1"), Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(SearchItemId.For(FakeSettings.Secret, "movie/tt1"), Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenOutcome.Opened(Item), outcome);
         Assert.Empty(_client.MetaRequests);
@@ -132,7 +172,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
         _library.Existing[(Alice, "movie/tt0133093")] = Item;
 
-        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenOutcome.Opened(Item), outcome);
         Assert.Null(_titles.Get("movie/tt0133093"));
@@ -144,11 +184,11 @@ public sealed class SearchTitleOpenerTests : IDisposable
     {
         var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
 
-        Assert.Equal(OpenStatus.NotAllowed, (await Create().OpenAsync(shown.Id, Alice, mayAdd: false, CancellationToken.None)).Status);
+        Assert.Equal(OpenStatus.NotAllowed, (await Create().OpenAsync(shown.Id, Alice, mayAdd: () => false, CancellationToken.None)).Status);
         Assert.Null(_titles.Get("movie/tt0133093"));
 
         _library.Existing[(Alice, "movie/tt0133093")] = Item;
-        Assert.Equal(OpenOutcome.Opened(Item), await Create().OpenAsync(shown.Id, Alice, mayAdd: false, CancellationToken.None));
+        Assert.Equal(OpenOutcome.Opened(Item), await Create().OpenAsync(shown.Id, Alice, mayAdd: () => false, CancellationToken.None));
     }
 
     [Fact]
@@ -157,8 +197,8 @@ public sealed class SearchTitleOpenerTests : IDisposable
         var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
         _library.Addable.Clear();
 
-        Assert.Equal(OpenStatus.NotAllowed, (await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None)).Status);
-        Assert.Equal(OpenStatus.NotAllowed, (await Create().OpenAsync(shown.Id, Guid.Empty, mayAdd: true, CancellationToken.None)).Status);
+        Assert.Equal(OpenStatus.NotAllowed, (await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None)).Status);
+        Assert.Equal(OpenStatus.NotAllowed, (await Create().OpenAsync(shown.Id, Guid.Empty, mayAdd: () => true, CancellationToken.None)).Status);
         Assert.Null(_titles.Get("movie/tt0133093"));
     }
 
@@ -171,8 +211,8 @@ public sealed class SearchTitleOpenerTests : IDisposable
         _library.AddResult = (_, _) => Item;
         var opener = Create();
 
-        var first = opener.OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
-        var second = opener.OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        var first = opener.OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
+        var second = opener.OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
         _client.MetaGate.SetResult();
 
         Assert.Equal(OpenOutcome.Opened(Item), await first);
@@ -191,10 +231,10 @@ public sealed class SearchTitleOpenerTests : IDisposable
         var opener = Create();
         using var cancel = new CancellationTokenSource();
 
-        var cancelled = opener.OpenAsync(shown.Id, Alice, mayAdd: true, cancel.Token);
+        var cancelled = opener.OpenAsync(shown.Id, Alice, mayAdd: () => true, cancel.Token);
         await cancel.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
-        var waiting = opener.OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        var waiting = opener.OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
         _library.AddGate.SetResult();
 
         Assert.Equal(OpenOutcome.Opened(Item), await waiting);
@@ -207,14 +247,14 @@ public sealed class SearchTitleOpenerTests : IDisposable
         var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
         _client.Metas["movie/tt0133093"] = new StremioMeta { Id = "tt0133093", Name = "The Matrix", Year = "1999" };
         _library.AddResult = (_, _) => Item;
-        await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         // Restart: a new state instance and an empty result registry; Jellyfin has the item.
         _titles = new TitleLibrary(_settings, _time, NullLogger<TitleLibrary>.Instance);
         var opener = new SearchTitleOpener(_titles, new SearchResultRegistry(_time), _library, _client, _settings, NullLogger<SearchTitleOpener>.Instance);
         _library.Titles["movie/tt0133093"] = Item;
 
-        Assert.Equal(OpenOutcome.Opened(Item), await opener.OpenAsync(shown.Id, Guid.Empty, mayAdd: false, CancellationToken.None));
+        Assert.Equal(OpenOutcome.Opened(Item), await opener.OpenAsync(shown.Id, Guid.Empty, mayAdd: () => false, CancellationToken.None));
     }
 
     [Fact]
@@ -223,7 +263,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         _titles.Use(s => s.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]", AddedBySearch = true }));
         _library.AddResult = (_, _) => Item;
 
-        var outcome = await Create().OpenAsync(SearchItemId.For(FakeSettings.Secret, "movie/tt1"), Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(SearchItemId.For(FakeSettings.Secret, "movie/tt1"), Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenOutcome.Opened(Item), outcome);
         Assert.Equal((MediaKind.Movie, "Movies/A [imdbid-tt1]"), Assert.Single(_library.Added));
@@ -236,7 +276,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
         _library.AddResult = (_, _) => null;
 
-        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenOutcome.Failed("Add the Currents Movies folder to a Jellyfin library first."), outcome);
     }
@@ -248,7 +288,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         var folder = Directory.CreateDirectory(Path.Combine(MoviesDir, "The Matrix (1999) [imdbid-tt0133093]")).FullName;
         File.WriteAllText(Path.Combine(folder, "poster.jpg"), "user file");
 
-        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(OpenStatus.Failed, outcome.Status);
         Assert.Equal(new[] { "poster.jpg" }, Directory.GetFiles(folder).Select(Path.GetFileName));
@@ -263,7 +303,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         var existedAtPause = true;
         _library.OnPause = _ => existedAtPause = Directory.Exists(titleFolder);
 
-        await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.False(existedAtPause);
         Assert.Equal(new[] { "pause:Movie", "add", "resume:Movie" }, _library.Events);
@@ -275,7 +315,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
         _library.AddResult = (_, _) => null;
 
-        await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+        await Create().OpenAsync(shown.Id, Alice, mayAdd: () => true, CancellationToken.None);
 
         Assert.Equal(new[] { "pause:Movie", "add", "resume:Movie" }, _library.Events);
     }

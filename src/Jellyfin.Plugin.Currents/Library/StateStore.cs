@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using Jellyfin.Plugin.Currents.Common;
@@ -5,12 +6,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Currents.Library;
 
-/// <summary>Persists <see cref="TitleState"/> entries in a JSON file in the plugin data folder.</summary>
+/// <summary>
+/// Persists <see cref="TitleState"/> entries in a JSON file in the plugin data folder. Not thread-safe (callers go
+/// through <see cref="TitleLibrary"/>'s lock), except <see cref="IsKnownSearchId"/>, which may be called at any time.
+/// </summary>
 public sealed class StateStore
 {
     private readonly string _path;
     private readonly Dictionary<string, TitleState> _titles;
-    private readonly Dictionary<Guid, string> _bySearchId = [];
+    private readonly ConcurrentDictionary<Guid, string> _bySearchId = new();
     private readonly Func<string, Guid>? _searchIdOf;
 
     private StateStore(string path, Dictionary<string, TitleState> titles, Func<string, Guid>? searchIdOf)
@@ -91,6 +95,11 @@ public sealed class StateStore
     public TitleState? FindBySearchId(Guid searchId) =>
         _bySearchId.TryGetValue(searchId, out var stateId) ? _titles.GetValueOrDefault(stateId) : null;
 
+    /// <summary>Gets whether a search id belongs to a title in the store. Lock-free; safe from any thread.</summary>
+    /// <param name="searchId">The search id.</param>
+    /// <returns>True when a title has this search id.</returns>
+    public bool IsKnownSearchId(Guid searchId) => _bySearchId.ContainsKey(searchId);
+
     public void Upsert(TitleState title)
     {
         _titles[title.StateId] = title;
@@ -104,7 +113,7 @@ public sealed class StateStore
     {
         if (_searchIdOf is not null)
         {
-            _bySearchId.Remove(_searchIdOf(stateId));
+            _bySearchId.TryRemove(_searchIdOf(stateId), out _);
         }
 
         return _titles.Remove(stateId);

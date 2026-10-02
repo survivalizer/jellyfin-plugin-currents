@@ -28,11 +28,24 @@ public sealed class SearchTitleOpener
         _logger = logger;
     }
 
-    public async Task<OpenOutcome> OpenAsync(Guid id, Guid userId, bool mayAdd, CancellationToken cancellationToken)
+    /// <summary>Opens a search id.</summary>
+    /// <param name="id">The requested item id.</param>
+    /// <param name="userId">The signed-in user, or <see cref="Guid.Empty"/>.</param>
+    /// <param name="mayAdd">Whether the user may add titles; asked only when a title would be added.</param>
+    /// <param name="cancellationToken">Cancels this caller's wait (not a shared add).</param>
+    /// <returns>What the id stands for.</returns>
+    public async Task<OpenOutcome> OpenAsync(Guid id, Guid userId, Func<bool> mayAdd, CancellationToken cancellationToken)
     {
-        var known = _titles.FindBySearchId(id);
+        // Every item request passes through here, so ordinary ids leave before any lock or user lookup.
+        var isKnown = _titles.IsKnownSearchId(id);
         SearchResult? shown = null;
-        if (known is null && !_registry.TryGet(id, out shown))
+        if (!isKnown && !_registry.TryGet(id, out shown))
+        {
+            return OpenOutcome.NotSearchId;
+        }
+
+        var known = isKnown ? _titles.FindBySearchId(id) : null;
+        if (known is null && shown is null && !_registry.TryGet(id, out shown))
         {
             return OpenOutcome.NotSearchId;
         }
@@ -53,7 +66,7 @@ public sealed class SearchTitleOpener
             return OpenOutcome.Opened(existing);
         }
 
-        if (!mayAdd || userId == Guid.Empty || !_library.CanAdd(userId, key.Kind))
+        if (userId == Guid.Empty || !mayAdd() || !_library.CanAdd(userId, key.Kind))
         {
             return OpenOutcome.NotAllowed;
         }

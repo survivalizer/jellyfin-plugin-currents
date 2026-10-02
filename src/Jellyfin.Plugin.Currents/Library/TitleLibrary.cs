@@ -27,8 +27,7 @@ public sealed class TitleLibrary
     {
         lock (_gate)
         {
-            _state ??= StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), _logger, SearchIdOf);
-            return action(_state);
+            return action(LoadLocked());
         }
     }
 
@@ -46,6 +45,26 @@ public sealed class TitleLibrary
     public TitleState? Get(string stateId) => Use(state => Copy(state.Get(stateId)));
 
     public TitleState? FindBySearchId(Guid searchId) => Use(state => Copy(state.FindBySearchId(searchId)));
+
+    /// <summary>
+    /// Gets whether a search id belongs to a known title without taking the lock (only the very first call loads the
+    /// state), so requests for ordinary item ids never wait for a sync.
+    /// </summary>
+    /// <param name="searchId">The id to check.</param>
+    /// <returns>True when a title in the state has this search id.</returns>
+    public bool IsKnownSearchId(Guid searchId)
+    {
+        var state = Volatile.Read(ref _state);
+        if (state is null)
+        {
+            lock (_gate)
+            {
+                state = LoadLocked();
+            }
+        }
+
+        return state.IsKnownSearchId(searchId);
+    }
 
     public LibraryWriter CreateWriter()
     {
@@ -71,6 +90,16 @@ public sealed class TitleLibrary
             state.Save();
             return result;
         });
+    }
+
+    private StateStore LoadLocked()
+    {
+        if (_state is null)
+        {
+            Volatile.Write(ref _state, StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), _logger, SearchIdOf));
+        }
+
+        return _state!;
     }
 
     private static TitleState? Copy(TitleState? title) => title is null

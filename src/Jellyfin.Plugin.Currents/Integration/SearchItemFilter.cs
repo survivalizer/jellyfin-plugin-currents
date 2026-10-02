@@ -52,7 +52,9 @@ public sealed class SearchItemFilter : IAsyncActionFilter
 
         var image = action is { ControllerName: "Image" } && ImageActions.Contains(action.ActionName);
         var userId = image ? Guid.Empty : _request.UserId;
-        var mayAdd = !image && userId != Guid.Empty && _profiles.SearchAutoAdd(userId);
+
+        // Asked only when a title would be added: most ids here are ordinary items and need no user-record lookup.
+        Func<bool> mayAdd = image ? static () => false : () => userId != Guid.Empty && _profiles.SearchAutoAdd(userId);
         var outcome = await _opener.OpenAsync(id, userId, mayAdd, context.HttpContext.RequestAborted).ConfigureAwait(false);
         switch (outcome.Status)
         {
