@@ -46,4 +46,17 @@ public class AioMetadataEndpointTests
         Assert.Null(endpoint);
         Assert.False(string.IsNullOrWhiteSpace(error));
     }
+
+    [Theory]
+    [InlineData("the matrix", "catalog/movie/search.movie/search=the%20matrix.json")]
+    [InlineData("AC/DC & friends?", "catalog/movie/search.movie/search=AC%2FDC%20%26%20friends%3F.json")]
+    [InlineData("Amélie", "catalog/movie/search.movie/search=Am%C3%A9lie.json")]
+    public void Search_escapes_the_query_into_one_extras_segment(string query, string expected)
+    {
+        AioMetadataEndpoint.TryParse("https://meta.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/manifest.json", out var endpoint, out _);
+
+        var uri = endpoint!.Search("movie", "search.movie", query);
+
+        Assert.Equal("https://meta.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/" + expected, uri.AbsoluteUri);
+    }
 }

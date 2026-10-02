@@ -100,7 +100,8 @@ public sealed class AioStreamsClient : IAioStreamsClient
                 await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             }
 
-            return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+            var start = buffer.Length >= 3 && buffer.GetBuffer() is [0xEF, 0xBB, 0xBF, ..] ? 3 : 0;
+            return Encoding.UTF8.GetString(buffer.GetBuffer(), start, (int)buffer.Length - start);
         }
     }
 

@@ -116,4 +116,18 @@ public class AioStreamsClientTests
         Assert.Equal("mkv", first.ParsedFile.Container);
         Assert.Null(first.ParsedFile.Extension);
     }
+
+    [Fact]
+    public async Task A_utf8_byte_order_mark_is_accepted()
+    {
+        var json = Fixture.Read("aiostreams/search-ok.json");
+        var (client, _) = Create(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent([0xEF, 0xBB, 0xBF, .. System.Text.Encoding.UTF8.GetBytes(json)]),
+        });
+
+        var outcome = await client.SearchAsync(Creds(), "movie", "tt0111161", CancellationToken.None);
+
+        Assert.Equal(2, outcome.Results.Count);
+    }
 }

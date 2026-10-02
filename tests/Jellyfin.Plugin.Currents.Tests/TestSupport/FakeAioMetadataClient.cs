@@ -30,6 +30,16 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
     /// <summary>When set, a meta request is recorded and then waits for this gate before answering.</summary>
     public TaskCompletionSource? MetaGate { get; set; }
 
+    /// <summary>Gets search results keyed "{type}/{catalogId}?{query}".</summary>
+    public Dictionary<string, List<StremioMeta>> Searches { get; } = new(StringComparer.Ordinal);
+
+    public HashSet<string> FailingSearches { get; } = new(StringComparer.Ordinal);
+
+    public List<string> SearchRequests { get; } = [];
+
+    /// <summary>When set, a search request is recorded and then waits for this gate before answering.</summary>
+    public TaskCompletionSource? SearchGate { get; set; }
+
     public Task<StremioManifest> GetManifestAsync(AioMetadataEndpoint endpoint, CancellationToken cancellationToken) =>
         Task.FromResult(Manifest);
 
@@ -71,5 +81,26 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
         }
 
         return Metas.GetValueOrDefault(key);
+    }
+
+    public async Task<IReadOnlyList<StremioMeta>> SearchAsync(AioMetadataEndpoint endpoint, string type, string catalogId, string query, CancellationToken cancellationToken)
+    {
+        var key = $"{type}/{catalogId}?{query}";
+        lock (SearchRequests)
+        {
+            SearchRequests.Add(key);
+        }
+
+        if (SearchGate is { } gate)
+        {
+            await gate.Task.ConfigureAwait(false);
+        }
+
+        if (FailingSearches.Contains($"{type}/{catalogId}"))
+        {
+            throw new AioMetadataException("simulated search outage");
+        }
+
+        return Searches.GetValueOrDefault(key) ?? [];
     }
 }

@@ -91,4 +91,46 @@ public class AioMetadataClientTests
 
         await Assert.ThrowsAsync<AioMetadataException>(() => client.GetManifestAsync(Endpoint, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Search_reads_metas_and_drops_entries_without_id()
+    {
+        var (client, stub, _) = Create(_ => StubHttpHandler.Json("""{"metas":[{"id":"tt0133093","type":"movie","name":"The Matrix","year":1999},{"id":"","name":"blank"},{"name":"missing"}]}"""));
+
+        var metas = await client.SearchAsync(Endpoint, "movie", "search.movie", "matrix", CancellationToken.None);
+
+        Assert.Equal("tt0133093", Assert.Single(metas).Id);
+        Assert.EndsWith("/catalog/movie/search.movie/search=matrix.json", Assert.Single(stub.Requests).AbsoluteUri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Search_404_is_an_empty_list()
+    {
+        var (client, _, _) = Create(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        Assert.Empty(await client.SearchAsync(Endpoint, "movie", "search.movie", "matrix", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Bodies_over_the_cap_are_refused()
+    {
+        var stub = new StubHttpHandler(_ => StubHttpHandler.Json("""{"metas":[{"id":"tt1","name":"a long enough body"}]}"""));
+        var client = new AioMetadataClient(new FakeHttpClientFactory(stub), NullLogger<AioMetadataClient>.Instance, maxBodyBytes: 16);
+
+        var error = await Assert.ThrowsAsync<AioMetadataException>(() => client.SearchAsync(Endpoint, "movie", "search.movie", "a", CancellationToken.None));
+
+        Assert.Equal("AIOMetadata returned a response larger than 16 MB.", error.Message);
+        Assert.Equal(16 * 1024 * 1024, AioMetadataClient.MaxBodyBytes);
+    }
+
+    [Fact]
+    public async Task A_utf8_byte_order_mark_is_accepted()
+    {
+        var (client, _, _) = Create(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent([0xEF, 0xBB, 0xBF, .. System.Text.Encoding.UTF8.GetBytes("""{"metas":[{"id":"tt1","name":"A"}]}""")]),
+        });
+
+        Assert.Equal("tt1", Assert.Single(await client.SearchAsync(Endpoint, "movie", "search.movie", "a", CancellationToken.None)).Id);
+    }
 }

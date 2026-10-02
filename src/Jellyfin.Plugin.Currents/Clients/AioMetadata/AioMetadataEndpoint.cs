@@ -58,5 +58,13 @@ public sealed record AioMetadataEndpoint(Uri BaseUri)
     /// <returns>The meta URI.</returns>
     public Uri Meta(string type, string id) => new(BaseUri, $"meta/{Escape(type)}/{Escape(id)}.json");
 
+    /// <summary>Builds a search URI. The query is escaped into the single extras segment AIOMetadata parses.</summary>
+    /// <param name="type">The Stremio type.</param>
+    /// <param name="id">The search catalog id.</param>
+    /// <param name="query">The search text.</param>
+    /// <returns>The search URI.</returns>
+    public Uri Search(string type, string id, string query) =>
+        new(BaseUri, $"catalog/{Escape(type)}/{Escape(id)}/search={Escape(query)}.json");
+
     private static string Escape(string value) => Uri.EscapeDataString(value);
 }
