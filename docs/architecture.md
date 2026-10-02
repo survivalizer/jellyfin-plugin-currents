@@ -40,13 +40,15 @@ Design spec: `docs/superpowers/specs/2026-10-01-currents-design.md`.
     caller with `StreamRanker` (filters, then a stable re-rank by preferences).
   - `StreamIdentity`/`StreamLabel` give each stream a stable key and a name like `2160p DV · Atmos · 18.4 GB · cached`.
   - `VersionCatalog` turns a user's ranked streams into `VersionEntry`s whose ids are GUIDs derived from
-    (item, user, stream key), and registers them in `VersionRegistry`, the process-wide id map that Jellyfin's
+    (item, user, stream key) with HMAC-SHA256 under the install `SigningSecret`, so nobody can compute another user's
+    version id from public data, and registers them in `VersionRegistry`, the process-wide id map that Jellyfin's
     user-less lookups (streaming, sessions, subtitles) rely on. Replaced lists keep old ids resolvable until expiry.
   - `VersionSourceBuilder` builds each `MediaSourceInfo` (always new objects): `SupportsDirectPlay = false`,
     tracks pre-filled from AIOStreams' `parsedFile` (`PrefilledMedia`, `MediaStreamMapper`; `Index = -1`, estimated
     video bitrate, explicit HDR range) or from `ProbeCache`, and `Path` = `currents://version/{id}` for clients or
     `{internal base}/Currents/play/s/{token}` for Jellyfin itself.
-  - `VersionTokenSigner` signs `VersionTicket`s (title, stream, user's config) with the install `SigningSecret`,
+  - `VersionTokenSigner` signs `VersionTicket`s (user id, type, Stremio id, stream key; no config: the resolver reads
+    the user's current profile) with the install `SigningSecret`,
     domain-separated from `.strm` signatures, expiring after `VersionTokenHours` (default 24).
   - `StreamResolver` resolves a ticket: the chosen stream first, then failover through the user's next-ranked
     streams; single-flight, 45 s deadline (30 s of it for the search), resolved URLs cached for 5 min.
@@ -54,7 +56,12 @@ Design spec: `docs/superpowers/specs/2026-10-01-currents-design.md`.
   - `CurrentsMediaSourceManager`: the `IMediaSourceManager` decorator (registered last via
     `ServiceCollectionDecoratorExtensions.Decorate`). For Currents items it replaces the `.strm` source with the
     user's versions; everything else goes to Jellyfin's own manager. A signed-in user only ever gets their own
-    versions; user-less callers may look a version up by id.
+    versions. An anonymous HTTP request (no user, no API key) gets only default-config versions (user id empty) or a
+    pending source, never another user's. Only background work with no HTTP request at all (sessions, timers) may look
+    any version up by id or fall back to an item's latest list. When a known user's fresh search comes back empty
+    (for example a playback resumed after the stream cache expired), the user's still-registered versions are served.
+    A version that fails to build (bad parse data or probe result) is skipped and logged; if none can be built the
+    title shows "No playable streams for this title."
   - `SyntheticVersionIdFilter` (MVC filter, order -1000): rewrites version ids in item arguments (`GET /Items/{id}`
     and a few safe writes) to the base item, because clients treat every MediaSource id as an item id (M0 S1b).
   - `PlaybackInfoFilter` (order -999) + `VersionProber`: map PlaybackInfo's `MediaSourceId` to the user's version,
@@ -62,14 +69,16 @@ Design spec: `docs/superpowers/specs/2026-10-01-currents-design.md`.
     memory), and save the base item's runtime when it is missing.
   - `CurrentsItemLocator`: recognises Currents items (a `.strm` under the plugin root holding a validly signed
     Currents URL).
-  - `RequestContext`: the requesting user (claims; `?userId=` only for API keys) and whether the request is a
+  - `RequestContext`: the requesting user (claims; `?userId=` only for API keys), whether the request is anonymous
+    (an HTTP request with no user and no API key, as opposed to no request at all), and whether the request is a
     single-item one (`UserLibrary.GetItem`/`GetItemLegacy`, `MediaInfo.GetPostedPlaybackInfo`/`GetPlaybackInfo`),
     the only requests allowed a cold AIOStreams search (10 s wait). List views get cached versions or one pending
     source.
   - `InternalBaseUrl`: the loopback URL ffmpeg/ffprobe use (`http://127.0.0.1:{port}{basePath}`, or `[::1]`, or
     HTTPS when Jellyfin requires it), derived from Jellyfin's bind addresses, never from `StrmBaseUrl`.
   - `ServerAddresses` + `Common/LocalCallerPolicy`: `/Currents/play/s/{token}` answers only loopback or the
-    server's own interface addresses.
+    server's own interface addresses, and refuses (403) any request carrying `X-Forwarded-For`, `X-Original-For`,
+    `Forwarded` or `X-Real-IP`: ffmpeg never sends them, a reverse proxy does.
 - `Web/`: `PlayController` (`play/{type}/{id}` for `.strm`, `play/s/{token}` for versions), `UserSettingsController`
   (`/Currents/user` page and `settings`), `AdminUsersController` (`/Currents/admin/users`), `ManifestValidator`.
 
@@ -100,7 +109,11 @@ Design spec: `docs/superpowers/specs/2026-10-01-currents-design.md`.
   password.
 - Saving a manifest URL (self-service or admin) validates it with `ManifestValidator`, which makes the **server**
   fetch the URL entered. Any signed-in user can therefore make the server send a request to an http(s) host of their
-  choice and see whether it failed. Admins who do not want that can turn `AllowSelfService` off or lock individual users.
+  choice and see whether it failed. Self-service answers a refused config only with a generic message ("AIOStreams
+  did not accept this config. Check the URL and try again."; parse errors keep their fixed explanation) and logs the
+  masked detail as a warning, so the response does not echo what the remote host said; the admin API keeps the
+  detailed, masked message. `AioStreamsClient` reads at most 16 MB of any response. Admins who do not want users to
+  trigger these requests can turn `AllowSelfService` off or lock individual users.
 
 ### Known limitation: same-host reverse proxy without `KnownProxies`
 The version endpoint trusts `HttpContext.Connection.RemoteIpAddress`. If a reverse proxy on the same host (or in the
@@ -111,8 +124,14 @@ loopback/local address and looks like the server itself. The local-only check is
 reach clients (paths are redacted), so this matters only if one leaks (for example from a log the masker missed).
 Fix: add the proxy's address to Dashboard -> Networking -> Known proxies.
 
-Related: Jellyfin's own `TranscodeManager` logs the full ffmpeg command line, so version tokens (like `.strm`
-signatures in degraded mode) appear unmasked in the Jellyfin log; `SecretMasker` covers only Currents' own log lines.
+Mitigation since the M2 final review: the version endpoint refuses requests carrying forwarded-for headers
+(`X-Forwarded-For`, `X-Original-For`, `Forwarded`, `X-Real-IP`), which a typical reverse proxy adds, so a proxied
+request is refused even when the proxy is not in Known proxies. A proxy that strips or never sets these headers is
+still indistinguishable from the server itself.
+
+Related: Jellyfin's own `TranscodeManager` logs the full ffmpeg command line, and Jellyfin writes the same command
+line into the per-transcode `FFmpeg.*.log` files in its log folder, so version tokens (like `.strm` signatures in
+degraded mode) appear unmasked in the Jellyfin logs; `SecretMasker` covers only Currents' own log lines.
 The log is admin-only, and a token works only from the server itself and for `VersionTokenHours`, but with the proxy
 misconfiguration above a leaked log line is replayable from outside until it expires.
 
@@ -127,7 +146,7 @@ Manifest URLs travel in request bodies, never query strings, because they contai
 
 ## Degraded mode and `StrmBaseUrl`
 This section applies only when versions are off (`EnableVersions = false`); versions never use `StrmBaseUrl`.
-Without the media-source decorator so Jellyfin exposes each `.strm` as a remote media source whose path is the
+Without the media-source decorator, Jellyfin exposes each `.strm` as a remote media source whose path is the
 `.strm` URL. The M0 spike (S4, `docs/spikes/2026-10-m0-findings.md`) showed the stock web client direct-plays
 that URL itself, and falls back to a full server transcode only if that fails. Consequences:
 - `StrmBaseUrl` (default `http://127.0.0.1:8096`) must be reachable by **both** clients and Jellyfin's own ffmpeg
@@ -142,7 +161,9 @@ and ffmpeg uses the internal loopback URL instead.
 
 ## Module rules
 - `Integration/` is the only folder that touches Jellyfin internals. Everything else is unit-tested with fakes.
-- Outbound HTTP goes through named clients with rate limiting, retries and a circuit breaker (`Clients/Http`).
+- Outbound HTTP goes through named clients with rate limiting, retries and a circuit breaker (`Clients/Http`). The
+  rate limiter is shared per client (one AIOStreams bucket); the circuit breaker is per (client, host[:port]), so one
+  user's dead self-hosted AIOStreams does not pause calls to other hosts.
 - Secrets never reach logs (`Common/SecretMasker`).
 
 ## Planned (later milestones)

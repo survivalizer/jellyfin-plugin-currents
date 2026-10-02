@@ -100,10 +100,10 @@ docs/                                  architecture, configuration, ADRs, client
 ### 4.3 Playback
 1. **Item detail**: the decorated `IMediaSourceManager.GetStaticMediaSources` detects Currents items (path under a plugin root), resolves the requesting user from `IHttpContextAccessor`, and calls `IStreamService.GetStreams(user, item)` — cached per (user, title) for `StreamCacheTtl` (default 1h), single-flight to absorb duplicate web-client calls.
 2. **Mapping** each ranked stream to `MediaSourceInfo`:
-   - `Id`: deterministic GUID from (itemId, stream identity — infoHash+fileIdx, else filename+size, else url hash).
+   - `Id`: deterministic GUID from (itemId, user, stream identity — infoHash+fileIdx, else filename+size, else url hash), HMAC-keyed with the install secret (see the M2 amendment below).
    - `Name`: e.g. `2160p DV · Atmos · 18.4 GB · cached`.
    - `MediaStreams`: pre-filled from `parsedFile` (+ RemuxDB, §5.5).
-   - `Path`: signed internal resolve URL `{StrmBaseUrl}/Currents/play/s/{token}`; `Protocol=Http`; `SupportsDirectPlay=false`, `SupportsDirectStream=true`, `SupportsTranscoding=true` so clients always stream through Jellyfin. (Flags confirmed in M0.)
+   - `Path`: redacted to `currents://version/{id}` for clients; Jellyfin's own ffmpeg/ffprobe get a signed loopback URL `{internal base}/Currents/play/s/{token}` (see the M2 amendment below). `Protocol=Http`; `SupportsDirectPlay=false` so clients always stream through Jellyfin; `SupportsDirectStream` (remux) and `SupportsTranscoding` follow the user's Jellyfin remux/transcode permissions.
 3. **Synthetic ids must resolve as items.** The web client looks up every MediaSource id as a library item (`GET /Items/{id}`) before PlaybackInfo, so an `Integration/` MVC filter resolves synthetic version ids to the base item. Every version must carry `MediaStreams` (parsed data / RemuxDB, with a one-time cached probe as fallback), or ffmpeg gets no codec arguments. The base item must get `RunTimeTicks` (metadata runtime or first probe), or resume never works. See `docs/spikes/2026-10-m0-findings.md` S1b, S1c.
 4. **PlaybackInfo**: decorated `GetPlaybackMediaSources` returns the same list; probes only the chosen source when track info is insufficient.
 5. **Stream**: Jellyfin fetches the resolve URL → plugin validates token, gets the AIOStreams playback URL from cache (re-searches if missing/expired), follows redirects, detects placeholders, fails over to next-ranked stream (max `FailoverAttempts`, default 3), then 302s to the final URL — or proxies when the stream requires headers.
@@ -187,11 +187,11 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 - **AIOStreams envelopes**: `errors[]`/`statistics[]` logged structurally; user-facing message surfaced where applicable.
 - **Catalog sync**: per-catalog isolation; failed pages retried next run; prune only after N consecutive successful syncs; atomic file writes.
 - **Playback**: failover on dead/placeholder/expired; when exhausted, a clear Jellyfin playback error.
-
-> **M2 amendment (2026-10-01).** Streams that require request headers (`requestHeaders`) are still skipped; proxying them moves to M4.
 - **Tokens**: HMAC-SHA256 with a per-install secret, embedded expiry (default 24h).
 - **Security**: secret-masking log enricher (UUIDs, passwords, tokens, debrid keys); assert no internal/debrid URLs in DTO/PlaybackInfo responses; self-service endpoints scoped to caller.
 - **Diagnostics panel**: connection tests, cache hit rate, recent errors, decorator active/degraded.
+
+> **M2 amendment (2026-10-01).** Streams that require request headers (`requestHeaders`) are still skipped; proxying them moves to M4.
 
 ## 8. Testing
 

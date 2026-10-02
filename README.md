@@ -50,6 +50,7 @@ Jellyfin has no plugin API for a user-menu entry. To add one, edit jellyfin-web'
 ```json
 "menuLinks": [{ "name": "Currents", "icon": "tune", "url": "/Currents/user" }]
 ```
+If Jellyfin has a base URL path, include it in `url` (for example `"/jellyfin/Currents/user"`).
 In the official Docker image the file is `/jellyfin/jellyfin-web/config.json`. Jellyfin overwrites it on every
 upgrade, so keep a copy (or mount your own file over it).
 
