@@ -27,9 +27,9 @@ public sealed class LibraryWriter
 
     public WriteResult WriteMovie(TitleKey key, StremioMeta meta, string? existingRelativeFolder)
     {
-        var folderName = FolderName("Movies", key, meta, existingRelativeFolder, out var reused);
+        var folderName = FolderName("Movies", key, meta, existingRelativeFolder);
         var folder = Path.Combine(_paths.Movies, folderName);
-        EnsureManageable(folder, reused);
+        EnsureManageable(folder);
 
         WriteIfChanged(Path.Combine(folder, MarkerFile), string.Empty);
         var changed = WriteIfChanged(Path.Combine(folder, "movie.nfo"), NfoWriter.Movie(key, meta));
@@ -39,9 +39,9 @@ public sealed class LibraryWriter
 
     public WriteResult WriteSeries(TitleKey key, StremioMeta meta, string? existingRelativeFolder)
     {
-        var folderName = FolderName("Shows", key, meta, existingRelativeFolder, out var reused);
+        var folderName = FolderName("Shows", key, meta, existingRelativeFolder);
         var folder = Path.Combine(_paths.Shows, folderName);
-        EnsureManageable(folder, reused);
+        EnsureManageable(folder);
 
         WriteIfChanged(Path.Combine(folder, MarkerFile), string.Empty);
         var changed = WriteIfChanged(Path.Combine(folder, "tvshow.nfo"), NfoWriter.TvShow(key, meta));
@@ -68,7 +68,13 @@ public sealed class LibraryWriter
             return;
         }
 
-        // Only plugin-owned files are removed; anything else in the folder is user content and stays.
+        if (!File.Exists(Path.Combine(full, MarkerFile)))
+        {
+            _logger?.LogInformation("Left {Folder} untouched because it has no {Marker} marker, so Currents does not manage it", relativeFolder, MarkerFile);
+            return;
+        }
+
+        // Only plugin-owned files are removed; anything else in the folder is user or Jellyfin content and stays.
         foreach (var sub in Directory.GetDirectories(full).Where(IsSeasonFolder))
         {
             foreach (var strm in Directory.GetFiles(sub, "*.strm"))
@@ -79,12 +85,19 @@ public sealed class LibraryWriter
             RemoveIfEmpty(sub);
         }
 
-        foreach (var file in Directory.GetFiles(full).Where(IsPluginFile))
+        foreach (var file in Directory.GetFiles(full).Where(IsPluginContentFile))
         {
             File.Delete(file);
         }
 
-        if (!RemoveIfEmpty(full))
+        // The marker goes last, and only when nothing else is left, so a kept folder stays recognisably ours.
+        var marker = Path.Combine(full, MarkerFile);
+        if (Directory.EnumerateFileSystemEntries(full).All(e => string.Equals(e, marker, StringComparison.Ordinal)))
+        {
+            File.Delete(marker);
+            Directory.Delete(full);
+        }
+        else
         {
             _logger?.LogInformation("Left {Folder} in place because it contains files Currents did not create", relativeFolder);
         }
@@ -96,38 +109,44 @@ public sealed class LibraryWriter
         return name == "Specials" || (name.StartsWith("Season ", StringComparison.Ordinal) && name.Length > 7 && name[7..].All(char.IsAsciiDigit));
     }
 
-    private static bool IsPluginFile(string path)
-    {
-        var name = Path.GetFileName(path);
-        return name.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)
-            || name is "movie.nfo" or "tvshow.nfo" or MarkerFile;
-    }
+    private static bool IsStrm(string path) => path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase);
 
-    private static bool RemoveIfEmpty(string directory)
+    private static bool IsPluginContentFile(string path) =>
+        IsStrm(path) || Path.GetFileName(path) is "movie.nfo" or "tvshow.nfo";
+
+    private static void RemoveIfEmpty(string directory)
     {
-        if (Directory.EnumerateFileSystemEntries(directory).Any())
+        if (!Directory.EnumerateFileSystemEntries(directory).Any())
         {
-            return false;
-        }
-
-        Directory.Delete(directory);
-        return true;
-    }
-
-    private static void EnsureManageable(string folder, bool reused)
-    {
-        if (!reused && Directory.Exists(folder) && !File.Exists(Path.Combine(folder, MarkerFile)))
-        {
-            throw new InvalidOperationException("The target folder exists and is not managed by Currents.");
+            Directory.Delete(directory);
         }
     }
+
+    /// <summary>
+    /// A folder may be written when it does not exist, carries the marker, or holds nothing but files Currents
+    /// writes itself (then it is adopted and the marker is added). Anything else is user content.
+    /// </summary>
+    private static void EnsureManageable(string folder)
+    {
+        if (!Directory.Exists(folder) || File.Exists(Path.Combine(folder, MarkerFile)) || HoldsOnlyPluginFiles(folder))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"The target folder {Path.GetFileName(folder)} exists and is not managed by Currents.");
+    }
+
+    private static bool HoldsOnlyPluginFiles(string folder) =>
+        Directory.GetFiles(folder).All(IsPluginContentFile)
+        && Directory.GetDirectories(folder).All(sub => IsSeasonFolder(sub)
+            && Directory.GetDirectories(sub).Length == 0
+            && Directory.GetFiles(sub).All(IsStrm));
 
     private static bool IsBelow(string full, string parent) =>
         full.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.Ordinal);
 
-    private static string FolderName(string category, TitleKey key, StremioMeta meta, string? existingRelativeFolder, out bool reused)
+    private static string FolderName(string category, TitleKey key, StremioMeta meta, string? existingRelativeFolder)
     {
-        reused = false;
         if (existingRelativeFolder is not null)
         {
             var parts = existingRelativeFolder.Replace('\\', '/').Split('/');
@@ -136,7 +155,6 @@ public sealed class LibraryWriter
                 && !string.IsNullOrWhiteSpace(parts[1])
                 && parts[1] is not "." and not "..")
             {
-                reused = true;
                 return parts[1];
             }
         }

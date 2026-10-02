@@ -135,20 +135,98 @@ public sealed class LibraryWriterTests : IDisposable
     }
 
     [Fact]
-    public void Adopts_the_existing_folder_when_it_is_the_recorded_one()
+    public void Adopts_a_recorded_folder_without_marker_that_holds_only_plugin_files()
     {
-        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
-        var rel = Path.Combine("Movies", "A (2000) [imdbid-tt1]");
-        Directory.CreateDirectory(Path.Combine(_root, rel));
+        var key = new TitleKey(MediaKind.Series, "imdb", "tt1");
+        var rel = Path.Combine("Shows", "S (2000) [imdbid-tt1]");
+        var folder = Path.Combine(_root, rel);
+        Directory.CreateDirectory(Path.Combine(folder, "Season 01"));
+        Directory.CreateDirectory(Path.Combine(folder, "Specials"));
+        File.WriteAllText(Path.Combine(folder, "tvshow.nfo"), "old");
+        File.WriteAllText(Path.Combine(folder, "Season 01", "S (2000) S01E01.strm"), "old");
+        File.WriteAllText(Path.Combine(folder, "Specials", "S (2000) S00E01.strm"), "old");
+        var meta = new StremioMeta { Id = "tt1", Name = "S", Year = "2000", Videos = [new StremioVideo { Id = "tt1:1:1", Season = 1, Episode = 1 }] };
 
-        var result = _writer.WriteMovie(key, new StremioMeta { Id = "tt1", Name = "A", Year = "2000" }, rel);
+        var result = _writer.WriteSeries(key, meta, rel);
 
         Assert.Equal(rel, result.RelativeFolder);
-        Assert.True(File.Exists(Path.Combine(_root, rel, ".currents")));
+        Assert.True(File.Exists(Path.Combine(folder, ".currents")));
+        Assert.StartsWith("http://127.0.0.1:8096/Currents/play/series/", File.ReadAllText(Path.Combine(folder, "Season 01", "S (2000) S01E01.strm")), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Delete_keeps_user_files_and_removes_only_plugin_files()
+    public void Refuses_a_recorded_folder_without_marker_that_holds_user_media()
+    {
+        // Simulates LibraryRoot being changed to point at a real media folder with the same layout.
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var rel = Path.Combine("Movies", "A (2000) [imdbid-tt1]");
+        var folder = Path.Combine(_root, rel);
+        Directory.CreateDirectory(folder);
+        var mkv = Path.Combine(folder, "Movie.mkv");
+        var nfo = Path.Combine(folder, "movie.nfo");
+        File.WriteAllBytes(mkv, [1, 2, 3, 4]);
+        File.WriteAllText(nfo, "<movie><title>Mine</title></movie>");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => _writer.WriteMovie(key, new StremioMeta { Id = "tt1", Name = "A", Year = "2000" }, rel));
+
+        Assert.Contains("exists and is not managed by Currents", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(new byte[] { 1, 2, 3, 4 }, File.ReadAllBytes(mkv));
+        Assert.Equal("<movie><title>Mine</title></movie>", File.ReadAllText(nfo));
+        Assert.Equal(new[] { mkv, nfo }.Order(StringComparer.Ordinal), Directory.GetFiles(folder).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Refuses_an_unmarked_folder_with_extra_season_content()
+    {
+        var key = new TitleKey(MediaKind.Series, "imdb", "tt1");
+        var folder = Path.Combine(_root, "Shows", "S (2000) [imdbid-tt1]");
+        Directory.CreateDirectory(Path.Combine(folder, "Season 01"));
+        File.WriteAllText(Path.Combine(folder, "Season 01", "S01E01.mkv"), "data");
+        var meta = new StremioMeta { Id = "tt1", Name = "S", Year = "2000", Videos = [new StremioVideo { Id = "tt1:1:1", Season = 1, Episode = 1 }] };
+
+        Assert.Throws<InvalidOperationException>(() => _writer.WriteSeries(key, meta, null));
+
+        Assert.Equal(new[] { Path.Combine(folder, "Season 01", "S01E01.mkv") }, Directory.GetFiles(folder, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void Delete_is_a_no_op_for_a_folder_without_marker()
+    {
+        var folder = Path.Combine(_root, "Movies", "A (2000) [imdbid-tt1]");
+        Directory.CreateDirectory(folder);
+        var strm = Path.Combine(folder, "A (2000).strm");
+        File.WriteAllText(strm, "x");
+
+        _writer.Delete(Path.Combine("Movies", "A (2000) [imdbid-tt1]"));
+
+        Assert.Equal(new[] { strm }, Directory.GetFiles(folder));
+    }
+
+    [Fact]
+    public void A_title_whose_folder_survived_pruning_can_be_written_again()
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var meta = new StremioMeta { Id = "tt1", Name = "A", Year = "2000" };
+        var first = _writer.WriteMovie(key, meta, null);
+        var folder = Path.Combine(_root, first.RelativeFolder);
+        var poster = Path.Combine(folder, "poster.jpg");
+        File.WriteAllText(poster, "img");
+
+        _writer.Delete(first.RelativeFolder);
+
+        Assert.Equal(new[] { Path.Combine(folder, ".currents"), poster }.Order(StringComparer.Ordinal), Directory.GetFiles(folder).Order(StringComparer.Ordinal));
+
+        var again = _writer.WriteMovie(key, meta, null);
+
+        Assert.Equal(first.RelativeFolder, again.RelativeFolder);
+        Assert.True(again.Changed);
+        Assert.True(File.Exists(Path.Combine(folder, "movie.nfo")));
+        Assert.True(File.Exists(Path.Combine(folder, "A (2000).strm")));
+        Assert.Equal("img", File.ReadAllText(poster));
+    }
+
+    [Fact]
+    public void Delete_keeps_user_files_and_the_marker_and_removes_only_plugin_files()
     {
         var key = new TitleKey(MediaKind.Series, "imdb", "tt1");
         var meta = new StremioMeta
@@ -164,7 +242,9 @@ public sealed class LibraryWriterTests : IDisposable
 
         _writer.Delete(result.RelativeFolder);
 
-        Assert.Equal(new[] { Path.Combine(folder, "poster.jpg") }, Directory.GetFiles(folder));
+        Assert.Equal(
+            new[] { Path.Combine(folder, ".currents"), Path.Combine(folder, "poster.jpg") }.Order(StringComparer.Ordinal),
+            Directory.GetFiles(folder).Order(StringComparer.Ordinal));
         Assert.Empty(Directory.GetDirectories(folder));
     }
 
