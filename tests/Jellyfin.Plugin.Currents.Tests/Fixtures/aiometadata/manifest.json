@@ -1,0 +1,11 @@
+{
+  "id": "aiometadata",
+  "name": "AIOMetadata",
+  "version": "1.0.0",
+  "types": ["movie", "series"],
+  "catalogs": [
+    { "type": "movie", "id": "tmdb.top", "name": "Popular Movies", "extra": [{ "name": "skip" }, { "name": "genre", "options": ["Action"] }] },
+    { "type": "series", "id": "tmdb.trending", "name": "Trending Shows", "extra": [{ "name": "skip" }] },
+    { "type": "movie", "id": "search.tmdb", "name": "Search", "extra": [{ "name": "search", "isRequired": true }] }
+  ]
+}

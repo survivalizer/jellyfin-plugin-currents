@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "id": "tt0944947",
+    "imdb_id": "tt0944947",
+    "type": "series",
+    "name": "Game of Thrones",
+    "description": "Nine noble families fight for control.",
+    "releaseInfo": "2011-2019",
+    "released": "2011-04-17T00:00:00.000Z",
+    "poster": "https://img.example.com/got-poster.jpg",
+    "background": "https://img.example.com/got-bg.jpg",
+    "logo": "https://img.example.com/got-logo.png",
+    "genres": ["Drama", "Fantasy"],
+    "runtime": "57 min",
+    "imdbRating": "9.2",
+    "trailers": [{ "source": "KPLWWIOCOOQ", "type": "Trailer" }],
+    "videos": [
+      { "id": "tt0944947:1:1", "title": "Winter Is Coming", "season": 1, "episode": 1, "released": "2011-04-17T00:00:00.000Z", "overview": "Ned is asked to serve.", "thumbnail": "https://img.example.com/s1e1.jpg" },
+      { "id": "tt0944947:1:2", "name": "The Kingsroad", "season": "1", "episode": "2", "released": "2011-04-24T00:00:00.000Z" },
+      { "id": "tt0944947:0:1", "title": "Inside the Episode", "season": 0, "episode": 1, "released": "2011-04-10T00:00:00.000Z" }
+    ]
+  }
+}

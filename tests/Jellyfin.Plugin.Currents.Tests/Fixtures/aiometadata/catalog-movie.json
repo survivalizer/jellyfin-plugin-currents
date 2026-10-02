@@ -1,0 +1,7 @@
+{
+  "metas": [
+    { "id": "tt0111161", "imdb_id": "tt0111161", "type": "movie", "name": "The Shawshank Redemption", "year": 1994, "releaseInfo": "1994", "poster": "https://img.example.com/p1.jpg", "genres": ["Drama"], "_rawPosterUrl": "ignored" },
+    { "id": "tmdb:550", "type": "movie", "name": "Fight Club", "year": "1999", "imdbRating": 8.8, "runtime": "139 min" },
+    { "id": "", "name": "Broken entry" }
+  ]
+}
