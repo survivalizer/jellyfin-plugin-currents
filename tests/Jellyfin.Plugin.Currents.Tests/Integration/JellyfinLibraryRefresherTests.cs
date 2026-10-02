@@ -1,5 +1,6 @@
 using System.Reflection;
 using Jellyfin.Plugin.Currents.Integration;
+using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.IO;
 using Microsoft.Extensions.Logging;
@@ -21,7 +22,7 @@ public sealed class JellyfinLibraryRefresherTests : IDisposable
         var movies = Directory.CreateDirectory(Path.Combine(_root, "Movies")).FullName;
         var shows = Directory.CreateDirectory(Path.Combine(_root, "Shows")).FullName;
         var library = RecordingProxy.Create<ILibraryManager>();
-        var logger = new ListLogger();
+        var logger = new ListLogger<JellyfinLibraryRefresher>();
         var refresher = new JellyfinLibraryRefresher(library.Instance, RecordingProxy.Create<IFileSystem>().Instance, logger);
 
         await refresher.RefreshAsync([movies, shows], CancellationToken.None);
@@ -35,10 +36,29 @@ public sealed class JellyfinLibraryRefresherTests : IDisposable
     }
 
     [Fact]
+    public async Task Queues_the_library_scan_at_most_once_per_process()
+    {
+        var movies = Directory.CreateDirectory(Path.Combine(_root, "Movies")).FullName;
+        var library = RecordingProxy.Create<ILibraryManager>();
+        var logger = new ListLogger<JellyfinLibraryRefresher>();
+        var refresher = new JellyfinLibraryRefresher(library.Instance, RecordingProxy.Create<IFileSystem>().Instance, logger);
+
+        await refresher.RefreshAsync([movies], CancellationToken.None);
+        await refresher.RefreshAsync([movies], CancellationToken.None);
+        await refresher.RefreshAsync([movies], CancellationToken.None);
+
+        Assert.Equal(1, library.Count(nameof(ILibraryManager.QueueLibraryScan)));
+        Assert.Equal(3, library.Count(nameof(ILibraryManager.FindByPath)));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Information
+            && e.Message.Contains("is not part of any Jellyfin library yet", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Entries, e => e.Level >= LogLevel.Warning);
+    }
+
+    [Fact]
     public async Task Skips_missing_folders_silently()
     {
         var library = RecordingProxy.Create<ILibraryManager>();
-        var logger = new ListLogger();
+        var logger = new ListLogger<JellyfinLibraryRefresher>();
         var refresher = new JellyfinLibraryRefresher(library.Instance, RecordingProxy.Create<IFileSystem>().Instance, logger);
 
         await refresher.RefreshAsync([Path.Combine(_root, "Missing")], CancellationToken.None);
@@ -84,18 +104,5 @@ public sealed class JellyfinLibraryRefresherTests : IDisposable
     public sealed record Recorder<T>(T Instance, RecordingProxy Proxy)
     {
         public int Count(string method) => Proxy.Count(method);
-    }
-
-    private sealed class ListLogger : ILogger<JellyfinLibraryRefresher>
-    {
-        public List<(LogLevel Level, string Message)> Entries { get; } = [];
-
-        public IDisposable? BeginScope<TState>(TState state)
-            where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-            Entries.Add((logLevel, formatter(state, exception)));
     }
 }

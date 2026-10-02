@@ -190,6 +190,85 @@ public sealed class CatalogSyncServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_page_of_only_error_items_for_a_catalog_that_had_titles_is_treated_as_an_outage()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "A")];
+        await SyncAsync();
+
+        _client.Catalogs[MovieCatalog] = [new StremioMeta { Id = "aiom.error.x", Name = "Error" }];
+        SyncReport report = null!;
+        for (var i = 0; i < 5; i++)
+        {
+            report = await SyncAsync();
+        }
+
+        Assert.Equal(new[] { MovieCatalog }, report.FailedCatalogs);
+        Assert.Equal(0, report.Pruned);
+        Assert.Equal(new[] { "A (2000) [imdbid-tt1]" }, MovieFolders());
+        var state = StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), NullLogger.Instance);
+        Assert.Equal(0, state.Get("movie/tt1")!.MissCount);
+    }
+
+    [Fact]
+    public async Task A_title_that_throws_unexpectedly_is_isolated_and_the_sync_completes()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "A")];
+        _client.Catalogs[ShowCatalog] =
+        [
+            new StremioMeta { Id = "tt0944947", Name = "Broken", ReleaseInfo = "2011", Videos = [null!] },
+            new StremioMeta { Id = "tt2", Name = "Fine", ReleaseInfo = "2012", Videos = [new StremioVideo { Id = "tt2:1:1", Season = 1, Episode = 1 }] },
+        ];
+
+        var report = await SyncAsync();
+
+        Assert.Empty(report.FailedCatalogs);
+        Assert.Equal(2, report.Written);
+        Assert.Equal(new[] { "A (2000) [imdbid-tt1]" }, MovieFolders());
+        Assert.True(File.Exists(Path.Combine(_root, "library", "Shows", "Fine (2012) [imdbid-tt2]", "tvshow.nfo")));
+        var state = StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), NullLogger.Instance);
+        Assert.NotNull(state.Get("movie/tt1"));
+        Assert.NotNull(state.Get("series/tt2"));
+        Assert.Single(_refresher.Refreshed);
+    }
+
+    [Fact]
+    public async Task A_catalog_that_throws_unexpectedly_fails_alone_and_the_sync_completes()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "A")];
+        _client.Catalogs[ShowCatalog] = [null!];
+
+        var report = await SyncAsync();
+
+        Assert.Equal(new[] { ShowCatalog }, report.FailedCatalogs);
+        Assert.Equal(new[] { "A (2000) [imdbid-tt1]" }, MovieFolders());
+        var state = StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), NullLogger.Instance);
+        Assert.NotNull(state.Get("movie/tt1"));
+    }
+
+    [Fact]
+    public async Task No_enabled_catalogs_skips_pruning()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "A")];
+        await SyncAsync();
+
+        foreach (var catalog in _settings.Current.Catalogs)
+        {
+            catalog.Enabled = false;
+        }
+
+        SyncReport report = null!;
+        for (var i = 0; i < 5; i++)
+        {
+            report = await SyncAsync();
+        }
+
+        Assert.Equal(0, report.Pruned);
+        Assert.Equal(new[] { "A (2000) [imdbid-tt1]" }, MovieFolders());
+        var state = StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), NullLogger.Instance);
+        Assert.Equal(0, state.Get("movie/tt1")!.MissCount);
+    }
+
+    [Fact]
     public async Task Skips_items_without_a_usable_id()
     {
         _client.Catalogs[MovieCatalog] = [new StremioMeta { Id = "weird-id", Name = "Nope" }, Movie("tt1", "A")];

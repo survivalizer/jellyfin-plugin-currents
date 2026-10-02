@@ -13,6 +13,7 @@ public sealed class JellyfinLibraryRefresher : ILibraryRefresher
     private readonly ILibraryManager _libraryManager;
     private readonly IFileSystem _fileSystem;
     private readonly ILogger<JellyfinLibraryRefresher> _logger;
+    private int _scanQueued;
 
     public JellyfinLibraryRefresher(ILibraryManager libraryManager, IFileSystem fileSystem, ILogger<JellyfinLibraryRefresher> logger)
     {
@@ -23,7 +24,6 @@ public sealed class JellyfinLibraryRefresher : ILibraryRefresher
 
     public async Task RefreshAsync(IReadOnlyCollection<string> folders, CancellationToken cancellationToken)
     {
-        var scanQueued = false;
         foreach (var path in folders.Where(Directory.Exists))
         {
             if (_libraryManager.FindByPath(path, isFolder: true) is Folder folder)
@@ -34,17 +34,20 @@ public sealed class JellyfinLibraryRefresher : ILibraryRefresher
                     recursive: true,
                     cancellationToken: cancellationToken).ConfigureAwait(false);
             }
-            else
+            else if (Interlocked.Exchange(ref _scanQueued, 1) == 0)
             {
                 // A library created without a scan has no folder item for its root yet; a full scan creates it.
-                if (!scanQueued)
-                {
-                    _libraryManager.QueueLibraryScan();
-                    scanQueued = true;
-                }
-
+                // Queued at most once per process (this class is a singleton) so an unused folder cannot cause
+                // a full library scan after every sync.
+                _libraryManager.QueueLibraryScan();
                 _logger.LogInformation(
                     "Currents folder {Path} has not been scanned into a Jellyfin library yet; queued a library scan. If it is not part of any library, add it to a Movies or Shows library.",
+                    path);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Currents folder {Path} is not part of any Jellyfin library yet; add it to a Movies or Shows library to see its titles.",
                     path);
             }
         }

@@ -34,6 +34,7 @@ public sealed class CatalogSyncService
         _logger = logger;
     }
 
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "A malformed upstream item or catalog (e.g. null entries) must only fail that title or catalog, never the whole sync; cancellation still propagates.")]
     public async Task<SyncReport> SyncAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         var config = _settings.Current;
@@ -54,20 +55,23 @@ public sealed class CatalogSyncService
         for (var i = 0; i < catalogs.Count; i++)
         {
             var catalog = catalogs[i];
+            var kind = catalog.Target == CatalogTarget.Movies ? MediaKind.Movie : MediaKind.Series;
             try
             {
                 var metas = await FetchCatalogAsync(endpoint, catalog, cancellationToken).ConfigureAwait(false);
-                if (metas.Count == 0 && state.Titles.Any(t => t.Catalogs.Contains(catalog.Key)))
+                var usable = metas
+                    .Where(m => !IsErrorItem(m))
+                    .Select(m => (Meta: m, Key: TitleKey.FromMeta(kind, m)))
+                    .ToList();
+                if (usable.TrueForAll(u => u.Key is null) && state.Titles.Any(t => t.Catalogs.Contains(catalog.Key)))
                 {
-                    _logger.LogWarning("Catalog {Catalog} returned no items; treating it as unavailable this run", catalog.Key);
+                    _logger.LogWarning("Catalog {Catalog} returned no usable items; treating it as unavailable this run", catalog.Key);
                     failed.Add(catalog.Key);
                 }
 
-                foreach (var meta in metas)
+                foreach (var (meta, key) in usable)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var kind = catalog.Target == CatalogTarget.Movies ? MediaKind.Movie : MediaKind.Series;
-                    var key = TitleKey.FromMeta(kind, meta);
                     if (key is null)
                     {
                         _logger.LogDebug("Skipping {Id} from {Catalog}: no usable id", meta.Id, catalog.Key);
@@ -79,7 +83,7 @@ public sealed class CatalogSyncService
                     {
                         changed = await WriteTitleAsync(endpoint, catalog, kind, key, meta, writer, state, cancellationToken).ConfigureAwait(false);
                     }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
+                    catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                     {
                         // Protect the title: a failed write must not count as "missing from its catalog".
                         _logger.LogWarning(ex, "Could not write title {Id} from catalog {Catalog}; leaving it as it is", meta.Id, catalog.Key);
@@ -98,8 +102,7 @@ public sealed class CatalogSyncService
                     }
                 }
             }
-            catch (Exception ex) when (ex is AioMetadataException or HttpRequestException
-                || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 _logger.LogWarning(ex, "Catalog {Catalog} failed; its titles are left unchanged this run", catalog.Key);
                 failed.Add(catalog.Key);
@@ -108,7 +111,16 @@ public sealed class CatalogSyncService
             progress.Report((i + 1) * 90.0 / catalogs.Count);
         }
 
-        var pruned = Prune(state, writer, paths, seen, protectedIds, failed, config.PruneAfterMisses);
+        var pruned = 0;
+        if (catalogs.Count == 0)
+        {
+            _logger.LogInformation("No catalogs are enabled; skipping pruning so existing titles are kept");
+        }
+        else
+        {
+            pruned = Prune(state, writer, paths, seen, protectedIds, failed, config.PruneAfterMisses);
+        }
+
         state.Save();
         await _refresher.RefreshAsync([paths.Movies, paths.Shows], cancellationToken).ConfigureAwait(false);
         progress.Report(100);
@@ -122,6 +134,10 @@ public sealed class CatalogSyncService
             report.FailedCatalogs);
         return report;
     }
+
+    /// <summary>AIOMetadata reports catalog errors as fake items whose id starts with "aiom.error.".</summary>
+    private static bool IsErrorItem(StremioMeta meta) =>
+        meta.Id?.StartsWith("aiom.error.", StringComparison.Ordinal) == true;
 
     private async Task<List<StremioMeta>> FetchCatalogAsync(AioMetadataEndpoint endpoint, CatalogSelection catalog, CancellationToken cancellationToken)
     {
