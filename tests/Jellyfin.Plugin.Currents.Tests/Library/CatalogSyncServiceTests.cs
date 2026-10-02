@@ -74,12 +74,12 @@ public sealed class CatalogSyncServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Pages_until_a_short_page_and_respects_max_items()
+    public async Task Pages_until_an_empty_page_and_respects_max_items()
     {
         _client.Catalogs[MovieCatalog] = [Movie("tt1", "A"), Movie("tt2", "B"), Movie("tt3", "C"), Movie("tt4", "D"), Movie("tt5", "E")];
 
         await SyncAsync();
-        Assert.Equal(new[] {0, 2, 4}, _client.PageRequests.Where(r => r.Catalog == MovieCatalog).Select(r => r.Skip));
+        Assert.Equal(new[] {0, 2, 4, 5}, _client.PageRequests.Where(r => r.Catalog == MovieCatalog).Select(r => r.Skip));
         Assert.Equal(5, MovieFolders().Length);
 
         _client.PageRequests.Clear();
@@ -238,6 +238,77 @@ public sealed class CatalogSyncServiceTests : IDisposable
         Assert.Equal(2, MovieFolders().Length);
         var state = StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), NullLogger.Instance);
         Assert.Null(state.Get("series/tt0944947"));
+    }
+
+    [Fact]
+    public async Task A_short_page_in_the_middle_does_not_end_paging()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "A"), Movie("tt2", "B"), Movie("tt3", "C"), Movie("tt4", "D"), Movie("tt5", "E")];
+        foreach (var size in new[] {2, 1, 2})
+        {
+            _client.PageSizeSequence.Enqueue(size);
+        }
+
+        await SyncAsync();
+
+        Assert.Equal(5, MovieFolders().Length);
+        Assert.Equal(new[] {0, 2, 3, 5}, _client.PageRequests.Where(r => r.Catalog == MovieCatalog).Select(r => r.Skip));
+    }
+
+    [Fact]
+    public async Task Series_whose_episode_lookup_times_out_is_written_and_the_catalog_is_not_failed()
+    {
+        _client.Catalogs[ShowCatalog] = [new StremioMeta { Id = "tt0944947", Name = "Game of Thrones", ReleaseInfo = "2011" }];
+        _client.TimingOutMetas.Add("series/tt0944947");
+
+        var report = await SyncAsync();
+
+        Assert.Equal(1, report.Written);
+        Assert.Empty(report.FailedCatalogs);
+    }
+
+    [Fact]
+    public async Task A_title_whose_write_keeps_failing_is_protected_from_pruning()
+    {
+        _client.Catalogs[ShowCatalog] = [new StremioMeta { Id = "tt0944947", Name = "Game of Thrones", ReleaseInfo = "2011" }];
+        await SyncAsync();
+        var shows = Path.Combine(_root, "library", "Shows");
+        var moved = shows + "-moved";
+        Directory.Move(shows, moved);
+        await File.WriteAllTextAsync(shows, "not a directory");
+
+        for (var i = 0; i < 5; i++)
+        {
+            await SyncAsync();
+        }
+
+        var state = StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), NullLogger.Instance);
+        Assert.Equal(0, state.Get("series/tt0944947")!.MissCount);
+        File.Delete(shows);
+        Directory.Move(moved, shows);
+        Assert.True(Directory.Exists(Path.Combine(shows, "Game of Thrones (2011) [imdbid-tt0944947]")));
+    }
+
+    [Fact]
+    public async Task A_prune_failure_does_not_stop_the_sync_and_state_is_saved()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Keep"), Movie("tt2", "Drop")];
+        await SyncAsync();
+        var statePath = Path.Combine(_settings.DataFolderPath, "state.json");
+        var state = StateStore.Load(statePath, NullLogger.Instance);
+        state.Upsert(new TitleState { StateId = "movie/imdb:bad", Kind = MediaKind.Movie, StremioId = "bad", Folder = string.Empty, Catalogs = [MovieCatalog], MissCount = 2 });
+        state.Get("movie/tt2")!.MissCount = 2;
+        state.Save();
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Keep")];
+
+        var report = await SyncAsync();
+
+        Assert.Equal(1, report.Pruned);
+        Assert.Equal(new[] {"Keep (2000) [imdbid-tt1]"}, MovieFolders());
+        var after = StateStore.Load(statePath, NullLogger.Instance);
+        Assert.Null(after.Get("movie/tt2"));
+        Assert.Equal(3, after.Get("movie/imdb:bad")!.MissCount);
+        Assert.Equal(2, _refresher.Refreshed.Count);
     }
 
     private sealed class FakePlayedLookup : IPlayedLookup

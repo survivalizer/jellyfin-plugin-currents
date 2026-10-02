@@ -120,6 +120,68 @@ public sealed class LibraryWriterTests : IDisposable
     }
 
     [Fact]
+    public void Refuses_to_write_into_an_unmanaged_existing_folder()
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var folder = Path.Combine(_root, "Movies", "A (2000) [imdbid-tt1]");
+        Directory.CreateDirectory(folder);
+        var mkv = Path.Combine(folder, "Movie.mkv");
+        File.WriteAllText(mkv, "data");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => _writer.WriteMovie(key, new StremioMeta { Id = "tt1", Name = "A", Year = "2000" }, null));
+
+        Assert.Contains("not managed by Currents", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(new[] {mkv}, Directory.GetFiles(folder));
+    }
+
+    [Fact]
+    public void Adopts_the_existing_folder_when_it_is_the_recorded_one()
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var rel = Path.Combine("Movies", "A (2000) [imdbid-tt1]");
+        Directory.CreateDirectory(Path.Combine(_root, rel));
+
+        var result = _writer.WriteMovie(key, new StremioMeta { Id = "tt1", Name = "A", Year = "2000" }, rel);
+
+        Assert.Equal(rel, result.RelativeFolder);
+        Assert.True(File.Exists(Path.Combine(_root, rel, ".currents")));
+    }
+
+    [Fact]
+    public void Delete_keeps_user_files_and_removes_only_plugin_files()
+    {
+        var key = new TitleKey(MediaKind.Series, "imdb", "tt1");
+        var meta = new StremioMeta
+        {
+            Id = "tt1",
+            Name = "S",
+            Year = "2000",
+            Videos = [new StremioVideo { Id = "tt1:1:1", Season = 1, Episode = 1 }],
+        };
+        var result = _writer.WriteSeries(key, meta, null);
+        var folder = Path.Combine(_root, result.RelativeFolder);
+        File.WriteAllText(Path.Combine(folder, "poster.jpg"), "x");
+
+        _writer.Delete(result.RelativeFolder);
+
+        Assert.Equal(new[] {Path.Combine(folder, "poster.jpg")}, Directory.GetFiles(folder));
+        Assert.Empty(Directory.GetDirectories(folder));
+    }
+
+    [Fact]
+    public void Delete_removes_a_pure_plugin_folder_entirely()
+    {
+        var key = new TitleKey(MediaKind.Series, "imdb", "tt1");
+        var meta = new StremioMeta { Id = "tt1", Name = "S", Year = "2000", Videos = [new StremioVideo { Id = "tt1:1:1", Season = 1, Episode = 1 }] };
+        var result = _writer.WriteSeries(key, meta, null);
+
+        _writer.Delete(result.RelativeFolder);
+
+        Assert.False(Directory.Exists(Path.Combine(_root, result.RelativeFolder)));
+        Assert.True(Directory.Exists(Path.Combine(_root, "Shows")));
+    }
+
+    [Fact]
     public void Delete_removes_folder_but_refuses_paths_outside_root()
     {
         var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");

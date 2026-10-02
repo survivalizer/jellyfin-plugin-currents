@@ -15,6 +15,10 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
 
     public HashSet<string> FailingMetas { get; } = new(StringComparer.Ordinal);
 
+    public HashSet<string> TimingOutMetas { get; } = new(StringComparer.Ordinal);
+
+    public Queue<int> PageSizeSequence { get; } = new();
+
     public int PageSize { get; set; } = 2;
 
     public bool IgnoreSkip { get; set; }
@@ -36,7 +40,7 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
         }
 
         var all = Catalogs.GetValueOrDefault(key) ?? [];
-        IReadOnlyList<StremioMeta> page = all.Skip(IgnoreSkip ? 0 : skip).Take(PageSize).ToList();
+        IReadOnlyList<StremioMeta> page = all.Skip(IgnoreSkip ? 0 : skip).Take(PageSizeSequence.Count > 0 ? PageSizeSequence.Dequeue() : PageSize).ToList();
         return Task.FromResult(page);
     }
 
@@ -47,6 +51,11 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
         if (FailingMetas.Contains(key))
         {
             throw new AioMetadataException("simulated meta outage");
+        }
+
+        if (TimingOutMetas.Contains(key))
+        {
+            throw new TaskCanceledException("simulated timeout");
         }
 
         return Task.FromResult(Metas.GetValueOrDefault(key));

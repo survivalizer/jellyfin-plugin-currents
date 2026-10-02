@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Jellyfin.Plugin.Currents.Clients.AioMetadata;
 using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
 using Jellyfin.Plugin.Currents.Common;
@@ -42,11 +43,12 @@ public sealed class CatalogSyncService
         }
 
         var paths = LibraryPaths.FromSettings(_settings);
-        var writer = new LibraryWriter(paths, new StrmSigner(config.SigningSecret), config.StrmBaseUrl, _time);
+        var writer = new LibraryWriter(paths, new StrmSigner(config.SigningSecret), config.StrmBaseUrl, _time, _logger);
         var state = StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), _logger);
         var catalogs = config.Catalogs.Where(c => c.Enabled).ToList();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var failed = new HashSet<string>(StringComparer.Ordinal);
+        var protectedIds = new HashSet<string>(StringComparer.Ordinal);
         int written = 0, unchanged = 0;
 
         for (var i = 0; i < catalogs.Count; i++)
@@ -64,24 +66,29 @@ public sealed class CatalogSyncService
                 foreach (var meta in metas)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    (bool Changed, string? StateId) outcome;
+                    var kind = catalog.Target == CatalogTarget.Movies ? MediaKind.Movie : MediaKind.Series;
+                    var key = TitleKey.FromMeta(kind, meta);
+                    if (key is null)
+                    {
+                        _logger.LogDebug("Skipping {Id} from {Catalog}: no usable id", meta.Id, catalog.Key);
+                        continue;
+                    }
+
+                    bool changed;
                     try
                     {
-                        outcome = await WriteTitleAsync(endpoint, catalog, meta, writer, state, cancellationToken).ConfigureAwait(false);
+                        changed = await WriteTitleAsync(endpoint, catalog, kind, key, meta, writer, state, cancellationToken).ConfigureAwait(false);
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
                     {
-                        _logger.LogWarning(ex, "Could not write title {Id} from catalog {Catalog}; skipping it", meta.Id, catalog.Key);
+                        // Protect the title: a failed write must not count as "missing from its catalog".
+                        _logger.LogWarning(ex, "Could not write title {Id} from catalog {Catalog}; leaving it as it is", meta.Id, catalog.Key);
+                        protectedIds.Add(key.StateId);
                         continue;
                     }
 
-                    if (outcome.StateId is null)
-                    {
-                        continue;
-                    }
-
-                    seen.Add(outcome.StateId);
-                    if (outcome.Changed)
+                    seen.Add(key.StateId);
+                    if (changed)
                     {
                         written++;
                     }
@@ -101,7 +108,7 @@ public sealed class CatalogSyncService
             progress.Report((i + 1) * 90.0 / catalogs.Count);
         }
 
-        var pruned = Prune(state, writer, paths, seen, failed, config.PruneAfterMisses);
+        var pruned = Prune(state, writer, paths, seen, protectedIds, failed, config.PruneAfterMisses);
         state.Save();
         await _refresher.RefreshAsync([paths.Movies, paths.Shows], cancellationToken).ConfigureAwait(false);
         progress.Report(100);
@@ -121,7 +128,6 @@ public sealed class CatalogSyncService
         var results = new List<StremioMeta>();
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var skip = 0;
-        int? pageSize = null;
 
         for (var page = 0; page < MaxPagesPerCatalog && results.Count < catalog.MaxItems; page++)
         {
@@ -131,7 +137,6 @@ public sealed class CatalogSyncService
                 break;
             }
 
-            pageSize ??= metas.Count;
             skip += metas.Count;
             var added = 0;
             foreach (var meta in metas)
@@ -148,7 +153,7 @@ public sealed class CatalogSyncService
                 }
             }
 
-            if (added == 0 || metas.Count < pageSize)
+            if (added == 0)
             {
                 break;
             }
@@ -157,22 +162,16 @@ public sealed class CatalogSyncService
         return results;
     }
 
-    private async Task<(bool Changed, string? StateId)> WriteTitleAsync(
+    private async Task<bool> WriteTitleAsync(
         AioMetadataEndpoint endpoint,
         CatalogSelection catalog,
+        MediaKind kind,
+        TitleKey key,
         StremioMeta meta,
         LibraryWriter writer,
         StateStore state,
         CancellationToken cancellationToken)
     {
-        var kind = catalog.Target == CatalogTarget.Movies ? MediaKind.Movie : MediaKind.Series;
-        var key = TitleKey.FromMeta(kind, meta);
-        if (key is null)
-        {
-            _logger.LogDebug("Skipping {Id} from {Catalog}: no usable id", meta.Id, catalog.Key);
-            return (false, null);
-        }
-
         var full = meta;
         if (kind == MediaKind.Series && (meta.Videos is null || meta.Videos.Count == 0))
         {
@@ -180,7 +179,8 @@ public sealed class CatalogSyncService
             {
                 full = await _client.GetMetaAsync(endpoint, catalog.Type, meta.Id, cancellationToken).ConfigureAwait(false) ?? meta;
             }
-            catch (Exception ex) when (ex is AioMetadataException or HttpRequestException)
+            catch (Exception ex) when (ex is AioMetadataException or HttpRequestException
+                || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
                 _logger.LogWarning(ex, "Could not load episodes for {Id}; writing the series without new episodes", meta.Id);
             }
@@ -201,27 +201,35 @@ public sealed class CatalogSyncService
         }
 
         state.Upsert(entry);
-        return (result.Changed, key.StateId);
+        return result.Changed;
     }
 
-    private int Prune(StateStore state, LibraryWriter writer, LibraryPaths paths, HashSet<string> seen, HashSet<string> failed, int threshold)
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "The Jellyfin played lookup can throw arbitrary exceptions; one title must never stop the sync.")]
+    private int Prune(StateStore state, LibraryWriter writer, LibraryPaths paths, HashSet<string> seen, HashSet<string> protectedIds, HashSet<string> failed, int threshold)
     {
         var pruned = 0;
         foreach (var title in state.Titles.ToList())
         {
-            if (seen.Contains(title.StateId) || title.AddedBySearch || title.Catalogs.Exists(failed.Contains))
+            if (seen.Contains(title.StateId) || protectedIds.Contains(title.StateId) || title.AddedBySearch || title.Catalogs.Exists(failed.Contains))
             {
                 continue;
             }
 
             title.MissCount++;
-            var played = title.MissCount >= threshold && _played.IsPlayedByAnyone(Path.Combine(paths.Root, title.Folder), title.Kind);
-            if (PruningPolicy.ShouldPrune(title, threshold, played))
+            try
             {
-                writer.Delete(title.Folder);
-                state.Remove(title.StateId);
-                pruned++;
-                _logger.LogInformation("Pruned {Folder} after {Misses} syncs without it", title.Folder, title.MissCount);
+                var played = title.MissCount >= threshold && _played.IsPlayedByAnyone(Path.Combine(paths.Root, title.Folder), title.Kind);
+                if (PruningPolicy.ShouldPrune(title, threshold, played))
+                {
+                    writer.Delete(title.Folder);
+                    state.Remove(title.StateId);
+                    pruned++;
+                    _logger.LogInformation("Pruned {Folder} after {Misses} syncs without it", title.Folder, title.MissCount);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Could not prune {Folder}; keeping it", title.Folder);
             }
         }
 

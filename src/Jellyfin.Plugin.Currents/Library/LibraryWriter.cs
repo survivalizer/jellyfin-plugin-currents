@@ -1,31 +1,37 @@
 using System.Text;
 using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
 using Jellyfin.Plugin.Currents.Metadata;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Currents.Library;
 
 /// <summary>Writes titles as .strm + .nfo files. Writes are atomic and idempotent.</summary>
 public sealed class LibraryWriter
 {
+    private const string MarkerFile = ".currents";
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private readonly LibraryPaths _paths;
     private readonly StrmSigner _signer;
     private readonly string _strmBaseUrl;
     private readonly TimeProvider _time;
+    private readonly ILogger? _logger;
 
-    public LibraryWriter(LibraryPaths paths, StrmSigner signer, string strmBaseUrl, TimeProvider time)
+    public LibraryWriter(LibraryPaths paths, StrmSigner signer, string strmBaseUrl, TimeProvider time, ILogger? logger = null)
     {
         _paths = paths;
         _signer = signer;
         _strmBaseUrl = strmBaseUrl;
         _time = time;
+        _logger = logger;
     }
 
     public WriteResult WriteMovie(TitleKey key, StremioMeta meta, string? existingRelativeFolder)
     {
-        var folderName = FolderName("Movies", key, meta, existingRelativeFolder);
+        var folderName = FolderName("Movies", key, meta, existingRelativeFolder, out var reused);
         var folder = Path.Combine(_paths.Movies, folderName);
+        EnsureManageable(folder, reused);
 
+        WriteIfChanged(Path.Combine(folder, MarkerFile), string.Empty);
         var changed = WriteIfChanged(Path.Combine(folder, "movie.nfo"), NfoWriter.Movie(key, meta));
         changed |= WriteIfChanged(Path.Combine(folder, PathNaming.MovieFile(folderName)), _signer.StrmUrl(_strmBaseUrl, "movie", key.StremioId) + "\n");
         return new WriteResult(Path.Combine("Movies", folderName), changed);
@@ -33,9 +39,11 @@ public sealed class LibraryWriter
 
     public WriteResult WriteSeries(TitleKey key, StremioMeta meta, string? existingRelativeFolder)
     {
-        var folderName = FolderName("Shows", key, meta, existingRelativeFolder);
+        var folderName = FolderName("Shows", key, meta, existingRelativeFolder, out var reused);
         var folder = Path.Combine(_paths.Shows, folderName);
+        EnsureManageable(folder, reused);
 
+        WriteIfChanged(Path.Combine(folder, MarkerFile), string.Empty);
         var changed = WriteIfChanged(Path.Combine(folder, "tvshow.nfo"), NfoWriter.TvShow(key, meta));
         foreach (var (season, episode, episodeId) in ReleasedEpisodes(key, meta))
         {
@@ -55,17 +63,71 @@ public sealed class LibraryWriter
             throw new InvalidOperationException("Refusing to delete a folder outside the Currents title folders.");
         }
 
-        if (Directory.Exists(full))
+        if (!Directory.Exists(full))
         {
-            Directory.Delete(full, recursive: true);
+            return;
+        }
+
+        // Only plugin-owned files are removed; anything else in the folder is user content and stays.
+        foreach (var sub in Directory.GetDirectories(full).Where(IsSeasonFolder))
+        {
+            foreach (var strm in Directory.GetFiles(sub, "*.strm"))
+            {
+                File.Delete(strm);
+            }
+
+            RemoveIfEmpty(sub);
+        }
+
+        foreach (var file in Directory.GetFiles(full).Where(IsPluginFile))
+        {
+            File.Delete(file);
+        }
+
+        if (!RemoveIfEmpty(full))
+        {
+            _logger?.LogInformation("Left {Folder} in place because it contains files Currents did not create", relativeFolder);
+        }
+    }
+
+    private static bool IsSeasonFolder(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name == "Specials" || (name.StartsWith("Season ", StringComparison.Ordinal) && name.Length > 7 && name[7..].All(char.IsAsciiDigit));
+    }
+
+    private static bool IsPluginFile(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)
+            || name is "movie.nfo" or "tvshow.nfo" or MarkerFile;
+    }
+
+    private static bool RemoveIfEmpty(string directory)
+    {
+        if (Directory.EnumerateFileSystemEntries(directory).Any())
+        {
+            return false;
+        }
+
+        Directory.Delete(directory);
+        return true;
+    }
+
+    private static void EnsureManageable(string folder, bool reused)
+    {
+        if (!reused && Directory.Exists(folder) && !File.Exists(Path.Combine(folder, MarkerFile)))
+        {
+            throw new InvalidOperationException("The target folder exists and is not managed by Currents.");
         }
     }
 
     private static bool IsBelow(string full, string parent) =>
         full.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.Ordinal);
 
-    private static string FolderName(string category, TitleKey key, StremioMeta meta, string? existingRelativeFolder)
+    private static string FolderName(string category, TitleKey key, StremioMeta meta, string? existingRelativeFolder, out bool reused)
     {
+        reused = false;
         if (existingRelativeFolder is not null)
         {
             var parts = existingRelativeFolder.Replace('\\', '/').Split('/');
@@ -74,6 +136,7 @@ public sealed class LibraryWriter
                 && !string.IsNullOrWhiteSpace(parts[1])
                 && parts[1] is not "." and not "..")
             {
+                reused = true;
                 return parts[1];
             }
         }
