@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Jellyfin.Plugin.Currents.Clients.AioStreams;
@@ -53,6 +54,11 @@ public sealed record AioStreamsCredentials(Uri BaseUri, string Uuid, string Pass
     /// <returns>The search URI.</returns>
     public Uri Search(string type, string id) =>
         new(BaseUri, $"api/v1/search?type={Uri.EscapeDataString(type)}&id={Uri.EscapeDataString(id)}");
+
+    /// <summary>A short, non-reversible id for this config, for cache keys.</summary>
+    /// <returns>24 lower-case hex characters.</returns>
+    public string Fingerprint() =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{BaseUri}|{Uuid}|{Password}")).AsSpan(0, 12));
 
     /// <inheritdoc />
     public override string ToString() => $"AioStreamsCredentials {{ BaseUri = {BaseUri} }}";

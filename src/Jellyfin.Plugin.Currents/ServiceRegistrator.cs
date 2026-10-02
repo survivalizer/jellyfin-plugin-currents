@@ -43,6 +43,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<MetaCache>();
         serviceCollection.AddSingleton<UserStore>();
         serviceCollection.AddSingleton<StreamProfileResolver>();
+        serviceCollection.AddSingleton<IStreamService, StreamService>();
     }
 
     private static void AddUpstreamClient(IServiceCollection services, string name)

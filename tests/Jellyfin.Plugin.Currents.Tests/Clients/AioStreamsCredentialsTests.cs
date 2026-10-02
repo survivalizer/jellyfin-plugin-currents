@@ -57,4 +57,17 @@ public class AioStreamsCredentialsTests
         Assert.Null(creds);
         Assert.False(string.IsNullOrWhiteSpace(error));
     }
+
+    [Fact]
+    public void Fingerprint_identifies_a_config_without_revealing_it()
+    {
+        AioStreamsCredentials.TryParse("https://aio.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/secretpw/manifest.json", out var a, out _);
+        AioStreamsCredentials.TryParse("https://aio.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/secretpw/manifest.json", out var same, out _);
+        AioStreamsCredentials.TryParse("https://aio.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/otherpw/manifest.json", out var other, out _);
+
+        Assert.Matches("^[0-9a-f]{24}$", a!.Fingerprint());
+        Assert.Equal(a.Fingerprint(), same!.Fingerprint());
+        Assert.NotEqual(a.Fingerprint(), other!.Fingerprint());
+        Assert.DoesNotContain("secretpw", a.Fingerprint(), StringComparison.Ordinal);
+    }
 }
