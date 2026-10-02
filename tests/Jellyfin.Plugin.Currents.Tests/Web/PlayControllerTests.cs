@@ -19,11 +19,16 @@ public class PlayControllerTests
     private readonly ManualTimeProvider _time = new(DateTimeOffset.Parse("2026-10-01T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
     private IPAddress _caller = IPAddress.Loopback;
 
-    private PlayController Create() =>
-        new(_resolver, _settings, _time, new LocalCallerPolicy(() => []))
+    private PlayController Create(string? header = null)
+    {
+        var http = new DefaultHttpContext { Connection = { RemoteIpAddress = _caller } };
+        if (header is not null)
         {
-            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { Connection = { RemoteIpAddress = _caller } } },
-        };
+            http.Request.Headers[header] = "203.0.113.9";
+        }
+
+        return new(_resolver, _settings, _time, new LocalCallerPolicy(() => [])) { ControllerContext = new ControllerContext { HttpContext = http } };
+    }
 
     private string Token(VersionTicket ticket, TimeSpan? lifetime = null) =>
         new VersionTokenSigner(_settings.Current.SigningSecret, _time).Create(ticket, lifetime ?? TimeSpan.FromHours(24));
@@ -91,6 +96,19 @@ public class PlayControllerTests
         _caller = IPAddress.Parse("203.0.113.9");
 
         var result = await Create().PlayVersion(Token(new VersionTicket(Guid.NewGuid(), "movie", "tt1", "k")), CancellationToken.None);
+
+        Assert.Equal(403, Assert.IsType<StatusCodeResult>(result).StatusCode);
+        Assert.Null(_resolver.LastTicket);
+    }
+
+    [Theory]
+    [InlineData("X-Forwarded-For")]
+    [InlineData("X-Original-For")]
+    [InlineData("Forwarded")]
+    [InlineData("X-Real-IP")]
+    public async Task Version_token_relayed_by_a_proxy_is_forbidden(string header)
+    {
+        var result = await Create(header).PlayVersion(Token(new VersionTicket(Guid.NewGuid(), "movie", "tt1", "k")), CancellationToken.None);
 
         Assert.Equal(403, Assert.IsType<StatusCodeResult>(result).StatusCode);
         Assert.Null(_resolver.LastTicket);

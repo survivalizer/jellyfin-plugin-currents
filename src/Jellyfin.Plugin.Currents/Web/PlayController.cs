@@ -12,6 +12,8 @@ namespace Jellyfin.Plugin.Currents.Web;
 [Route("Currents")]
 public sealed class PlayController : ControllerBase
 {
+    // A proxy in front of Jellyfin connects from loopback; ffmpeg never sends these. X-Original-For is where ASP.NET moves X-Forwarded-For.
+    private static readonly string[] ForwardedHeaders = ["X-Forwarded-For", "X-Original-For", "Forwarded", "X-Real-IP"];
     private readonly IStreamResolver _resolver;
     private readonly ICurrentsSettings _settings;
     private readonly TimeProvider _time;
@@ -71,7 +73,8 @@ public sealed class PlayController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> PlayVersion([FromRoute] string token, CancellationToken cancellationToken)
     {
-        if (!_localCallers.IsLocal(HttpContext.Connection.RemoteIpAddress)
+        if (Array.Exists(ForwardedHeaders, Request.Headers.ContainsKey)
+            || !_localCallers.IsLocal(HttpContext.Connection.RemoteIpAddress)
             || !new VersionTokenSigner(_settings.Current.SigningSecret, _time).TryRead(token, out var ticket))
         {
             return StatusCode(StatusCodes.Status403Forbidden);
