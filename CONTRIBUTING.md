@@ -32,4 +32,5 @@ enable GitHub Pages from it (Settings -> Pages -> Deploy from a branch -> `gh-pa
 The repository must stay public so Jellyfin can download the manifest and release assets.
 
 If a release run fails part-way, fix the cause and use **Re-run all jobs**: the release step re-uploads the asset
-to an existing release and the manifest step skips versions that are already published.
+to an existing release, and the manifest step replaces that version's entry (new checksum and timestamp) instead of
+adding a duplicate; if nothing changed it skips the commit.
