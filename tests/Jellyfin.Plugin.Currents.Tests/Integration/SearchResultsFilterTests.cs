@@ -238,6 +238,40 @@ public sealed class SearchResultsFilterTests : IDisposable
     }
 
     [Fact]
+    public async Task A_full_local_page_does_not_wait_for_remote_results()
+    {
+        _client.SearchGate = new TaskCompletionSource();
+        var args = Search();
+        args["limit"] = 1;
+        var local = Guid.NewGuid();
+        try
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var page = await Run(Create(Alice, TimeSpan.FromSeconds(5)), Context(args), Page(local));
+            watch.Stop();
+
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(1), $"waited {watch.Elapsed}");
+            Assert.Equal(local, Assert.Single(page.Items).Id);
+        }
+        finally
+        {
+            _client.SearchGate.SetResult();
+        }
+    }
+
+    [Fact]
+    public async Task A_failing_remote_search_returns_local_results()
+    {
+        // A null entry makes RemoteSearch's projection throw an unexpected NullReferenceException.
+        _client.Searches["movie/search.movie?matrix"] = [null!];
+        var local = Guid.NewGuid();
+
+        var page = await Run(Create(Alice), Context(Search()), Page(local));
+
+        Assert.Equal(local, Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
     public async Task The_legacy_user_route_is_handled_too()
     {
         var page = await Run(Create(Alice), Context(Search(), action: "GetItemsByUserIdLegacy"), Page());

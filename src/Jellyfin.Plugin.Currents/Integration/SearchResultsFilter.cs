@@ -52,6 +52,7 @@ public sealed class SearchResultsFilter : IAsyncActionFilter
         _wait = wait;
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "A remote search fault must never break Jellyfin's own library search; it degrades to local results.")]
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var plan = Plan(context);
@@ -69,6 +70,12 @@ public sealed class SearchResultsFilter : IAsyncActionFilter
             return;
         }
 
+        // Nothing fits on this page; the search already running still warms the cache.
+        if (plan.Limit is int limit && page.Items.Count >= limit)
+        {
+            return;
+        }
+
         IReadOnlyList<SearchResult> found;
         try
         {
@@ -77,6 +84,11 @@ public sealed class SearchResultsFilter : IAsyncActionFilter
         catch (TimeoutException)
         {
             _logger.LogDebug("AIOMetadata search for a {Length}-character term took longer than {Wait}; showing library results only", plan.Query.Length, _wait);
+            return;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning("AIOMetadata search failed ({Error}); showing library results only", ex.GetType().Name);
             return;
         }
 
