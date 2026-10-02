@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.Currents.Clients.AioMetadata;
+using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Common;
 using MediaBrowser.Controller;
@@ -27,6 +28,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
         serviceCollection.AddSingleton<IAioMetadataClient, AioMetadataClient>();
+        serviceCollection.AddSingleton<IAioStreamsClient, AioStreamsClient>();
     }
 
     private static void AddUpstreamClient(IServiceCollection services, string name)

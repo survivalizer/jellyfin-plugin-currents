@@ -1,0 +1,30 @@
+{
+  "success": true,
+  "detail": null,
+  "data": {
+    "results": [
+      {
+        "url": "https://aio.example.com/api/v1/debrid/playback/ENC/x/meta/Movie.2160p.mkv",
+        "filename": "Movie.2160p.DV.mkv",
+        "size": 18400000000,
+        "cached": true,
+        "type": "debrid",
+        "infoHash": "abcdef0123456789abcdef0123456789abcdef01",
+        "fileIdx": 0,
+        "service": "realdebrid",
+        "addon": "Torrentio",
+        "parsedFile": { "resolution": "2160p", "quality": "WEB-DL", "encode": "HEVC", "visualTags": ["DV"], "audioTags": ["Atmos"], "languages": ["English"] }
+      },
+      {
+        "url": "https://cdn.example.com/needs-headers.mkv",
+        "filename": "Movie.1080p.mkv",
+        "size": "4200000000",
+        "type": "http",
+        "requestHeaders": { "Referer": "https://example.com" }
+      }
+    ],
+    "errors": [ { "addon": "Comet", "description": "Timed out" } ],
+    "statistics": [ { "title": "Stats", "description": "2 results" } ]
+  },
+  "error": null
+}

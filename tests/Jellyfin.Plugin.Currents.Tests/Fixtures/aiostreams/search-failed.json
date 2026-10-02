@@ -1,0 +1,1 @@
+{ "success": false, "detail": null, "data": null, "error": { "code": "USER_INVALID_DETAILS", "message": "Invalid password" } }
