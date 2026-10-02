@@ -10,14 +10,20 @@ public sealed class StateStore
 {
     private readonly string _path;
     private readonly Dictionary<string, TitleState> _titles;
+    private readonly Dictionary<Guid, string> _bySearchId = [];
 
     private StateStore(string path, Dictionary<string, TitleState> titles)
     {
         _path = path;
         _titles = titles;
+        foreach (var id in titles.Keys)
+        {
+            _bySearchId[SearchItemId.For(id)] = id;
+        }
     }
 
-    public IReadOnlyCollection<TitleState> Titles => _titles.Values;
+    /// <summary>Gets a snapshot of the titles; later changes to the store do not affect it.</summary>
+    public IReadOnlyList<TitleState> Titles => _titles.Values.ToList();
 
     public static StateStore Load(string path, ILogger logger)
     {
@@ -72,9 +78,20 @@ public sealed class StateStore
 
     public TitleState? Get(string stateId) => _titles.GetValueOrDefault(stateId);
 
-    public void Upsert(TitleState title) => _titles[title.StateId] = title;
+    public TitleState? FindBySearchId(Guid searchId) =>
+        _bySearchId.TryGetValue(searchId, out var stateId) ? _titles.GetValueOrDefault(stateId) : null;
 
-    public bool Remove(string stateId) => _titles.Remove(stateId);
+    public void Upsert(TitleState title)
+    {
+        _titles[title.StateId] = title;
+        _bySearchId[SearchItemId.For(title.StateId)] = title.StateId;
+    }
+
+    public bool Remove(string stateId)
+    {
+        _bySearchId.Remove(SearchItemId.For(stateId));
+        return _titles.Remove(stateId);
+    }
 
     public void Save()
     {

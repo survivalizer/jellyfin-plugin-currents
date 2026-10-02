@@ -131,4 +131,38 @@ public sealed class StateStoreTests : IDisposable
         Assert.Equal(expectedCount, store.Titles.Count);
         Assert.Empty(Directory.GetFiles(_dir, "state.json.corrupt-*"));
     }
+
+    [Fact]
+    public void Titles_is_a_snapshot()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "currents-state-" + Guid.NewGuid().ToString("N"), "state.json");
+        var store = StateStore.Load(path, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        store.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]" });
+
+        var snapshot = store.Titles;
+        store.Upsert(new TitleState { StateId = "movie/tt2", StremioId = "tt2", Folder = "Movies/B [imdbid-tt2]" });
+        store.Remove("movie/tt1");
+
+        Assert.Equal("movie/tt1", Assert.Single(snapshot).StateId);
+        Assert.Equal("movie/tt2", Assert.Single(store.Titles).StateId);
+    }
+
+    [Fact]
+    public void Finds_titles_by_search_id_after_upsert_remove_and_reload()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "currents-state-" + Guid.NewGuid().ToString("N"), "state.json");
+        var store = StateStore.Load(path, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        store.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]" });
+        store.Upsert(new TitleState { StateId = "series/tt2", StremioId = "tt2", Kind = MediaKind.Series, Folder = "Shows/B [imdbid-tt2]" });
+        store.Remove("series/tt2");
+        store.Save();
+
+        var reloaded = StateStore.Load(path, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+
+        Assert.Equal("movie/tt1", store.FindBySearchId(SearchItemId.For("movie/tt1"))?.StateId);
+        Assert.Null(store.FindBySearchId(SearchItemId.For("series/tt2")));
+        Assert.Equal("movie/tt1", reloaded.FindBySearchId(SearchItemId.For("movie/tt1"))?.StateId);
+        Assert.Null(reloaded.FindBySearchId(Guid.NewGuid()));
+        Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+    }
 }

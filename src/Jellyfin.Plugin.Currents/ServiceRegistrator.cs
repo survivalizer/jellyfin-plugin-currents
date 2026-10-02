@@ -42,6 +42,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 
         serviceCollection.AddSingleton<ILibraryRefresher, JellyfinLibraryRefresher>();
         serviceCollection.AddSingleton<IPlayedLookup, JellyfinPlayedLookup>();
+        serviceCollection.AddSingleton<TitleLibrary>();
         serviceCollection.AddSingleton<CatalogSyncService>();
         serviceCollection.AddSingleton<IStreamResolver, StreamResolver>();
         serviceCollection.AddSingleton<MetaCache>();

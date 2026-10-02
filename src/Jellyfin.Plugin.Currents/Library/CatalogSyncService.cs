@@ -15,6 +15,7 @@ public sealed class CatalogSyncService
     private readonly IPlayedLookup _played;
     private readonly ILibraryRefresher _refresher;
     private readonly ICurrentsSettings _settings;
+    private readonly TitleLibrary _titles;
     private readonly TimeProvider _time;
     private readonly ILogger<CatalogSyncService> _logger;
 
@@ -23,6 +24,7 @@ public sealed class CatalogSyncService
         IPlayedLookup played,
         ILibraryRefresher refresher,
         ICurrentsSettings settings,
+        TitleLibrary titles,
         TimeProvider time,
         ILogger<CatalogSyncService> logger)
     {
@@ -30,6 +32,7 @@ public sealed class CatalogSyncService
         _played = played;
         _refresher = refresher;
         _settings = settings;
+        _titles = titles;
         _time = time;
         _logger = logger;
     }
@@ -44,8 +47,7 @@ public sealed class CatalogSyncService
         }
 
         var paths = LibraryPaths.FromSettings(_settings);
-        var writer = new LibraryWriter(paths, new StrmSigner(config.SigningSecret), config.StrmBaseUrl, _time, _logger);
-        var state = StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), _logger);
+        var writer = _titles.CreateWriter();
         var catalogs = config.Catalogs.Where(c => c.Enabled).ToList();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var failed = new HashSet<string>(StringComparer.Ordinal);
@@ -63,7 +65,7 @@ public sealed class CatalogSyncService
                     .Where(m => !IsErrorItem(m))
                     .Select(m => (Meta: m, Key: TitleKey.FromMeta(kind, m)))
                     .ToList();
-                if (usable.TrueForAll(u => u.Key is null) && state.Titles.Any(t => t.Catalogs.Contains(catalog.Key)))
+                if (usable.TrueForAll(u => u.Key is null) && _titles.Use(s => s.Titles.Any(t => t.Catalogs.Contains(catalog.Key))))
                 {
                     _logger.LogWarning("Catalog {Catalog} returned no usable items; treating it as unavailable this run", catalog.Key);
                     failed.Add(catalog.Key);
@@ -81,7 +83,7 @@ public sealed class CatalogSyncService
                     bool changed;
                     try
                     {
-                        changed = await WriteTitleAsync(endpoint, catalog, kind, key, meta, writer, state, cancellationToken).ConfigureAwait(false);
+                        changed = await WriteTitleAsync(endpoint, catalog, kind, key, meta, writer, cancellationToken).ConfigureAwait(false);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                     {
@@ -115,13 +117,18 @@ public sealed class CatalogSyncService
         if (catalogs.Count == 0)
         {
             _logger.LogInformation("No catalogs are enabled; skipping pruning so existing titles are kept");
+            _titles.Use(state => state.Save());
         }
         else
         {
-            pruned = Prune(state, writer, paths, seen, protectedIds, failed, config.PruneAfterMisses);
+            pruned = _titles.Use(state =>
+            {
+                var count = Prune(state, writer, paths, seen, protectedIds, failed, config.PruneAfterMisses);
+                state.Save();
+                return count;
+            });
         }
 
-        state.Save();
         await _refresher.RefreshAsync([paths.Movies, paths.Shows], cancellationToken).ConfigureAwait(false);
         progress.Report(100);
 
@@ -185,7 +192,6 @@ public sealed class CatalogSyncService
         TitleKey key,
         StremioMeta meta,
         LibraryWriter writer,
-        StateStore state,
         CancellationToken cancellationToken)
     {
         var full = meta;
@@ -193,7 +199,7 @@ public sealed class CatalogSyncService
         {
             try
             {
-                full = await _client.GetMetaAsync(endpoint, catalog.Type, meta.Id, cancellationToken).ConfigureAwait(false) ?? meta;
+                full = await FetchSeriesMetaAsync(endpoint, catalog.Type, key, meta.Id, cancellationToken).ConfigureAwait(false) ?? meta;
             }
             catch (Exception ex) when (ex is AioMetadataException or HttpRequestException
                 || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
@@ -202,29 +208,47 @@ public sealed class CatalogSyncService
             }
         }
 
-        var existing = state.Get(key.StateId);
-        var result = kind == MediaKind.Movie
-            ? writer.WriteMovie(key, full, existing?.Folder)
-            : writer.WriteSeries(key, full, existing?.Folder);
-
-        var entry = existing ?? new TitleState { StateId = key.StateId, Kind = kind, StremioId = key.StremioId };
-        entry.Folder = result.RelativeFolder;
-        entry.MissCount = 0;
-        entry.LastSeen = _time.GetUtcNow();
-        if (!entry.Catalogs.Contains(catalog.Key))
+        return _titles.Use(state =>
         {
-            entry.Catalogs.Add(catalog.Key);
+            var existing = state.Get(key.StateId);
+            var result = kind == MediaKind.Movie
+                ? writer.WriteMovie(key, full, existing?.Folder)
+                : writer.WriteSeries(key, full, existing?.Folder);
+
+            var entry = existing ?? new TitleState { StateId = key.StateId, Kind = kind, StremioId = key.StremioId };
+            entry.Folder = result.RelativeFolder;
+            entry.MissCount = 0;
+            entry.LastSeen = _time.GetUtcNow();
+            if (!entry.Catalogs.Contains(catalog.Key))
+            {
+                entry.Catalogs.Add(catalog.Key);
+            }
+
+            state.Upsert(entry);
+            return result.Changed;
+        });
+    }
+
+    /// <summary>
+    /// AIOMetadata's meta route branches on the id, not the catalog type; Currents' own metadata providers ask with
+    /// "series". Anime catalogs are typed "anime.series", so ask with the title's type first and the catalog's after.
+    /// </summary>
+    private async Task<StremioMeta?> FetchSeriesMetaAsync(AioMetadataEndpoint endpoint, string catalogType, TitleKey key, string id, CancellationToken cancellationToken)
+    {
+        var meta = await _client.GetMetaAsync(endpoint, key.StremioType, id, cancellationToken).ConfigureAwait(false);
+        if (meta is null && !string.Equals(catalogType, key.StremioType, StringComparison.Ordinal))
+        {
+            meta = await _client.GetMetaAsync(endpoint, catalogType, id, cancellationToken).ConfigureAwait(false);
         }
 
-        state.Upsert(entry);
-        return result.Changed;
+        return meta;
     }
 
     [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "The Jellyfin played lookup can throw arbitrary exceptions; one title must never stop the sync.")]
     private int Prune(StateStore state, LibraryWriter writer, LibraryPaths paths, HashSet<string> seen, HashSet<string> protectedIds, HashSet<string> failed, int threshold)
     {
         var pruned = 0;
-        foreach (var title in state.Titles.ToList())
+        foreach (var title in state.Titles)
         {
             if (seen.Contains(title.StateId) || protectedIds.Contains(title.StateId) || title.AddedBySearch || title.Catalogs.Exists(failed.Contains))
             {

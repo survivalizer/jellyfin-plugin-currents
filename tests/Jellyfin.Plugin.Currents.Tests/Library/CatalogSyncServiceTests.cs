@@ -12,15 +12,19 @@ public sealed class CatalogSyncServiceTests : IDisposable
     private const string MovieCatalog = "movie/tmdb.top";
     private const string ShowCatalog = "series/tmdb.trending";
 
+    private static readonly ManualTimeProvider Time = new(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), "currents-sync-" + Guid.NewGuid().ToString("N"));
     private readonly FakeAioMetadataClient _client = new();
     private readonly FakePlayedLookup _played = new();
     private readonly FakeRefresher _refresher = new();
     private readonly FakeSettings _settings;
+    private readonly TitleLibrary _titles;
 
     public CatalogSyncServiceTests()
     {
         _settings = new FakeSettings { DataFolderPath = Path.Combine(_root, "data") };
+        _titles = new TitleLibrary(_settings, Time, NullLogger<TitleLibrary>.Instance);
         _settings.Current.AioMetadataManifestUrl = "https://meta.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/manifest.json";
         _settings.Current.LibraryRoot = Path.Combine(_root, "library");
         _settings.Current.Catalogs =
@@ -39,7 +43,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
     }
 
     private CatalogSyncService CreateService() =>
-        new(_client, _played, _refresher, _settings, new ManualTimeProvider(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero)), NullLogger<CatalogSyncService>.Instance);
+        new(_client, _played, _refresher, _settings, _titles, Time, NullLogger<CatalogSyncService>.Instance);
 
     private Task<SyncReport> SyncAsync() => CreateService().SyncAsync(new Progress<double>(), CancellationToken.None);
 
@@ -139,10 +143,11 @@ public sealed class CatalogSyncServiceTests : IDisposable
     {
         _client.Catalogs[MovieCatalog] = [Movie("tt1", "Keep"), Movie("tt2", "Searched")];
         await SyncAsync();
-        var statePath = Path.Combine(_settings.DataFolderPath, "state.json");
-        var state = StateStore.Load(statePath, NullLogger.Instance);
-        state.Get("movie/tt2")!.AddedBySearch = true;
-        state.Save();
+        _titles.Use(state =>
+        {
+            state.Get("movie/tt2")!.AddedBySearch = true;
+            state.Save();
+        });
 
         _client.Catalogs[MovieCatalog] = [Movie("tt1", "Keep")];
         for (var i = 0; i < 5; i++)
@@ -374,10 +379,12 @@ public sealed class CatalogSyncServiceTests : IDisposable
         _client.Catalogs[MovieCatalog] = [Movie("tt1", "Keep"), Movie("tt2", "Drop")];
         await SyncAsync();
         var statePath = Path.Combine(_settings.DataFolderPath, "state.json");
-        var state = StateStore.Load(statePath, NullLogger.Instance);
-        state.Upsert(new TitleState { StateId = "movie/imdb:bad", Kind = MediaKind.Movie, StremioId = "bad", Folder = string.Empty, Catalogs = [MovieCatalog], MissCount = 2 });
-        state.Get("movie/tt2")!.MissCount = 2;
-        state.Save();
+        _titles.Use(state =>
+        {
+            state.Upsert(new TitleState { StateId = "movie/imdb:bad", Kind = MediaKind.Movie, StremioId = "bad", Folder = string.Empty, Catalogs = [MovieCatalog], MissCount = 2 });
+            state.Get("movie/tt2")!.MissCount = 2;
+            state.Save();
+        });
         _client.Catalogs[MovieCatalog] = [Movie("tt1", "Keep")];
 
         var report = await SyncAsync();
@@ -388,6 +395,72 @@ public sealed class CatalogSyncServiceTests : IDisposable
         Assert.Null(after.Get("movie/tt2"));
         Assert.Equal(3, after.Get("movie/imdb:bad")!.MissCount);
         Assert.Equal(2, _refresher.Refreshed.Count);
+    }
+
+    [Fact]
+    public async Task Search_add_during_a_sync_is_kept()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Alpha")];
+        _client.Catalogs[ShowCatalog] = [new StremioMeta { Id = "tt0944947", Name = "Game of Thrones", ReleaseInfo = "2011" }];
+        _client.MetaGate = new TaskCompletionSource(); // the sync pauses inside the series meta fetch
+        var sync = SyncAsync();
+        while (!_client.MetaRequests.Contains("series/tt0944947"))
+        {
+            await Task.Delay(5);
+        }
+
+        _titles.AddFromSearch(new TitleKey(MediaKind.Movie, "imdb", "tt9"), Movie("tt9", "Searched"));
+        _client.MetaGate.SetResult();
+        await sync;
+
+        var reloaded = new TitleLibrary(_settings, Time, NullLogger<TitleLibrary>.Instance);
+        Assert.True(reloaded.Get("movie/tt9")?.AddedBySearch);
+        Assert.NotNull(reloaded.Get("movie/tt1"));
+        Assert.NotNull(reloaded.Get("series/tt0944947"));
+    }
+
+    [Fact]
+    public async Task Series_metas_are_fetched_with_the_title_type_first()
+    {
+        _settings.Current.Catalogs =
+        [
+            new CatalogSelection { Type = "anime.series", Id = "mal.airing", Target = CatalogTarget.Shows, MaxItems = 10 },
+        ];
+        _client.Catalogs["anime.series/mal.airing"] = [new StremioMeta { Id = "mal:1", Name = "Cowboy Bebop", ReleaseInfo = "1998" }];
+        _client.Metas["series/mal:1"] = new StremioMeta
+        {
+            Id = "mal:1",
+            Name = "Cowboy Bebop",
+            ReleaseInfo = "1998",
+            Videos = [new StremioVideo { Id = "mal:1:1", Season = 1, Episode = 1, Released = "1998-04-03T00:00:00Z" }],
+        };
+
+        await SyncAsync();
+
+        Assert.Equal("series/mal:1", Assert.Single(_client.MetaRequests));
+        Assert.True(File.Exists(Path.Combine(_root, "library", "Shows", "Cowboy Bebop (1998) [mal-1]", "Season 01", "Cowboy Bebop (1998) S01E01.strm")));
+    }
+
+    [Fact]
+    public async Task Series_metas_fall_back_to_the_catalog_type()
+    {
+        _settings.Current.Catalogs =
+        [
+            new CatalogSelection { Type = "anime.series", Id = "mal.airing", Target = CatalogTarget.Shows, MaxItems = 10 },
+        ];
+        _client.Catalogs["anime.series/mal.airing"] = [new StremioMeta { Id = "mal:1", Name = "Cowboy Bebop", ReleaseInfo = "1998" }];
+        _client.Metas["anime.series/mal:1"] = new StremioMeta
+        {
+            Id = "mal:1",
+            Name = "Cowboy Bebop",
+            ReleaseInfo = "1998",
+            Videos = [new StremioVideo { Id = "mal:1:1", Season = 1, Episode = 1, Released = "1998-04-03T00:00:00Z" }],
+        };
+
+        await SyncAsync();
+
+        Assert.Equal(new[] { "series/mal:1", "anime.series/mal:1" }, _client.MetaRequests);
+        Assert.True(File.Exists(Path.Combine(_root, "library", "Shows", "Cowboy Bebop (1998) [mal-1]", "Season 01", "Cowboy Bebop (1998) S01E01.strm")));
     }
 
     private sealed class FakePlayedLookup : IPlayedLookup
