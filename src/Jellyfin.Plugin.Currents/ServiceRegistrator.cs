@@ -7,6 +7,7 @@ using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Metadata;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Users;
+using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +23,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<ICurrentsSettings, PluginSettings>();
         serviceCollection.AddSingleton<OutboundPolicies>();
+        serviceCollection.AddSingleton(sp => new LocalCallerPolicy(() => ServerAddresses.Of(sp.GetRequiredService<INetworkManager>())));
 
         AddUpstreamClient(serviceCollection, HttpClientNames.AioStreams);
         AddUpstreamClient(serviceCollection, HttpClientNames.AioMetadata);

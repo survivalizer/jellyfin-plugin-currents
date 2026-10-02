@@ -14,14 +14,20 @@ public sealed class PlayController : ControllerBase
 {
     private readonly IStreamResolver _resolver;
     private readonly ICurrentsSettings _settings;
+    private readonly TimeProvider _time;
+    private readonly LocalCallerPolicy _localCallers;
 
     /// <summary>Initializes a new instance of the <see cref="PlayController"/> class.</summary>
     /// <param name="resolver">The stream resolver.</param>
     /// <param name="settings">The plugin settings.</param>
-    public PlayController(IStreamResolver resolver, ICurrentsSettings settings)
+    /// <param name="time">The time provider.</param>
+    /// <param name="localCallers">The policy deciding which callers are the server itself.</param>
+    public PlayController(IStreamResolver resolver, ICurrentsSettings settings, TimeProvider time, LocalCallerPolicy localCallers)
     {
         _resolver = resolver;
         _settings = settings;
+        _time = time;
+        _localCallers = localCallers;
     }
 
     /// <summary>Resolves a title to a playable stream and redirects to it.</summary>
@@ -49,6 +55,29 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _resolver.ResolveAsync(type, id, cancellationToken).ConfigureAwait(false);
+        return result.Url is { } url
+            ? Redirect(url.AbsoluteUri)
+            : StatusCode(StatusCodes.Status503ServiceUnavailable, result.Error);
+    }
+
+    /// <summary>Resolves one version (one stream, one user) and redirects to it. Only Jellyfin itself (ffmpeg/ffprobe) may call it; the expiring signed token names what may be played.</summary>
+    /// <param name="token">The version token.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A redirect to the stream, or an error status.</returns>
+    [HttpGet("play/s/{token}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status302Found)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> PlayVersion([FromRoute] string token, CancellationToken cancellationToken)
+    {
+        if (!_localCallers.IsLocal(HttpContext.Connection.RemoteIpAddress)
+            || !new VersionTokenSigner(_settings.Current.SigningSecret, _time).TryRead(token, out var ticket))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var result = await _resolver.ResolveAsync(ticket, cancellationToken).ConfigureAwait(false);
         return result.Url is { } url
             ? Redirect(url.AbsoluteUri)
             : StatusCode(StatusCodes.Status503ServiceUnavailable, result.Error);
