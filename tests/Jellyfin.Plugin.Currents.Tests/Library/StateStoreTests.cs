@@ -47,7 +47,7 @@ public sealed class StateStoreTests : IDisposable
 
         Assert.NotNull(title);
         Assert.Equal(2, title!.MissCount);
-        Assert.Equal(new[] {"movie/tmdb.top"}, title.Catalogs);
+        Assert.Equal(new[] { "movie/tmdb.top" }, title.Catalogs);
         Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
     }
 

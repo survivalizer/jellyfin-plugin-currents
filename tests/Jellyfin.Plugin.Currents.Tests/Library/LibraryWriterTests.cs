@@ -131,7 +131,7 @@ public sealed class LibraryWriterTests : IDisposable
         var ex = Assert.Throws<InvalidOperationException>(() => _writer.WriteMovie(key, new StremioMeta { Id = "tt1", Name = "A", Year = "2000" }, null));
 
         Assert.Contains("not managed by Currents", ex.Message, StringComparison.Ordinal);
-        Assert.Equal(new[] {mkv}, Directory.GetFiles(folder));
+        Assert.Equal(new[] { mkv }, Directory.GetFiles(folder));
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public sealed class LibraryWriterTests : IDisposable
 
         _writer.Delete(result.RelativeFolder);
 
-        Assert.Equal(new[] {Path.Combine(folder, "poster.jpg")}, Directory.GetFiles(folder));
+        Assert.Equal(new[] { Path.Combine(folder, "poster.jpg") }, Directory.GetFiles(folder));
         Assert.Empty(Directory.GetDirectories(folder));
     }
 

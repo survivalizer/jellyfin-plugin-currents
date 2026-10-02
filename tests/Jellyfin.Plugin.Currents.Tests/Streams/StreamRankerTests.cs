@@ -21,6 +21,6 @@ public class StreamRankerTests
 
         var ranked = StreamRanker.Rank(results);
 
-        Assert.Equal(new[] {"first", "second"}, ranked.Select(r => r.Filename));
+        Assert.Equal(new[] { "first", "second" }, ranked.Select(r => r.Filename));
     }
 }

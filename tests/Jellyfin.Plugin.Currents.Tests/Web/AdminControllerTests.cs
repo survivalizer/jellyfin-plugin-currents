@@ -33,7 +33,7 @@ public class AdminControllerTests
         var result = await Create().GetCatalogs(new ManifestUrlRequest(MetaUrl), CancellationToken.None);
 
         var options = Assert.IsAssignableFrom<IEnumerable<CatalogOption>>(Assert.IsType<OkObjectResult>(result.Result).Value).ToList();
-        Assert.Equal(new[] {new CatalogOption("movie", "tmdb.top", "Popular"), new CatalogOption("series", "mal.airing", "mal.airing")}, options);
+        Assert.Equal(new[] { new CatalogOption("movie", "tmdb.top", "Popular"), new CatalogOption("series", "mal.airing", "mal.airing") }, options);
     }
 
     [Fact]

@@ -21,7 +21,7 @@ public class NfoWriterTests
         Assert.Equal("Hope.", root.Element("plot")!.Value);
         Assert.Equal("1994", root.Element("year")!.Value);
         Assert.Equal("1994-09-23", root.Element("premiered")!.Value);
-        Assert.Equal(new[] {"Drama", "Crime"}, root.Elements("genre").Select(e => e.Value));
+        Assert.Equal(new[] { "Drama", "Crime" }, root.Elements("genre").Select(e => e.Value));
         var ids = root.Elements("uniqueid").ToDictionary(e => e.Attribute("type")!.Value, e => e.Value);
         Assert.Equal("tt0111161", ids["Currents"]);
         Assert.Equal("tt0111161", ids["imdb"]);

@@ -1,5 +1,5 @@
-using Jellyfin.Plugin.Currents.Library;
 using System.Text;
+using Jellyfin.Plugin.Currents.Library;
 using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Library;

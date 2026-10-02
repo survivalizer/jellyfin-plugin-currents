@@ -67,10 +67,10 @@ public sealed class CatalogSyncServiceTests : IDisposable
 
         Assert.Equal(3, report.Written);
         Assert.Empty(report.FailedCatalogs);
-        Assert.Equal(new[] {"Alpha (2000) [imdbid-tt1]", "Beta (2000) [imdbid-tt2]"}, MovieFolders());
+        Assert.Equal(new[] { "Alpha (2000) [imdbid-tt1]", "Beta (2000) [imdbid-tt2]" }, MovieFolders());
         Assert.True(File.Exists(Path.Combine(_root, "library", "Shows", "Game of Thrones (2011) [imdbid-tt0944947]", "Season 01", "Game of Thrones (2011) S01E01.strm")));
         Assert.Contains("series/tt0944947", _client.MetaRequests);
-        Assert.Equal(new[] {Path.Combine(_root, "library", "Movies"), Path.Combine(_root, "library", "Shows")}, _refresher.Refreshed.Single());
+        Assert.Equal(new[] { Path.Combine(_root, "library", "Movies"), Path.Combine(_root, "library", "Shows") }, _refresher.Refreshed.Single());
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
         _client.Catalogs[MovieCatalog] = [Movie("tt1", "A"), Movie("tt2", "B"), Movie("tt3", "C"), Movie("tt4", "D"), Movie("tt5", "E")];
 
         await SyncAsync();
-        Assert.Equal(new[] {0, 2, 4, 5}, _client.PageRequests.Where(r => r.Catalog == MovieCatalog).Select(r => r.Skip));
+        Assert.Equal(new[] { 0, 2, 4, 5 }, _client.PageRequests.Where(r => r.Catalog == MovieCatalog).Select(r => r.Skip));
         Assert.Equal(5, MovieFolders().Length);
 
         _client.PageRequests.Clear();
@@ -115,7 +115,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
         var report = await SyncAsync();
 
         Assert.Equal(1, report.Pruned);
-        Assert.Equal(new[] {"Keep (2000) [imdbid-tt1]"}, MovieFolders());
+        Assert.Equal(new[] { "Keep (2000) [imdbid-tt1]" }, MovieFolders());
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
             report = await SyncAsync();
         }
 
-        Assert.Equal(new[] {MovieCatalog}, report.FailedCatalogs);
+        Assert.Equal(new[] { MovieCatalog }, report.FailedCatalogs);
         Assert.Single(MovieFolders());
         var state = StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), NullLogger.Instance);
         Assert.Equal(0, state.Get("movie/tt1")!.MissCount);
@@ -185,7 +185,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
             report = await SyncAsync();
         }
 
-        Assert.Equal(new[] {MovieCatalog}, report.FailedCatalogs);
+        Assert.Equal(new[] { MovieCatalog }, report.FailedCatalogs);
         Assert.Single(MovieFolders());
     }
 
@@ -244,7 +244,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
     public async Task A_short_page_in_the_middle_does_not_end_paging()
     {
         _client.Catalogs[MovieCatalog] = [Movie("tt1", "A"), Movie("tt2", "B"), Movie("tt3", "C"), Movie("tt4", "D"), Movie("tt5", "E")];
-        foreach (var size in new[] {2, 1, 2})
+        foreach (var size in new[] { 2, 1, 2 })
         {
             _client.PageSizeSequence.Enqueue(size);
         }
@@ -252,7 +252,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
         await SyncAsync();
 
         Assert.Equal(5, MovieFolders().Length);
-        Assert.Equal(new[] {0, 2, 3, 5}, _client.PageRequests.Where(r => r.Catalog == MovieCatalog).Select(r => r.Skip));
+        Assert.Equal(new[] { 0, 2, 3, 5 }, _client.PageRequests.Where(r => r.Catalog == MovieCatalog).Select(r => r.Skip));
     }
 
     [Fact]
@@ -304,7 +304,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
         var report = await SyncAsync();
 
         Assert.Equal(1, report.Pruned);
-        Assert.Equal(new[] {"Keep (2000) [imdbid-tt1]"}, MovieFolders());
+        Assert.Equal(new[] { "Keep (2000) [imdbid-tt1]" }, MovieFolders());
         var after = StateStore.Load(statePath, NullLogger.Instance);
         Assert.Null(after.Get("movie/tt2"));
         Assert.Equal(3, after.Get("movie/imdb:bad")!.MissCount);
