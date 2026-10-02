@@ -8,6 +8,14 @@
         "category": "General",
         "versions": [
             {
+                "version": "0.3.1.0",
+                "changelog": "Fix: a catalog sync no longer forgets search-added titles, or rewrites search-added series into a local folder, while the Currents library folder is on an unmounted share.",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://github.com/survivalizer/jellyfin-plugin-currents/releases/download/v0.3.1/currents_0.3.1.0.zip",
+                "checksum": "7bf06243b72a19f6ed8d1fefb5e9e560",
+                "timestamp": "2026-10-02T21:56:31Z"
+            },
+            {
                 "version": "0.3.0.0",
                 "changelog": "Search auto-add: Jellyfin search also lists AIOMetadata titles that are not in the library yet, and opening one adds it and shows the real item. Per-user search switch (admin off, self-service, default). Search-added series get new episodes on catalog sync. AIOMetadata responses are now size-capped.",
                 "targetAbi": "12.0.0.0",
