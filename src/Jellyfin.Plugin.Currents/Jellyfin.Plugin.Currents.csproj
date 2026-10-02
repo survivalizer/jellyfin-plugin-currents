@@ -19,6 +19,7 @@
   <ItemGroup>
     <AdditionalFiles Include="../../stylecop.json" />
     <EmbeddedResource Include="Configuration/configPage.html" />
+    <EmbeddedResource Include="Web/userPage.html" />
     <InternalsVisibleTo Include="Jellyfin.Plugin.Currents.Tests" />
   </ItemGroup>
 </Project>

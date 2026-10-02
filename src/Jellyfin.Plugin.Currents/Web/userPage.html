@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Currents settings</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #101010; color: #e8e8e8; }
+    main { max-width: 42rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+    h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; }
+    p.hint, .hint { color: #a8a8a8; font-size: .9rem; }
+    label { display: block; margin: .9rem 0 .3rem; }
+    input[type=text], input[type=url], input[type=number], select { width: 100%; box-sizing: border-box; padding: .55rem .6rem; border-radius: .3rem; border: 1px solid #3a3a3a; background: #1c1c1c; color: inherit; font: inherit; }
+    .check { display: flex; gap: .5rem; align-items: center; margin-top: .9rem; }
+    .check label { margin: 0; }
+    button { margin: 1.5rem .5rem 0 0; padding: .6rem 1.1rem; border: 0; border-radius: .3rem; background: #00a4dc; color: #fff; font: inherit; cursor: pointer; }
+    button.secondary { background: #303030; }
+    #status { margin-top: 1rem; min-height: 1.4em; }
+    .error { color: #ff8a80; }
+    a { color: #00a4dc; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Currents</h1>
+    <p class="hint">Which streams you see on titles from Currents. <a id="back" href="#">Back to Jellyfin</a></p>
+    <p id="summary"></p>
+
+    <form id="form" hidden>
+      <h2>Your AIOStreams</h2>
+      <p class="hint" id="configState"></p>
+      <label for="manifestUrl">AIOStreams manifest URL</label>
+      <input type="url" id="manifestUrl" autocomplete="off" placeholder="https://…/stremio/&lt;uuid&gt;/&lt;password&gt;/manifest.json">
+      <p class="hint">Leave empty to keep your saved config. It is checked with AIOStreams before saving and never shown again.</p>
+      <button type="button" class="secondary" id="removeConfig">Use the server's config instead</button>
+
+      <h2>Versions</h2>
+      <div class="check"><input type="checkbox" id="autoSelect"><label for="autoSelect">Only show the best stream (hide the version list)</label></div>
+
+      <h2>Preferences</h2>
+      <p class="hint">Lists are comma-separated and in order of preference, for example <code>2160p, 1080p</code>. Leave a list empty for no preference.</p>
+      <label for="resolutionOrder">Resolutions</label>
+      <input type="text" id="resolutionOrder">
+      <label for="hdr">HDR / Dolby Vision</label>
+      <select id="hdr"><option value="Any">No preference</option><option value="Prefer">Prefer HDR</option><option value="Avoid">Avoid HDR (SDR screen)</option></select>
+      <label for="audioLanguages">Audio languages</label>
+      <input type="text" id="audioLanguages" placeholder="English, Japanese">
+      <label for="subtitleLanguages">Subtitle languages</label>
+      <input type="text" id="subtitleLanguages">
+      <label for="maxSizeGb">Largest file (GB, 0 = no limit)</label>
+      <input type="number" id="maxSizeGb" min="0" step="0.5">
+      <label for="excludedResolutions">Never show these resolutions</label>
+      <input type="text" id="excludedResolutions" placeholder="480p, 360p">
+      <label for="excludedVisualTags">Never show these tags</label>
+      <input type="text" id="excludedVisualTags" placeholder="3D">
+      <div class="check"><input type="checkbox" id="cachedOnly"><label for="cachedOnly">Only cached debrid streams</label></div>
+
+      <button type="submit">Save</button>
+      <button type="button" class="secondary" id="resetPreferences">Reset preferences to the server default</button>
+    </form>
+    <div id="status" role="status"></div>
+  </main>
+
+  <script>
+    (async () => {
+      const base = location.pathname.replace(/\/Currents\/user\/?$/i, '');
+      const $ = (id) => document.getElementById(id);
+      const status = (text, isError) => { $('status').textContent = text; $('status').className = isError ? 'error' : ''; };
+      const list = (value) => value.split(',').map((s) => s.trim()).filter(Boolean);
+      const join = (values) => (values || []).join(', ');
+      $('back').href = `${base}/web/`;
+
+      let creds = {};
+      try { creds = JSON.parse(localStorage.getItem('jellyfin_credentials') || '{}'); } catch { creds = {}; }
+      let serverId = null;
+      try { serverId = (await (await fetch(`${base}/System/Info/Public`)).json()).Id; } catch { serverId = null; }
+      const servers = (creds.Servers || []).filter((s) => s.AccessToken);
+      const server = servers.find((s) => s.Id === serverId)
+        || servers.sort((a, b) => (b.DateLastAccessed || 0) - (a.DateLastAccessed || 0))[0];
+      if (!server) { location.href = `${base}/web/#/login`; return; }
+
+      // Token only: sending Device/Version would rewrite the user's web-client device record.
+      const api = async (path, init = {}) => {
+        const response = await fetch(`${base}/${path}`, {
+          ...init,
+          headers: { 'Authorization': `MediaBrowser Token="${server.AccessToken}"`, 'Content-Type': 'application/json' }
+        });
+        const body = response.headers.get('content-type')?.includes('json') ? await response.json() : null;
+        if (!response.ok) { throw new Error((body && (body.Message || body.message)) || `Request failed (${response.status})`); }
+        return body;
+      };
+
+      const sourceText = { None: 'No streams are configured for you yet.', Default: "You're using the server's AIOStreams config.", Admin: 'Your admin assigned an AIOStreams config to you.', Self: "You're using your own AIOStreams config." };
+
+      const fill = (s) => {
+        $('summary').textContent = s.StreamsDisabled ? 'Your admin has turned streams off for your account.' : sourceText[s.Source] || '';
+        $('form').hidden = !s.CanEdit;
+        if (!s.CanEdit) { status('Your admin manages these settings.'); return; }
+        $('configState').textContent = s.ConfigHost ? `Saved: your config on ${s.ConfigHost}.` : 'You have not saved your own config.';
+        $('removeConfig').hidden = !s.ConfigHost;
+        const p = s.EffectivePreferences;
+        $('autoSelect').checked = !!s.EffectiveAutoSelect;
+        $('resolutionOrder').value = join(p.ResolutionOrder);
+        $('hdr').value = p.Hdr || 'Any';
+        $('audioLanguages').value = join(p.AudioLanguages);
+        $('subtitleLanguages').value = join(p.SubtitleLanguages);
+        $('maxSizeGb').value = p.MaxSizeGb || 0;
+        $('excludedResolutions').value = join(p.ExcludedResolutions);
+        $('excludedVisualTags').value = join(p.ExcludedVisualTags);
+        $('cachedOnly').checked = !!p.CachedOnly;
+      };
+
+      const save = async (update, done) => {
+        status('Saving…');
+        try { fill(await api('Currents/user/settings', { method: 'PUT', body: JSON.stringify(update) })); $('manifestUrl').value = ''; status(done); }
+        catch (e) { status(e.message, true); }
+      };
+
+      $('form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const url = $('manifestUrl').value.trim();
+        save({
+          AioStreamsManifestUrl: url || null,
+          AutoSelect: $('autoSelect').checked,
+          Preferences: {
+            ResolutionOrder: list($('resolutionOrder').value),
+            Hdr: $('hdr').value,
+            AudioLanguages: list($('audioLanguages').value),
+            SubtitleLanguages: list($('subtitleLanguages').value),
+            MaxSizeGb: parseFloat($('maxSizeGb').value) || 0,
+            ExcludedResolutions: list($('excludedResolutions').value),
+            ExcludedVisualTags: list($('excludedVisualTags').value),
+            CachedOnly: $('cachedOnly').checked
+          }
+        }, 'Saved. Reopen a title to see your versions.');
+      });
+      $('removeConfig').addEventListener('click', () => save({ AioStreamsManifestUrl: '' }, 'Removed your config.'));
+      $('resetPreferences').addEventListener('click', () => save({ ClearPreferences: true, ClearAutoSelect: true }, 'Preferences reset.'));
+
+      try { fill(await api('Currents/user/settings')); }
+      catch (e) { status(e.message, true); }
+    })();
+  </script>
+</body>
+</html>

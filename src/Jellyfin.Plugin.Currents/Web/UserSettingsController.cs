@@ -26,6 +26,17 @@ public sealed class UserSettingsController : ControllerBase
         _settings = settings;
     }
 
+    /// <summary>Serves the self-service page. Anonymous: a browser navigation carries no Jellyfin auth header; the page's API calls do.</summary>
+    /// <returns>The HTML page.</returns>
+    [HttpGet]
+    [AllowAnonymous]
+    [Produces("text/html")]
+    public IActionResult Page()
+    {
+        var stream = typeof(UserSettingsController).Assembly.GetManifestResourceStream("Jellyfin.Plugin.Currents.Web.userPage.html");
+        return stream is null ? NotFound() : File(stream, "text/html; charset=utf-8");
+    }
+
     [HttpGet("settings")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
