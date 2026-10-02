@@ -25,3 +25,11 @@
    (`0.x` versions are marked pre-release) and adds the version to `manifest.json` on the `gh-pages` branch.
 4. Jellyfin servers that added `https://survivalizer.github.io/jellyfin-plugin-currents/manifest.json` as a
    plugin repository see the update in the plugin catalog.
+
+One-time setup (already done for this repository): after the first release created the `gh-pages` branch,
+enable GitHub Pages from it (Settings -> Pages -> Deploy from a branch -> `gh-pages` / root, or
+`gh api -X POST repos/survivalizer/jellyfin-plugin-currents/pages -f 'source[branch]=gh-pages' -f 'source[path]=/'`).
+The repository must stay public so Jellyfin can download the manifest and release assets.
+
+If a release run fails part-way, fix the cause and use **Re-run all jobs**: the release step re-uploads the asset
+to an existing release and the manifest step skips versions that are already published.

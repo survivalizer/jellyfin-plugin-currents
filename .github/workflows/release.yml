@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v5
         with:
@@ -30,6 +32,14 @@ jobs:
         id: version
         run: |
           semver="${GITHUB_REF_NAME#v}"
+          if ! [[ "$semver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} must look like vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} must point at a commit on main"
+            exit 1
+          fi
           props="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -n 1)"
           if [ "$semver" != "$props" ]; then
             echo "::error::Tag ${GITHUB_REF_NAME} does not match <Version>${props}</Version> in Directory.Build.props"
@@ -55,15 +65,19 @@ jobs:
             --version="${{ steps.version.outputs.plugin }}" \
             --dotnet-framework=net10.0
 
-      - name: Create GitHub release
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          flags=(--generate-notes --verify-tag --title "Currents ${GITHUB_REF_NAME}")
-          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
-          gh release create "${GITHUB_REF_NAME}" \
-            "artifacts/currents_${{ steps.version.outputs.plugin }}.zip" \
-            "${flags[@]}"
+          zip="artifacts/currents_${{ steps.version.outputs.plugin }}.zip"
+          if gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} exists (re-run); replacing its asset"
+            gh release upload "${GITHUB_REF_NAME}" "$zip" --clobber
+          else
+            flags=(--generate-notes --verify-tag --title "Currents ${GITHUB_REF_NAME}")
+            if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "${GITHUB_REF_NAME}" "$zip" "${flags[@]}"
+          fi
 
       - name: Publish to plugin repository (gh-pages)
         run: |
@@ -83,5 +97,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add manifest.json .nojekyll
+          if git diff --cached --quiet; then
+            echo "Manifest already up to date"
+            exit 0
+          fi
           git commit -m "chore: publish Currents ${{ steps.version.outputs.plugin }}"
-          git push origin gh-pages
+          for _ in 1 2 3; do
+            if git push origin gh-pages; then exit 0; fi
+            sleep 5
+            git pull --rebase origin gh-pages
+          done
+          echo "::error::Could not push gh-pages after 3 attempts"
+          exit 1
