@@ -50,5 +50,11 @@ public sealed class MetaCache
             _logger.LogWarning(ex, "Could not load AIOMetadata meta for {Type} {Id}", type, id);
             return null;
         }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // An HttpClient/per-attempt timeout, not a caller cancellation: record a provider miss.
+            _logger.LogWarning(ex, "Timed out loading AIOMetadata meta for {Type} {Id}", type, id);
+            return null;
+        }
     }
 }

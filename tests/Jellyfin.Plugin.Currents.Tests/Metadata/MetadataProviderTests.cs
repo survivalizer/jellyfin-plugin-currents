@@ -73,4 +73,24 @@ public class MetadataProviderTests
 
         Assert.Single(_client.MetaRequests);
     }
+
+    [Fact]
+    public async Task Meta_cache_treats_timeouts_as_a_miss()
+    {
+        _client.TimingOutMetas.Add("movie/tt1");
+
+        var meta = await Cache().GetAsync("movie", "tt1", CancellationToken.None);
+
+        Assert.Null(meta);
+    }
+
+    [Fact]
+    public async Task Meta_cache_propagates_caller_cancellation()
+    {
+        _client.TimingOutMetas.Add("movie/tt1");
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Cache().GetAsync("movie", "tt1", cts.Token));
+    }
 }
