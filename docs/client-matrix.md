@@ -33,7 +33,7 @@ shows an AIOMetadata card with a poster, and opening it adds the title and shows
 
 | Client | Version | Search shows AIOMetadata titles / opening adds the title | Notes |
 |---|---|---|---|
-| Jellyfin Web | 12.1 (Chromium) | to be filled by the M3 end-to-end check | `docs/spikes/2026-10-m3-e2e.md` |
+| Jellyfin Web | 12.1 (Chromium) | works with caveats | M3 end-to-end (2026-10-02, `docs/spikes/2026-10-m3-e2e.md`): AIOMetadata cards with proxied posters in the Movies and Shows rows about 3.8 s after typing (cold); opening a movie card showed the real item in 5.0 s, a series in 34.7 s with all seasons and episodes; both played with the user's versions; reload, restart and catalog sync kept the same items. Caveat: series cards are also listed a second time under "Videos". |
 | Android TV | | untested (M6) | |
 | Swiftfin | | untested (M6) | |
 | Findroid | | untested (M6) | |
