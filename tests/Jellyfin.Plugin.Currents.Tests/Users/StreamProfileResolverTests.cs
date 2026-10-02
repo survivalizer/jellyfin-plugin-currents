@@ -23,6 +23,8 @@ public sealed class StreamProfileResolverTests : IDisposable
 
     private StreamProfile For(Guid? user) => new StreamProfileResolver(_users, _settings).For(user);
 
+    private StreamProfileResolver Resolver() => new(_users, _settings);
+
     public void Dispose()
     {
         if (Directory.Exists(_settings.DataFolderPath))
@@ -140,5 +142,59 @@ public sealed class StreamProfileResolverTests : IDisposable
         Assert.Equal(ProfileSource.Default, alice.Source);
         Assert.Equal(new[] { "720p" }, bob.Preferences.ResolutionOrder);
         Assert.False(bob.AutoSelect);
+    }
+
+    [Fact]
+    public void Search_auto_add_follows_the_default_when_nothing_is_set()
+    {
+        Assert.True(Resolver().SearchAutoAdd(Alice));
+        _settings.Current.DefaultSearchAutoAdd = false;
+        Assert.False(Resolver().SearchAutoAdd(Alice));
+    }
+
+    [Fact]
+    public void Search_auto_add_self_service_beats_admin_layer_and_default()
+    {
+        _settings.Current.DefaultSearchAutoAdd = false;
+        _users.Update(Alice, r =>
+        {
+            r.Admin.SearchAutoAdd = false;
+            r.Self.SearchAutoAdd = true;
+        });
+
+        Assert.True(Resolver().SearchAutoAdd(Alice));
+    }
+
+    [Fact]
+    public void Search_auto_add_ignores_self_service_when_locked_or_not_allowed()
+    {
+        _users.Update(Alice, r => r.Self.SearchAutoAdd = false);
+        Assert.False(Resolver().SearchAutoAdd(Alice));
+
+        _settings.Current.AllowSelfService = false;
+        Assert.True(Resolver().SearchAutoAdd(Alice));
+
+        _settings.Current.AllowSelfService = true;
+        _users.Update(Alice, r => r.LockSelfService = true);
+        Assert.True(Resolver().SearchAutoAdd(Alice));
+    }
+
+    [Fact]
+    public void Search_auto_add_is_off_when_the_admin_disabled_it_or_search_is_off()
+    {
+        _users.Update(Alice, r => r.Self.SearchAutoAdd = true);
+
+        _settings.Current.EnableSearch = false;
+        Assert.False(Resolver().SearchAutoAdd(Alice));
+
+        _settings.Current.EnableSearch = true;
+        _users.Update(Alice, r => r.SearchAutoAddDisabled = true);
+        Assert.False(Resolver().SearchAutoAdd(Alice));
+    }
+
+    [Fact]
+    public void Search_auto_add_is_off_for_no_user()
+    {
+        Assert.False(Resolver().SearchAutoAdd(Guid.Empty));
     }
 }

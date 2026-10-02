@@ -60,4 +60,25 @@ public sealed class StreamProfileResolver
 
         return new StreamProfile(ProfileSource.None, null, preferences, autoSelect, Disabled: false);
     }
+
+    /// <summary>Gets whether this user sees AIOMetadata search results and may add them (spec §4.2, §6).</summary>
+    /// <param name="userId">The Jellyfin user.</param>
+    /// <returns>True when search auto-add is on for the user.</returns>
+    public bool SearchAutoAdd(Guid userId)
+    {
+        var config = _settings.Current;
+        if (!config.EnableSearch || userId == Guid.Empty)
+        {
+            return false;
+        }
+
+        var record = _users.Get(userId);
+        if (record.SearchAutoAddDisabled)
+        {
+            return false;
+        }
+
+        var self = config.AllowSelfService && !record.LockSelfService ? record.Self.SearchAutoAdd : null;
+        return self ?? record.Admin.SearchAutoAdd ?? config.DefaultSearchAutoAdd;
+    }
 }

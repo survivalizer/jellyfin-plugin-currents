@@ -47,4 +47,20 @@ public class PluginConfiguration : BasePluginConfiguration
     public int AioStreamsPermitsPer10Seconds { get; set; } = 5;
 
     public int AioMetadataPermitsPer5Seconds { get; set; } = 15;
+
+    /// <summary>Gets or sets a value indicating whether Jellyfin search also lists AIOMetadata titles that are not in the library yet.</summary>
+    public bool EnableSearch { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether users who have not chosen see (and can add) search results by default.</summary>
+    public bool DefaultSearchAutoAdd { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the AIOMetadata search catalogs to query. An array (not a list) so Jellyfin's XML deserializer
+    /// replaces the defaults instead of appending to them.
+    /// </summary>
+    public CatalogSelection[] SearchCatalogs { get; set; } =
+    [
+        new CatalogSelection { Type = "movie", Id = "search.movie", Name = "Movies", Target = CatalogTarget.Movies, MaxItems = 20 },
+        new CatalogSelection { Type = "series", Id = "search.series", Name = "Series", Target = CatalogTarget.Shows, MaxItems = 20 },
+    ];
 }

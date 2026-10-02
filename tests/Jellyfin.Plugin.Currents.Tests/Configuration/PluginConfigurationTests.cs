@@ -61,4 +61,31 @@ public class PluginConfigurationTests
         Assert.Equal(HdrPreference.Avoid, read.DefaultPreferences.Hdr);
         Assert.Equal(new[] { "English" }, read.DefaultPreferences.AudioLanguages);
     }
+
+    [Fact]
+    public void Search_defaults()
+    {
+        var config = new PluginConfiguration();
+
+        Assert.True(config.EnableSearch);
+        Assert.True(config.DefaultSearchAutoAdd);
+        Assert.Collection(
+            config.SearchCatalogs,
+            c => Assert.Equal(("movie/search.movie", CatalogTarget.Movies, 20, true), (c.Key, c.Target, c.MaxItems, c.Enabled)),
+            c => Assert.Equal(("series/search.series", CatalogTarget.Shows, 20, true), (c.Key, c.Target, c.MaxItems, c.Enabled)));
+    }
+
+    [Fact]
+    public void Saved_search_catalogs_replace_the_defaults_rather_than_adding_to_them()
+    {
+        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(PluginConfiguration));
+        var saved = new PluginConfiguration { SearchCatalogs = [new CatalogSelection { Type = "anime.series", Id = "search.anime_series", Target = CatalogTarget.Shows }] };
+        using var writer = new StringWriter();
+        serializer.Serialize(writer, saved);
+
+        using var reader = new StringReader(writer.ToString());
+        var loaded = (PluginConfiguration)serializer.Deserialize(reader)!;
+
+        Assert.Equal("anime.series/search.anime_series", Assert.Single(loaded.SearchCatalogs).Key);
+    }
 }
