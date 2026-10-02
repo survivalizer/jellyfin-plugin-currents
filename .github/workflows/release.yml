@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Resolve version from tag
+        id: version
+        run: |
+          semver="${GITHUB_REF_NAME#v}"
+          props="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -n 1)"
+          if [ "$semver" != "$props" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match <Version>${props}</Version> in Directory.Build.props"
+            exit 1
+          fi
+          echo "plugin=${semver}.0" >> "$GITHUB_OUTPUT"
+          case "$semver" in
+            0.*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Test
+        run: dotnet test -c Release --filter "Category!=Integration"
+
+      - name: Install jprm
+        run: pip install jprm==1.1.0
+
+      - name: Build plugin zip
+        run: |
+          mkdir -p artifacts
+          jprm --verbosity=info plugin build . \
+            --output=artifacts \
+            --version="${{ steps.version.outputs.plugin }}" \
+            --dotnet-framework=net10.0
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--generate-notes --verify-tag --title "Currents ${GITHUB_REF_NAME}")
+          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "${GITHUB_REF_NAME}" \
+            "artifacts/currents_${{ steps.version.outputs.plugin }}.zip" \
+            "${flags[@]}"
+
+      - name: Publish to plugin repository (gh-pages)
+        run: |
+          zip="artifacts/currents_${{ steps.version.outputs.plugin }}.zip"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/currents_${{ steps.version.outputs.plugin }}.zip"
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null; then
+            git fetch --depth=1 origin gh-pages
+            git worktree add pages FETCH_HEAD
+            git -C pages switch -c gh-pages
+          else
+            git worktree add --orphan -b gh-pages pages
+          fi
+          if [ ! -f pages/manifest.json ]; then jprm repo init pages; fi
+          jprm repo add --plugin-url "$url" pages "$zip"
+          touch pages/.nojekyll
+          cd pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json .nojekyll
+          git commit -m "chore: publish Currents ${{ steps.version.outputs.plugin }}"
+          git push origin gh-pages

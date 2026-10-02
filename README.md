@@ -6,12 +6,14 @@ into your library as real titles and plays them through [AIOStreams](https://git
 > Status: early development. See `docs/superpowers/specs/2026-10-01-currents-design.md` for the design.
 
 ## Requirements
-- Jellyfin 12.1 or newer (built against 12.1.0)
+- Jellyfin 12.0 or newer (built and tested against 12.1; 12.0 is untested)
 - A self-hosted (or hosted) AIOStreams instance with a debrid service configured
 - An AIOMetadata instance and a saved configuration
 
 ## Setup (M1)
-1. Install the plugin (release repository URL coming in a later release; for now build with `dev/deploy-plugin.sh`).
+1. Install the plugin: Dashboard -> Plugins -> Repositories -> **+**, name it `Currents`, URL
+   `https://survivalizer.github.io/jellyfin-plugin-currents/manifest.json`. Then Dashboard -> Plugins -> Catalog ->
+   **Currents** -> Install, and restart Jellyfin. (Developers can also build with `dev/deploy-plugin.sh`.)
 2. Dashboard -> Plugins -> Currents:
    - paste your AIOMetadata manifest URL, click **Load catalogs**, tick catalogs, choose Movies/Shows;
    - paste your AIOStreams manifest URL and click **Test connection**;

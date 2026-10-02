@@ -12,4 +12,6 @@ category: "General"
 artifacts:
   - "Jellyfin.Plugin.Currents.dll"
 changelog: >
-  Development build.
+  First preview (M1). Syncs AIOMetadata catalogs into Jellyfin libraries as .strm/.nfo
+  titles and plays them through AIOStreams using the admin's default config.
+  Per-user versions arrive in a later release.

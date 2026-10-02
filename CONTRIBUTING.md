@@ -15,3 +15,13 @@
 ## Running
     dotnet test --filter "Category!=Integration"
     dev/deploy-plugin.sh
+
+## Releasing
+1. Set the new version in `Directory.Build.props` (`<Version>`, `<AssemblyVersion>`, `<FileVersion>`) and
+   `build.yaml` (`version`), and write the release notes in `build.yaml` `changelog`. Commit to `main`.
+2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0` (the tag must equal `<Version>`).
+3. `.github/workflows/release.yml` runs the tests, builds `currents_<version>.0.zip` with
+   [jprm](https://github.com/oddstr13/jellyfin-plugin-repository-manager), creates the GitHub Release
+   (`0.x` versions are marked pre-release) and adds the version to `manifest.json` on the `gh-pages` branch.
+4. Jellyfin servers that added `https://survivalizer.github.io/jellyfin-plugin-currents/manifest.json` as a
+   plugin repository see the update in the plugin catalog.
