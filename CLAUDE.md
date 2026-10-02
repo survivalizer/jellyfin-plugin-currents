@@ -17,9 +17,9 @@ Jellyfin 12 plugin (C#, net10.0) bringing AIOMetadata catalogs and AIOStreams pl
 ## Rules
 - Only `src/Jellyfin.Plugin.Currents/Integration/` may touch Jellyfin internals (decorators, filters, library queries).
 - Never log credentials; pass every URL through `SecretMasker.Mask`.
-- File writes are atomic (tmp + move) and idempotent. Managed title folders carry a `.currents` marker; never touch folders without it.
+- File writes are atomic (tmp + move) and idempotent. Managed title folders carry a `.currents` marker. An unmarked existing folder may only be adopted when it holds nothing but plugin-owned files (`*.strm`, `movie.nfo`, `tvshow.nfo`, `Season NN`/`Specials` with only `*.strm`); otherwise refuse to write. Deleting never touches unmarked folders, removes only plugin files, and removes the marker last, only when the folder is otherwise empty.
 - Manifest URLs go in request bodies, not query strings.
-- `StrmBaseUrl` must be reachable by clients in M1 (see `docs/architecture.md`).
+- `StrmBaseUrl` must be reachable by clients and by Jellyfin itself in M1, including Jellyfin's base URL path if set (see `docs/architecture.md`).
 - Test first; unit tests use fakes in `tests/.../TestSupport`, never a live Jellyfin.
 - Do not use the maintainer's personal Jellyfin; use the `dev/` stack.
 - Conventional Commits.
