@@ -111,6 +111,11 @@ loopback/local address and looks like the server itself. The local-only check is
 reach clients (paths are redacted), so this matters only if one leaks (for example from a log the masker missed).
 Fix: add the proxy's address to Dashboard -> Networking -> Known proxies.
 
+Related: Jellyfin's own `TranscodeManager` logs the full ffmpeg command line, so version tokens (like `.strm`
+signatures in degraded mode) appear unmasked in the Jellyfin log; `SecretMasker` covers only Currents' own log lines.
+The log is admin-only, and a token works only from the server itself and for `VersionTokenHours`, but with the proxy
+misconfiguration above a leaked log line is replayable from outside until it expires.
+
 ## Admin API
 `Web/AdminController` (admin only), used by the configuration page:
 - `POST /Currents/admin/catalogs` with JSON body `{"ManifestUrl": "..."}` lists AIOMetadata catalogs.

@@ -20,7 +20,7 @@ dropdown lists the user's streams. "Switch works": picking another version keeps
 
 | Client | Version | Versions shown | Switch works | Plays | Resume | Notes |
 |---|---|---|---|---|---|---|
-| Jellyfin Web | 12.1 (Chromium) | to test | to test | to test | to test | |
+| Jellyfin Web | 12.1 (Chromium) | works | works | works | works | M2 end-to-end (2026-10-02, `docs/spikes/2026-10-m2-e2e.md`): 20 versions on a movie, 18 on an episode; switching to the second version kept the selection with no 404; 4K HEVC DV played as HLS (video stream-copied, audio transcoded), first frame about 9 s (movie, incl. a 3.3 s probe) and 6 s (episode); Resume offered at the stop position (Jellyfin only saves a position after 5 % of the runtime). Non-fatal hls.js buffer warnings in the console. |
 | Android TV | | to test | to test | to test | to test | needs the maintainer's device |
 | Swiftfin | | to test | to test | to test | to test | needs the maintainer's device |
 | Findroid | | to test | to test | to test | to test | needs the maintainer's device |
