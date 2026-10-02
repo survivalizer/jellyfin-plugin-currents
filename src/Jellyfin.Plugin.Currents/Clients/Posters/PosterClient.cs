@@ -13,17 +13,19 @@ public sealed class PosterClient : IPosterClient
     private readonly IHttpClientFactory _factory;
     private readonly ILogger<PosterClient> _logger;
     private readonly int _maxBytes;
+    private readonly TimeSpan _timeout;
 
     public PosterClient(IHttpClientFactory factory, ILogger<PosterClient> logger)
         : this(factory, logger, MaxBytes)
     {
     }
 
-    internal PosterClient(IHttpClientFactory factory, ILogger<PosterClient> logger, int maxBytes)
+    internal PosterClient(IHttpClientFactory factory, ILogger<PosterClient> logger, int maxBytes, TimeSpan? timeout = null)
     {
         _factory = factory;
         _logger = logger;
         _maxBytes = maxBytes;
+        _timeout = timeout ?? TimeSpan.FromSeconds(10);
     }
 
     public async Task<PosterImage?> GetAsync(Uri uri, CancellationToken cancellationToken)
@@ -33,10 +35,13 @@ public sealed class PosterClient : IPosterClient
             return null;
         }
 
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_timeout);
+        var token = timeout.Token;
         try
         {
             var client = _factory.CreateClient(HttpClientNames.Posters);
-            using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
             var type = response.Content.Headers.ContentType?.MediaType;
             if (!response.IsSuccessStatusCode || type is null || !Allowed.Contains(type) || response.Content.Headers.ContentLength > _maxBytes)
             {
@@ -44,13 +49,13 @@ public sealed class PosterClient : IPosterClient
                 return null;
             }
 
-            var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
             await using (stream.ConfigureAwait(false))
             {
                 using var buffer = new MemoryStream();
                 var chunk = new byte[81920];
                 int read;
-                while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+                while ((read = await stream.ReadAsync(chunk, token).ConfigureAwait(false)) > 0)
                 {
                     if (buffer.Length + read > _maxBytes)
                     {
@@ -58,13 +63,13 @@ public sealed class PosterClient : IPosterClient
                         return null;
                     }
 
-                    await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                    await buffer.WriteAsync(chunk.AsMemory(0, read), token).ConfigureAwait(false);
                 }
 
                 return new PosterImage(buffer.ToArray(), type);
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        catch (Exception ex) when (ex is HttpRequestException or IOException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             _logger.LogInformation("Could not fetch a poster from {Host}: {Error}", uri.Host, ex.GetType().Name);
             return null;
