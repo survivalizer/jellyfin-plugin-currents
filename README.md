@@ -24,6 +24,28 @@ into your library as real titles and plays them through [AIOStreams](https://git
 3. Add the two folders shown on the settings page as a Movies library and a Shows library.
    In each library's settings enable the **Currents (AIOMetadata)** metadata and image fetchers and the NFO reader.
 
+## Search
+Search in Jellyfin also shows matching titles from AIOMetadata that are not in your library yet, in the Movies and
+Shows results with a poster. Opening one adds it to the Currents Movies/Shows folder and shows the real item,
+ready to play with your versions; a series gets its seasons and episodes within a minute. Titles you open from search
+are kept: they are never pruned, and a series receives new episodes on each catalog sync. If a title is already in
+your library (a Currents title or your own file with the same IMDb, TMDB or TVDB id), opening it shows that item
+instead of adding a copy. Posters are fetched by the server; poster URLs never reach clients.
+
+Settings (Dashboard -> Plugins -> Currents):
+- **Show AIOMetadata titles in Jellyfin search** (`EnableSearch`, default on) and **default for users**
+  (`DefaultSearchAutoAdd`, default on).
+- **Search catalogs**: **Load search catalogs** lists your AIOMetadata search catalogs (`search.movie`,
+  `search.series`, anime variants); the movie and series ones are ticked by default.
+- Per user: **Search add off** (admin) turns it off for one account.
+
+Each user has one switch on `/Currents/user` (when self-service is allowed and the user is not locked). The
+admin's per-user off wins over the user's choice, which wins over the default. A user with it off sees no
+AIOMetadata results and cannot add titles.
+
+The Currents Movies and Shows folders must be in Movies/Shows libraries the user can see. Search covers the main
+`GET /Items` search used by Jellyfin Web, Android TV, Swiftfin and Findroid, not the legacy `/Search/Hints`.
+
 ## Versions: every stream in the Version menu
 Opening a Currents title searches AIOStreams with **that user's** config and lists every stream as an entry in
 Jellyfin's native **Version** dropdown, named like `2160p DV · Atmos · 18.4 GB · cached` and ranked by the user's

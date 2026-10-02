@@ -1,6 +1,6 @@
 name: "Currents"
 guid: "483F31F4-DB4A-4900-A3B5-EE0FBA5084AC"
-version: "0.2.0.0"
+version: "0.3.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 owner: "survivalizer"
@@ -11,4 +11,4 @@ description: >
 category: "General"
 artifacts:
   - "Jellyfin.Plugin.Currents.dll"
-changelog: "Per-user versions: every AIOStreams stream appears in Jellyfin's Version menu, ranked by each user's preferences. Self-service page at /Currents/user; admin per-user overrides."
+changelog: "Search auto-add: Jellyfin search also lists AIOMetadata titles that are not in the library yet, and opening one adds it and shows the real item. Per-user search switch (admin off, self-service, default). Search-added series get new episodes on catalog sync. AIOMetadata responses are now size-capped."

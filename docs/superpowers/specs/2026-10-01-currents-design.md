@@ -97,6 +97,15 @@ docs/                                  architecture, configuration, ADRs, client
 3. Mechanism: MVC action filters on the search and item endpoints (Jellyfin 12 `ISearchProvider` cannot return items that are not yet in the library — M0 S2).
 4. Per-user toggle; admin can disable per user.
 
+> **M3 amendment (2026-10-02).**
+> - **Search ids.** A remote result carries a search id, not a library id, because the web client caches search results for 24 h and reuses `#/details?id=X` on reload. Search ids are GUIDs derived from the title's state id, so a materialized title is found again from `state.json` after a restart. Opening one returns the real item, and the client uses the real `Id` from then on. A search id for a title that was never opened, cached in a browser across a server restart, stops resolving and gets Jellyfin's 404; the user searches again.
+> - **Direct creation.** Titles are created directly, not by a scan (a scan or file-change event takes 60 s or more and reprocesses the whole library). Opening a result resolves only the new title folder (`ResolvePath` + `CreateItem`) and refreshes only that item (a series: its own seasons and episodes). The realtime library monitor is paused on the kind's Currents root (Movies/ or Shows/) from before the title's files are written until its Jellyfin item exists; Jellyfin un-ignores it 45 s after resume.
+> - **Existing items win.** A result whose IMDb, TMDB or TVDB id matches any library item the user can see, a Currents title or the user's own file, opens that item instead of adding a copy.
+> - **Posters are proxied.** AIOMetadata poster URLs can embed the user's RPDB key, so the server fetches the poster (raster images only, 10 MB, 10 s for the whole request including the body) and never sends its URL to clients. A network error mid-body gives a 404.
+> - **Scope of the search filter.** It covers `GET /Items` with `searchTerm`, which is what jellyfin-web 12.1, Android TV, Swiftfin and Findroid use. `/Search/Hints` (legacy clients) is left for the M6 client matrix. Local results are returned immediately when the local page already fills `limit`, and any remote search failure degrades to local-only results.
+> - **One switch.** The per-user toggle is one switch. The global `EnableSearch` must be on; the admin's per-user "search add off" flag wins over the user's own choice; the user's self-service choice (when self-service is allowed and the user is not locked) comes next; `DefaultSearchAutoAdd` is the fallback. A user with the switch off sees no remote results and cannot add titles. The self-service page sends the switch only when the user changed it.
+> - **Afterwards.** Search-added series get new episodes on each catalog sync; search-added titles are never pruned.
+
 ### 4.3 Playback
 1. **Item detail**: the decorated `IMediaSourceManager.GetStaticMediaSources` detects Currents items (path under a plugin root), resolves the requesting user from `IHttpContextAccessor`, and calls `IStreamService.GetStreams(user, item)` — cached per (user, title) for `StreamCacheTtl` (default 1h), single-flight to absorb duplicate web-client calls.
 2. **Mapping** each ranked stream to `MediaSourceInfo`:
@@ -230,6 +239,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 | Clients render versions differently | Auto-select mode; client matrix; document per-client behavior |
 | AIOStreams rate limits with many users | Global throttle, per-user cache, docs for self-hosted limit tuning |
 | Search auto-add clutter | `addedBySearch` tag, per-user toggle, purge-by-tag |
+| Search-added titles created outside a scan are removed by a concurrent folder scan | created directly (ResolvePath + CreateItem), re-added once if a scan removed them, and found again by path or `Currents` id |
 | Segment data unavailable | IntroDB/AniSkip (optional PublicMetaDB) queried directly (M0 S3); feature degrades to no markers when a title has none |
 
 ## 12. Out of scope (v1)

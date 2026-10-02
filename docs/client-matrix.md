@@ -25,3 +25,18 @@ dropdown lists the user's streams. "Switch works": picking another version keeps
 | Swiftfin | | to test | to test | to test | to test | needs the maintainer's device |
 | Findroid | | to test | to test | to test | to test | needs the maintainer's device |
 | Infuse | | to test | to test | to test | to test | needs the maintainer's device |
+
+## M3: search auto-add
+
+"Search shows AIOMetadata titles / opening adds the title": a search for a title that is in no synced catalog
+shows an AIOMetadata card with a poster, and opening it adds the title and shows the real item.
+
+| Client | Version | Search shows AIOMetadata titles / opening adds the title | Notes |
+|---|---|---|---|
+| Jellyfin Web | 12.1 (Chromium) | to be filled by the M3 end-to-end check | `docs/spikes/2026-10-m3-e2e.md` |
+| Android TV | | untested (M6) | |
+| Swiftfin | | untested (M6) | |
+| Findroid | | untested (M6) | |
+| Infuse | | untested (M6) | |
+| Streamyfin | | untested (M6) | |
+| External player (VLC/MX) | | untested (M6) | |

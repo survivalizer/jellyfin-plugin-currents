@@ -135,6 +135,61 @@ degraded mode) appear unmasked in the Jellyfin logs; `SecretMasker` covers only 
 The log is admin-only, and a token works only from the server itself and for `VersionTokenHours`, but with the proxy
 misconfiguration above a leaked log line is replayable from outside until it expires.
 
+## Search auto-add (M3)
+
+### Modules
+- `Library/TitleLibrary`: the one locked state (`state.json` in memory). Catalog sync and search-add both go through
+  it, so neither loses the other's entry. `AddFromSearch` writes a title through the M1 `LibraryWriter` and marks it
+  `AddedBySearch`. State is kept in memory between runs; a cancelled or failed sync's unsaved changes are saved by the
+  next writer. Search ids (`Library/SearchItemId`) are GUIDs derived from the state id (`movie/tt123`), so they are
+  stable and recomputable after a restart. `Library/ILibraryItems` is what `Search/` needs from Jellyfin (`FindTitle`,
+  `FindExisting`, `CanAdd`, `AddAsync`, `KindsIn`, `PauseMonitoring`), implemented in `Integration/`.
+- `Search/`:
+  - `RemoteSearch` queries the enabled AIOMetadata search catalogs (`search.movie`, `search.series`, anime variants)
+    and drops error items and unusable ids; one failing catalog does not hide the others, and failures are cached briefly.
+  - `SearchResultRegistry` remembers current results by search id. `SearchDtoFactory` builds the card DTOs (`Virtual`
+    location, a `Primary` image tag, the server's `SystemId`).
+  - `SearchTitleOpener` opens a result, single-flight per title (the details page and the theme-media player ask at
+    the same time): an existing Currents title or any library item the user can see with the same IMDb/TMDB/TVDB id
+    wins; otherwise it fetches the full meta, writes the files, and creates the Jellyfin item. `OpenOutcome` says which.
+- `Integration/`:
+  - `SearchResultsFilter` (MVC order -998) wraps `GET /Items` with `searchTerm`. It starts the remote search before
+    the action runs, waits at most 3 s after it, and appends cards the local results do not contain. It returns the
+    local results at once when the local page already fills `limit`, and on any remote failure.
+  - `SearchItemFilter` (order -1001, ahead of `SyntheticVersionIdFilter`) sees a search id in an `itemId` argument,
+    opens the title and rewrites the argument to the real id. Image requests for a search id get the proxied poster
+    until the title exists. Anonymous image requests never add a title.
+  - `JellyfinLibraryItems` implements `ILibraryItems`. A title is created with `ILibraryManager.ResolvePath` +
+    `CreateItem` on the Currents folder, then refreshed (movie: its own refresh; series: `RefreshFullItem`, which
+    creates seasons and episodes) with a timeout, falling back to a queued refresh. The realtime library monitor is
+    paused on the kind's Currents root from before the files are written until the item exists; Jellyfin un-ignores
+    it 45 s after resume.
+- `Clients/Posters/PosterClient`: fetches a search card's poster. Raster images only, at most 10 MB, 10 s for the
+  whole request including the body, logs only the host. A network error mid-body gives a 404. Poster URLs can embed
+  the user's RPDB key, so they never reach clients.
+
+Series added by search get new episodes on every catalog sync. Search-added titles are never pruned.
+
+### Request walkthrough (web client)
+1. **Search**: `GET /Items?searchTerm=T&includeItemTypes=...&limit=800&userId=U` (after jellyfin-web's 500 ms
+   debounce; it never calls `/Search/Hints`). `SearchResultsFilter` checks the user's search switch, starts the remote
+   search, lets Jellyfin answer, then appends cards for results not already present.
+2. **Card poster**: `GET /Items/{searchId}/Images/Primary`. `SearchItemFilter` answers with the proxied poster
+   (`image/jpeg`, png or webp); the poster URL is never in any response.
+3. **Open**: the user clicks the card; `GET /Users/{U}/Items/{searchId}` (and `GET /Items/{searchId}?userId=U` from
+   the theme-media player). `SearchItemFilter` calls `SearchTitleOpener`, which adds the title once (concurrent opens
+   share one result), then rewrites the id. The returned DTO's `Id` is the real item.
+4. **Details page**: every later call (images, seasons, similar items) uses the real `Id`. Reloading the page with the
+   search id in the URL resolves from `state.json` to the same item.
+5. **Play**: the item is an ordinary Currents title, so the M2 version pipeline applies: the user's versions appear
+   in the dropdown and playback goes through Jellyfin.
+
+### Known limitations
+- A search id for a title that was never opened, cached in a browser across a server restart, gets a 404 until the
+  user searches again (the id is only recomputable once the title is in `state.json`).
+- `/Search/Hints` is not covered; legacy clients that use it see no AIOMetadata results (M6 client matrix).
+- The Currents folders must be in Movies/Shows libraries the user can see; otherwise nothing can be added for them.
+
 ## Admin API
 `Web/AdminController` (admin only), used by the configuration page:
 - `POST /Currents/admin/catalogs` with JSON body `{"ManifestUrl": "..."}` lists AIOMetadata catalogs.
@@ -167,5 +222,6 @@ and ffmpeg uses the internal loopback URL instead.
 - Secrets never reach logs (`Common/SecretMasker`).
 
 ## Planned (later milestones)
-M3 search auto-add (MVC filters), M4 media info (RemuxDB, persisted probes), proxying header-bound streams,
-subtitles and trailers, M5 segments/collections/maintenance/compat guard/diagnostics, M6 releases.
+M4 media info (RemuxDB, persisted probes), proxying header-bound streams, subtitles and trailers, M5
+segments/collections/maintenance/compat guard/diagnostics (including "Purge Currents content"), M6 releases, the
+`/Search/Hints` decision and the `targetAbi` decision.
