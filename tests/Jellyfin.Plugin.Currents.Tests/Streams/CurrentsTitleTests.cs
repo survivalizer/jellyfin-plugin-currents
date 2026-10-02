@@ -7,7 +7,10 @@ public class CurrentsTitleTests
 {
     [Theory]
     [InlineData("series", "tt0944947:1:2", "tt0944947")]
-    [InlineData("series", "kitsu:12:1:5", "kitsu:12")]
+    [InlineData("series", "kitsu:1376:5", "kitsu:1376")]
+    [InlineData("series", "mal:20:3", "mal:20")]
+    [InlineData("series", "kitsu:1376", "kitsu:1376")]
+    [InlineData("series", "tvdb:121361:1:2", "tvdb:121361")]
     [InlineData("series", "tt0944947", "tt0944947")]
     [InlineData("movie", "tt0111161", "tt0111161")]
     [InlineData("series", "tmdb:1399:0:3", "tmdb:1399")]

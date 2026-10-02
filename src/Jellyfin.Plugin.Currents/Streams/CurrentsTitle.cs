@@ -1,4 +1,5 @@
-using System.Globalization;
+using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
+using Jellyfin.Plugin.Currents.Library;
 
 namespace Jellyfin.Plugin.Currents.Streams;
 
@@ -18,11 +19,21 @@ public sealed record CurrentsTitle(string Type, string StremioId)
             }
 
             var parts = StremioId.Split(':');
-            return parts.Length >= 3
-                && int.TryParse(parts[^1], NumberStyles.None, CultureInfo.InvariantCulture, out _)
-                && int.TryParse(parts[^2], NumberStyles.None, CultureInfo.InvariantCulture, out _)
-                    ? string.Join(':', parts[..^2])
-                    : StremioId;
+            foreach (var drop in new[] { 2, 1 })
+            {
+                if (parts.Length <= drop || !parts[^drop..].All(p => p.Length > 0 && p.All(char.IsAsciiDigit)))
+                {
+                    continue;
+                }
+
+                var rest = string.Join(':', parts[..^drop]);
+                if (TitleKey.TryParse(MediaKind.Series, rest, out var key) && key.IsSeasonAware == (drop == 2))
+                {
+                    return rest;
+                }
+            }
+
+            return StremioId;
         }
     }
 }

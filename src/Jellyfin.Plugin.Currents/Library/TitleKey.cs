@@ -10,6 +10,9 @@ public sealed record TitleKey(MediaKind Kind, string Provider, string Value)
     private static readonly string[] PrefixedProviders = ["tmdb", "tvdb", "kitsu", "mal", "anilist", "anidb"];
     private static readonly string[] SeasonAwareProviders = ["imdb", "tmdb", "tvdb"];
 
+    /// <summary>Gets a value indicating whether episode ids carry a season ("{id}:{season}:{episode}").</summary>
+    public bool IsSeasonAware => SeasonAwareProviders.Contains(Provider, StringComparer.Ordinal);
+
     public string StremioId => Provider == "imdb" ? Value : $"{Provider}:{Value}";
 
     public string StremioType => Kind == MediaKind.Movie ? "movie" : "series";
@@ -67,7 +70,7 @@ public sealed record TitleKey(MediaKind Kind, string Provider, string Value)
 
     /// <summary>Episode id in the convention stream addons expect: "{id}:{season}:{episode}", or "{id}:{episode}" for anime providers.</summary>
     public string EpisodeId(int season, int episode) =>
-        SeasonAwareProviders.Contains(Provider, StringComparer.Ordinal)
+        IsSeasonAware
             ? string.Create(CultureInfo.InvariantCulture, $"{StremioId}:{season}:{episode}")
             : string.Create(CultureInfo.InvariantCulture, $"{StremioId}:{episode}");
 
