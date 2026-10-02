@@ -4,6 +4,7 @@ using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
+using Jellyfin.Plugin.Currents.Metadata;
 using Jellyfin.Plugin.Currents.Streams;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
@@ -37,6 +38,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IPlayedLookup, JellyfinPlayedLookup>();
         serviceCollection.AddSingleton<CatalogSyncService>();
         serviceCollection.AddSingleton<IStreamResolver, StreamResolver>();
+        serviceCollection.AddSingleton<MetaCache>();
     }
 
     private static void AddUpstreamClient(IServiceCollection services, string name)

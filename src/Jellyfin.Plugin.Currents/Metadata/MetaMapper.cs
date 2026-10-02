@@ -1,6 +1,10 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.Providers;
 
 namespace Jellyfin.Plugin.Currents.Metadata;
 
@@ -47,6 +51,56 @@ public static partial class MetaMapper
 
     public static float? ParseRating(string? value) =>
         float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var rating) ? rating : null;
+
+    public static void Apply(StremioMeta meta, BaseItem item)
+    {
+        item.Name = meta.Name;
+        item.Overview = meta.Description;
+        item.ProductionYear = ParseYear(meta);
+        item.PremiereDate = ParseDate(meta.Released);
+        item.Genres = meta.Genres?.ToArray() ?? [];
+        item.CommunityRating = ParseRating(meta.ImdbRating) is { } rating && float.IsFinite(rating) && rating is >= 0 and <= 10 ? rating : null;
+        item.RunTimeTicks = ParseRuntimeTicks(meta.Runtime);
+        if (meta.ImdbId is { Length: > 2 } imdb && imdb.StartsWith("tt", StringComparison.Ordinal))
+        {
+            item.SetProviderId(MetadataProvider.Imdb, imdb);
+        }
+    }
+
+    public static IEnumerable<RemoteImageInfo> Images(StremioMeta meta, string providerName)
+    {
+        if (IsHttpUrl(meta.Poster))
+        {
+            yield return new RemoteImageInfo { ProviderName = providerName, Url = meta.Poster, Type = ImageType.Primary };
+        }
+
+        if (IsHttpUrl(meta.Background))
+        {
+            yield return new RemoteImageInfo { ProviderName = providerName, Url = meta.Background, Type = ImageType.Backdrop };
+        }
+
+        if (IsHttpUrl(meta.Logo))
+        {
+            yield return new RemoteImageInfo { ProviderName = providerName, Url = meta.Logo, Type = ImageType.Logo };
+        }
+    }
+
+    public static StremioVideo? FindEpisode(StremioMeta meta, int? season, int? episode) =>
+        season is null || episode is null
+            ? null
+            : meta.Videos?.Find(v => v.Season == season && v.Episode == episode);
+
+    public static void ApplyEpisode(StremioVideo video, Episode episode)
+    {
+        episode.Name = video.Title ?? video.Name;
+        episode.Overview = video.Overview ?? video.Description;
+        episode.PremiereDate = ParseDate(video.Released);
+        episode.ParentIndexNumber = video.Season;
+        episode.IndexNumber = video.Episode;
+    }
+
+    internal static bool IsHttpUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private static int? FirstYear(string? value)
     {
