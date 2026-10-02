@@ -19,4 +19,41 @@ public class PlaceholderDetectorTests
     {
         Assert.Equal(expected, PlaceholderDetector.IsPlaceholder(new Uri(url), AioBase));
     }
+
+    [Fact]
+    public void Detects_placeholder_behind_proxy_using_requested_uri()
+    {
+        var final = new Uri("https://proxy.example.com/static/some_new_error.mp4");
+        var aio = new Uri("https://aio.internal:3000/");
+        var requested = new Uri("https://proxy.example.com/api/v1/debrid/playback/x/y.mkv");
+
+        Assert.True(PlaceholderDetector.IsPlaceholder(final, aio, requested));
+        Assert.False(PlaceholderDetector.IsPlaceholder(final, aio));
+    }
+
+    [Fact]
+    public void Same_host_different_port_is_not_a_placeholder()
+    {
+        var final = new Uri("https://aio.example.com:8443/static/promo.mp4");
+
+        Assert.False(PlaceholderDetector.IsPlaceholder(final, AioBase));
+    }
+
+    [Theory]
+    [InlineData("https://host.example.com/aio/static/downloading_v2.mp4", true)]
+    [InlineData("https://host.example.com/other/static/x.mp4", false)]
+    public void Anchors_static_path_to_base_path(string url, bool expected)
+    {
+        var aio = new Uri("https://host.example.com/aio/");
+
+        Assert.Equal(expected, PlaceholderDetector.IsPlaceholder(new Uri(url), aio));
+    }
+
+    [Fact]
+    public void Matching_is_case_insensitive()
+    {
+        var final = new Uri("https://aio.example.com/STATIC/DOWNLOADING.MP4");
+
+        Assert.True(PlaceholderDetector.IsPlaceholder(final, AioBase));
+    }
 }
