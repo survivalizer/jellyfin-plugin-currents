@@ -44,7 +44,7 @@ public sealed class AioStreamsClient : IAioStreamsClient
 
         if (envelope?.Success == true && envelope.Data is { } data)
         {
-            var errors = data.Errors.Select(Describe).ToList();
+            var errors = data.Errors.Select(e => SecretMasker.Mask(Describe(e))).ToList();
             if (errors.Count > 0)
             {
                 _logger.LogInformation("AIOStreams reported {Count} addon errors for {Type} {Id}: {Errors}", errors.Count, type, id, errors);
@@ -55,7 +55,7 @@ public sealed class AioStreamsClient : IAioStreamsClient
 
         if (envelope?.Error?.Message is { } message)
         {
-            throw new AioStreamsException($"AIOStreams: {message}");
+            throw new AioStreamsException($"AIOStreams: {SecretMasker.Mask(message)}");
         }
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)

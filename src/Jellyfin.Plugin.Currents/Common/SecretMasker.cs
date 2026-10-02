@@ -17,6 +17,8 @@ public static partial class SecretMasker
         var masked = StremioUuidAndPassword().Replace(value, "/stremio/***/***/");
         masked = StremioUuid().Replace(masked, "/stremio/***/");
         masked = PlaybackToken().Replace(masked, "/api/v1/${kind}/***/");
+        masked = ResolveKey().Replace(masked, "/resolve/${service}/***");
+        masked = PlaybackBlob().Replace(masked, "/playback/***");
         return QuerySecret().Replace(masked, "${key}=***");
     }
 
@@ -29,6 +31,14 @@ public static partial class SecretMasker
 
     [GeneratedRegex(@"/api/v1/(?<kind>debrid/playback|proxy)/[^/?#]+/", RegexOptions.CultureInvariant)]
     private static partial Regex PlaybackToken();
+
+    // Wrapped addons such as Torrentio put the debrid API key after the service: /resolve/realdebrid/{key}/...
+    [GeneratedRegex(@"/resolve/(?<service>[A-Za-z0-9_.-]+)/[^/?#\s]+(?=[/?#\s]|$)", RegexOptions.CultureInvariant)]
+    private static partial Regex ResolveKey();
+
+    // Encoded playback tokens (base64/base64url) that often embed credentials: /playback/{long token}
+    [GeneratedRegex(@"/playback/[A-Za-z0-9_=-]{20,}(?=[/?#\s]|$)", RegexOptions.CultureInvariant)]
+    private static partial Regex PlaybackBlob();
 
     [GeneratedRegex(@"(?<key>sig|token|apikey|api_key|password)=[^&#]+", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex QuerySecret();

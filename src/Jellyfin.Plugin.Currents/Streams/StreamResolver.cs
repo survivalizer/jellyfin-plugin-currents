@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
+using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Common;
 using Microsoft.Extensions.Logging;
@@ -64,19 +65,31 @@ public sealed class StreamResolver : IStreamResolver
             .Take(Math.Max(1, config.FailoverAttempts))
             .ToList();
 
-        foreach (var candidate in candidates)
+        for (var index = 0; index < candidates.Count; index++)
         {
+            // Candidate and final URLs carry debrid keys or tokens: only scheme://host, position and addon are logged.
+            var candidate = candidates[index];
             var requested = new Uri(candidate.Url!);
             var final = await FollowAsync(requested, cancellationToken).ConfigureAwait(false);
             if (final is null)
             {
-                _logger.LogInformation("Stream {Url} for {Id} is unreachable; trying the next one", SecretMasker.Mask(candidate.Url), stremioId);
+                _logger.LogInformation(
+                    "Stream candidate {Index} ({Addon}, {Origin}) for {Id} is unreachable; trying the next one",
+                    index + 1,
+                    AddonName(candidate),
+                    Origin(requested),
+                    stremioId);
                 continue;
             }
 
             if (PlaceholderDetector.IsPlaceholder(final, credentials.BaseUri, requested))
             {
-                _logger.LogInformation("Stream {Url} for {Id} returned a placeholder video; trying the next one", SecretMasker.Mask(candidate.Url), stremioId);
+                _logger.LogInformation(
+                    "Stream candidate {Index} ({Addon}, {Origin}) for {Id} returned a placeholder video; trying the next one",
+                    index + 1,
+                    AddonName(candidate),
+                    Origin(requested),
+                    stremioId);
                 continue;
             }
 
@@ -88,6 +101,11 @@ public sealed class StreamResolver : IStreamResolver
             ? "No streams found for this title."
             : "All streams failed or are not ready yet (still downloading?). Try again shortly.");
     }
+
+    private static string Origin(Uri uri) => $"{uri.Scheme}://{uri.Host}";
+
+    private static string AddonName(StreamResult candidate) =>
+        string.IsNullOrWhiteSpace(candidate.Addon) ? "unknown addon" : candidate.Addon;
 
     private async Task<Uri?> FollowAsync(Uri start, CancellationToken cancellationToken)
     {

@@ -3,6 +3,7 @@ using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -24,8 +25,34 @@ public class StreamResolverTests
         _factory = new FakeHttpClientFactory(_http);
     }
 
-    private StreamResolver Create() =>
-        new(_streams, _factory, _settings, new ManualTimeProvider(DateTimeOffset.UnixEpoch), NullLogger<StreamResolver>.Instance);
+    private StreamResolver Create(ILogger<StreamResolver>? logger = null) =>
+        new(_streams, _factory, _settings, new ManualTimeProvider(DateTimeOffset.UnixEpoch), logger ?? NullLogger<StreamResolver>.Instance);
+
+    [Fact]
+    public async Task Skipped_candidates_are_logged_without_their_url_path()
+    {
+        var dead = FakeAioStreamsClient.Stream("https://torrentio.example.com/resolve/realdebrid/SECRETKEY/abcdef/null/0/Movie.mkv");
+        dead.Addon = "Torrentio";
+        var placeholder = FakeAioStreamsClient.Stream($"{Aio}/api/v1/debrid/playback/ENCRYPTED/x/a.mkv");
+        _streams.Outcome = new SearchOutcome([dead, placeholder, FakeAioStreamsClient.Stream("https://ok.example.com/b.mkv?token=FINALSECRET")], []);
+        _routes[$"{Aio}/api/v1/debrid/playback/ENCRYPTED/x/a.mkv"] = () => StubHttpHandler.Redirect($"{Aio}/static/downloading.mp4", HttpStatusCode.TemporaryRedirect);
+        _routes[$"{Aio}/static/downloading.mp4"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+        _routes["https://ok.example.com/b.mkv?token=FINALSECRET"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+        var logger = new ListLogger<StreamResolver>();
+
+        var result = await Create(logger).ResolveAsync("movie", "tt1", CancellationToken.None);
+
+        Assert.NotNull(result.Url);
+        Assert.Contains(logger.Entries, e => e.Message.Contains("candidate 1 (Torrentio, https://torrentio.example.com)", StringComparison.Ordinal)
+            && e.Message.Contains("unreachable", StringComparison.Ordinal));
+        Assert.Contains(logger.Entries, e => e.Message.Contains($"candidate 2 (unknown addon, {Aio})", StringComparison.Ordinal)
+            && e.Message.Contains("placeholder", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Entries, e => e.Message.Contains("/resolve/realdebrid/SECRETKEY", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Entries, e => e.Message.Contains("SECRETKEY", StringComparison.Ordinal)
+            || e.Message.Contains("ENCRYPTED", StringComparison.Ordinal)
+            || e.Message.Contains("FINALSECRET", StringComparison.Ordinal)
+            || e.Message.Contains("/resolve/", StringComparison.Ordinal));
+    }
 
     [Fact]
     public async Task Skips_placeholder_and_returns_first_working_stream()
