@@ -10,12 +10,18 @@ public sealed class TtlCache<TKey, TValue>
     where TKey : notnull
 {
     private const int TrimThreshold = 5000;
+    private static readonly long TrimIntervalTicks = TimeSpan.FromMinutes(1).Ticks;
     private readonly ConcurrentDictionary<TKey, Entry> _entries = new();
     private readonly TimeProvider _time;
+    private long _nextTrimTicks;
+    private int _trimCount;
 
     public TtlCache(TimeProvider time) => _time = time;
 
     public int Count => _entries.Count;
+
+    /// <summary>Gets how many expiry scans have run (for tests).</summary>
+    internal int TrimCount => Volatile.Read(ref _trimCount);
 
     public bool TryGet(TKey key, [MaybeNullWhen(false)] out TValue value)
     {
@@ -39,13 +45,7 @@ public sealed class TtlCache<TKey, TValue>
         var now = _time.GetUtcNow();
         if (_entries.Count >= TrimThreshold)
         {
-            foreach (var (k, e) in _entries)
-            {
-                if (e.Expires <= now)
-                {
-                    _entries.TryRemove(k, out _);
-                }
-            }
+            TrimExpired(now);
         }
 
         _entries[key] = new Entry(value, now + ttl);
@@ -54,6 +54,26 @@ public sealed class TtlCache<TKey, TValue>
     public void Remove(TKey key) => _entries.TryRemove(key, out _);
 
     public void Clear() => _entries.Clear();
+
+    // Scans at most once a minute: with many live entries every Set would otherwise walk the whole map.
+    private void TrimExpired(DateTimeOffset now)
+    {
+        var next = Volatile.Read(ref _nextTrimTicks);
+        if (now.UtcTicks < next
+            || Interlocked.CompareExchange(ref _nextTrimTicks, now.UtcTicks + TrimIntervalTicks, next) != next)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _trimCount);
+        foreach (var (k, e) in _entries)
+        {
+            if (e.Expires <= now)
+            {
+                _entries.TryRemove(k, out _);
+            }
+        }
+    }
 
     private readonly record struct Entry(TValue Value, DateTimeOffset Expires);
 }

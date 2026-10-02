@@ -34,4 +34,42 @@ public class TtlCacheTests
         cache.Clear();
         Assert.Equal(0, cache.Count);
     }
+
+    [Fact]
+    public void Above_the_threshold_trims_at_most_once_a_minute()
+    {
+        var time = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var cache = new TtlCache<int, int>(time);
+        for (var i = 0; i < 5000; i++)
+        {
+            cache.Set(i, i, TimeSpan.FromHours(1));
+        }
+
+        for (var i = 5000; i < 5100; i++)
+        {
+            cache.Set(i, i, TimeSpan.FromHours(1));
+        }
+
+        Assert.Equal(1, cache.TrimCount);
+
+        time.Advance(TimeSpan.FromMinutes(1));
+        cache.Set(-1, -1, TimeSpan.FromHours(1));
+        Assert.Equal(2, cache.TrimCount);
+    }
+
+    [Fact]
+    public void A_trim_drops_expired_entries()
+    {
+        var time = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var cache = new TtlCache<int, int>(time);
+        for (var i = 0; i < 5000; i++)
+        {
+            cache.Set(i, i, TimeSpan.FromSeconds(30));
+        }
+
+        time.Advance(TimeSpan.FromMinutes(1));
+        cache.Set(-1, -1, TimeSpan.FromHours(1));
+
+        Assert.Equal(1, cache.Count);
+    }
 }
