@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Jellyfin.Plugin.Currents.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -18,7 +17,7 @@ public class CurrentsPlugin : BasePlugin<PluginConfiguration>, IHasWebPages
         Instance = this;
         if (string.IsNullOrEmpty(Configuration.SigningSecret))
         {
-            Configuration.SigningSecret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            Configuration.SigningSecret = Library.StrmSigner.NewSecret();
             SaveConfiguration();
         }
     }
