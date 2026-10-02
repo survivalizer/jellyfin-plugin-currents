@@ -12,6 +12,7 @@ public class MetaMapperParsingTests
     [InlineData(null, "2023–", null, 2023)]
     [InlineData(null, null, "2020-03-01T00:00:00.000Z", 2020)]
     [InlineData(null, "TBA", null, null)]
+    [InlineData("20٢٣", "20٢٣", "20٢٣", null)]
     public void Parses_year_from_year_releaseinfo_or_released(string? year, string? releaseInfo, string? released, int? expected)
     {
         var meta = new StremioMeta { Year = year, ReleaseInfo = releaseInfo, Released = released };
@@ -25,6 +26,9 @@ public class MetaMapperParsingTests
     [InlineData("1h", 60)]
     [InlineData("45", 45)]
     [InlineData("unknown", null)]
+    [InlineData("99999999999 min", null)]
+    [InlineData("-5", null)]
+    [InlineData("0", null)]
     [InlineData(null, null)]
     public void Parses_runtime_minutes(string? runtime, int? minutes)
     {

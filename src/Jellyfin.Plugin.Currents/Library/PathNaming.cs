@@ -9,6 +9,7 @@ namespace Jellyfin.Plugin.Currents.Library;
 public static partial class PathNaming
 {
     private const int MaxTitleLength = 100;
+    private const int MaxTitleBytes = 150;
     private const string Fallback = "Untitled";
     private static readonly SearchValues<char> Invalid = SearchValues.Create("<>:\"/\\|?*");
 
@@ -20,16 +21,52 @@ public static partial class PathNaming
         }
 
         var builder = new StringBuilder(name.Length);
-        foreach (var c in name.Normalize(NormalizationForm.FormC))
+        foreach (var c in name)
         {
             builder.Append(char.IsControl(c) || Invalid.Contains(c) ? ' ' : c);
         }
 
-        var cleaned = Whitespace().Replace(builder.ToString(), " ").Trim().TrimEnd('.', ' ');
+        // Unpaired surrogates are replaced by a space (so "A\uD800B" becomes "A B") because Normalize would throw.
+        var text = builder.ToString();
+        builder.Clear();
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                builder.Append(text[i]).Append(text[i + 1]);
+                i++;
+            }
+            else
+            {
+                builder.Append(char.IsSurrogate(text[i]) ? ' ' : text[i]);
+            }
+        }
+
+        var cleaned = Whitespace().Replace(builder.ToString().Normalize(NormalizationForm.FormC), " ").Trim().TrimEnd('.', ' ');
         if (cleaned.Length > MaxTitleLength)
         {
             var cut = char.IsHighSurrogate(cleaned[MaxTitleLength - 1]) ? MaxTitleLength - 1 : MaxTitleLength;
             cleaned = cleaned[..cut].TrimEnd('.', ' ');
+        }
+
+        if (Encoding.UTF8.GetByteCount(cleaned) > MaxTitleBytes)
+        {
+            var bytes = 0;
+            var end = 0;
+            while (end < cleaned.Length)
+            {
+                var step = char.IsHighSurrogate(cleaned[end]) ? 2 : 1;
+                var size = Encoding.UTF8.GetByteCount(cleaned.AsSpan(end, step));
+                if (bytes + size > MaxTitleBytes)
+                {
+                    break;
+                }
+
+                bytes += size;
+                end += step;
+            }
+
+            cleaned = cleaned[..end].TrimEnd('.', ' ');
         }
 
         return cleaned.Length == 0 || cleaned.All(c => !char.IsLetterOrDigit(c)) ? Fallback : cleaned;

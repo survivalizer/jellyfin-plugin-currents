@@ -45,6 +45,17 @@ public class TitleKeyTests
     }
 
     [Theory]
+    [InlineData("tmdb:../x")]
+    [InlineData("tmdb:a/b")]
+    [InlineData("tmdb: ")]
+    [InlineData("tmdb:12x")]
+    [InlineData("kitsu:1]x")]
+    public void Rejects_non_numeric_provider_values(string id)
+    {
+        Assert.False(TitleKey.TryParse(MediaKind.Series, id, out _));
+    }
+
+    [Theory]
     [InlineData("tt0944947", 1, 2, "tt0944947:1:2")]
     [InlineData("tmdb:1399", 0, 1, "tmdb:1399:0:1")]
     [InlineData("kitsu:1376", 1, 5, "kitsu:1376:5")]

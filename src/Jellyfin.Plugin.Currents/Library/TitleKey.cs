@@ -56,7 +56,7 @@ public sealed record TitleKey(MediaKind Kind, string Provider, string Value)
 
         var provider = stremioId[..colon];
         var value = stremioId[(colon + 1)..];
-        if (!PrefixedProviders.Contains(provider, StringComparer.Ordinal) || value.Length == 0 || value.Contains(':', StringComparison.Ordinal))
+        if (!PrefixedProviders.Contains(provider, StringComparer.Ordinal) || value.Length == 0 || !value.All(char.IsAsciiDigit))
         {
             return false;
         }

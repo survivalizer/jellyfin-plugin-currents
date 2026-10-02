@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.Currents.Library;
+using System.Text;
 using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Library;
@@ -29,6 +30,22 @@ public class PathNamingTests
 
         Assert.True(result.Length <= 100);
         Assert.False(char.IsHighSurrogate(result[^1]));
+    }
+
+    [Fact]
+    public void Replaces_unpaired_surrogates_with_a_space_without_throwing()
+    {
+        Assert.Equal("A B", PathNaming.SanitizeTitle("A\uD800B"));
+        Assert.Equal("A B", PathNaming.SanitizeTitle("A\uDC00B"));
+    }
+
+    [Fact]
+    public void Limits_utf8_byte_length()
+    {
+        var result = PathNaming.SanitizeTitle(new string('漢', 120));
+
+        Assert.NotEmpty(result);
+        Assert.True(Encoding.UTF8.GetByteCount(result) <= 150);
     }
 
     [Fact]

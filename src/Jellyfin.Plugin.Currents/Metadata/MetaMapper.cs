@@ -22,9 +22,9 @@ public static partial class MetaMapper
             return null;
         }
 
-        if (int.TryParse(runtime.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var bare))
+        if (int.TryParse(runtime.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var bare))
         {
-            return TimeSpan.FromMinutes(bare).Ticks;
+            return InRange(bare);
         }
 
         var hours = Hours().Match(runtime);
@@ -34,9 +34,15 @@ public static partial class MetaMapper
             return null;
         }
 
-        var total = (hours.Success ? int.Parse(hours.Groups[1].Value, CultureInfo.InvariantCulture) * 60 : 0)
-            + (minutes.Success ? int.Parse(minutes.Groups[1].Value, CultureInfo.InvariantCulture) : 0);
-        return TimeSpan.FromMinutes(total).Ticks;
+        var h = 0;
+        var m = 0;
+        if ((hours.Success && !int.TryParse(hours.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out h))
+            || (minutes.Success && !int.TryParse(minutes.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out m)))
+        {
+            return null;
+        }
+
+        return InRange((h * 60) + m);
     }
 
     public static float? ParseRating(string? value) =>
@@ -50,15 +56,18 @@ public static partial class MetaMapper
         }
 
         var match = Year().Match(value);
-        return match.Success ? int.Parse(match.Value, CultureInfo.InvariantCulture) : null;
+        return match.Success && int.TryParse(match.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var year) ? year : null;
     }
 
-    [GeneratedRegex(@"\b(18|19|20)\d{2}\b", RegexOptions.CultureInvariant)]
+    private static long? InRange(int minutes) =>
+        minutes is >= 1 and <= 10000 ? TimeSpan.FromMinutes(minutes).Ticks : null;
+
+    [GeneratedRegex(@"(?<![0-9])(18|19|20)[0-9]{2}(?![0-9])", RegexOptions.CultureInvariant)]
     private static partial Regex Year();
 
-    [GeneratedRegex(@"(\d+)\s*h", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<![0-9])([0-9]{1,5})\s*h", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex Hours();
 
-    [GeneratedRegex(@"(\d+)\s*m", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<![0-9])([0-9]{1,5})\s*m", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex Minutes();
 }
