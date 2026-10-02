@@ -254,4 +254,29 @@ public sealed class SearchTitleOpenerTests : IDisposable
         Assert.Equal(new[] { "poster.jpg" }, Directory.GetFiles(folder).Select(Path.GetFileName));
         Assert.Null(_titles.Get("movie/tt0133093"));
     }
+
+    [Fact]
+    public async Task The_monitor_is_paused_before_the_title_is_written_and_resumed_after_it_is_added()
+    {
+        var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
+        var titleFolder = Path.Combine(MoviesDir, "The Matrix (1999) [imdbid-tt0133093]");
+        var existedAtPause = true;
+        _library.OnPause = _ => existedAtPause = Directory.Exists(titleFolder);
+
+        await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+
+        Assert.False(existedAtPause);
+        Assert.Equal(new[] { "pause:Movie", "add", "resume:Movie" }, _library.Events);
+    }
+
+    [Fact]
+    public async Task The_monitor_is_resumed_when_the_add_fails()
+    {
+        var shown = Shown(MediaKind.Movie, "tt0133093", "The Matrix");
+        _library.AddResult = (_, _) => null;
+
+        await Create().OpenAsync(shown.Id, Alice, mayAdd: true, CancellationToken.None);
+
+        Assert.Equal(new[] { "pause:Movie", "add", "resume:Movie" }, _library.Events);
+    }
 }

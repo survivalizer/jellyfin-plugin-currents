@@ -123,29 +123,30 @@ public sealed class JellyfinLibraryItems : ILibraryItems
         }
 
         var folder = Path.Combine(Paths().Root, relativeFolder);
-        _monitor.ReportFileSystemChangeBeginning(folder);
-        try
-        {
-            // A fresh DirectoryService: a cached listing would not show the files just written.
-            var directoryService = new DirectoryService(_fileSystem);
-            var resolved = _library.ResolvePath(_fileSystem.GetDirectoryInfo(folder), physical, directoryService, _library.GetContentType(physical))
-                ?? throw new InvalidOperationException($"Jellyfin did not recognise {Path.GetFileName(folder)} as a title.");
-            var item = _library.GetItemById(resolved.Id) ?? Create(resolved, physical);
-            await RefreshAsync(item, kind, directoryService, cancellationToken).ConfigureAwait(false);
 
-            if (_library.GetItemById(item.Id) is null)
-            {
-                // A folder scan that listed the disk before this item existed deletes it as "removed" (Folder.cs:438-553).
-                _logger.LogInformation("A library scan removed {Name} while Currents added it; adding it again", item.Name);
-                _library.CreateItem(item, physical);
-            }
+        // A fresh DirectoryService: a cached listing would not show the files just written.
+        var directoryService = new DirectoryService(_fileSystem);
+        var resolved = _library.ResolvePath(_fileSystem.GetDirectoryInfo(folder), physical, directoryService, _library.GetContentType(physical))
+            ?? throw new InvalidOperationException($"Jellyfin did not recognise {Path.GetFileName(folder)} as a title.");
+        var item = _library.GetItemById(resolved.Id) ?? Create(resolved, physical);
+        await RefreshAsync(item, kind, directoryService, cancellationToken).ConfigureAwait(false);
 
-            return item.Id;
-        }
-        finally
+        if (_library.GetItemById(item.Id) is null)
         {
-            _monitor.ReportFileSystemChangeComplete(folder, refreshPath: false);
+            // A folder scan that listed the disk before this item existed deletes it as "removed" (Folder.cs:438-553).
+            _logger.LogInformation("A library scan removed {Name} while Currents added it; adding it again", item.Name);
+            _library.CreateItem(item, physical);
         }
+
+        return item.Id;
+    }
+
+    public IDisposable PauseMonitoring(MediaKind kind)
+    {
+        // Jellyfin's monitor ignores events for an ignored path and everything under it, so pausing the kind's root covers every title folder.
+        var root = Paths().RootFor(kind);
+        _monitor.ReportFileSystemChangeBeginning(root);
+        return new MonitorPause(_monitor, root);
     }
 
     private static bool ContentTypeFits(MediaKind kind, CollectionType? type) =>
@@ -207,6 +208,19 @@ public sealed class JellyfinLibraryItems : ILibraryItems
             // Jellyfin's own on-demand refresh does the same (UserLibraryController.RefreshOnDemandIfNeeded).
             _logger.LogInformation("Metadata for {Name} is taking a while; it finishes in the background", item.Name);
             _providers.QueueRefresh(item.Id, options, RefreshPriority.High);
+        }
+    }
+
+    private sealed class MonitorPause(ILibraryMonitor monitor, string path) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                monitor.ReportFileSystemChangeComplete(path, refreshPath: false);
+            }
         }
     }
 }

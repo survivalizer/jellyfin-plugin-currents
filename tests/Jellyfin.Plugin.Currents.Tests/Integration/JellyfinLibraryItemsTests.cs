@@ -143,6 +143,23 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
     }
 
     [Fact]
+    public void Pause_monitoring_ignores_the_kind_root_until_disposed()
+    {
+        var handle = Create().PauseMonitoring(MediaKind.Movie);
+
+        var moviesRoot = LibraryPaths.FromSettings(_settings).Movies;
+        Assert.Equal(moviesRoot, Assert.Single(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeBeginning)))[0]);
+        Assert.Empty(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeComplete)));
+
+        handle.Dispose();
+        handle.Dispose();
+
+        var complete = Assert.Single(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeComplete)));
+        Assert.Equal((object?)moviesRoot, complete[0]);
+        Assert.Equal(false, complete[1]);
+    }
+
+    [Fact]
     public async Task Add_returns_null_when_no_library_holds_the_folder()
     {
         Assert.Null(await Create().AddAsync(MediaKind.Series, Path.Combine("Shows", "B [imdbid-tt2]"), CancellationToken.None));
@@ -169,10 +186,8 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
         Assert.Same(_moviesFolder, create[1]);
         Assert.Same(movie, Assert.Single(_providers.Fake.Calls(nameof(IProviderManager.RefreshSingleItem)))[0]);
         Assert.Empty(_providers.Fake.Calls(nameof(IProviderManager.QueueRefresh)));
-        Assert.Equal(folder, Assert.Single(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeBeginning)))[0]);
-        var complete = Assert.Single(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeComplete)));
-        Assert.Equal((object?)folder, complete[0]);
-        Assert.Equal(false, complete[1]);
+        Assert.Empty(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeBeginning)));
+        Assert.Empty(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeComplete)));
     }
 
     [Fact]
@@ -237,7 +252,7 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => Create().AddAsync(MediaKind.Movie, Path.Combine("Movies", "A [imdbid-tt1]"), CancellationToken.None));
 
         Assert.Equal("Jellyfin did not recognise A [imdbid-tt1] as a title.", error.Message);
-        Assert.Single(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeComplete)));
+        Assert.Empty(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeComplete)));
     }
 
     private static async Task<ItemUpdateType> Hang(CancellationToken cancellationToken)

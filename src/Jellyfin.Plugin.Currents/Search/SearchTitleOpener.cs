@@ -70,23 +70,27 @@ public sealed class SearchTitleOpener
         var folders = key.Kind == MediaKind.Movie ? "Movies" : "Shows";
         try
         {
-            var folder = known?.Folder;
-            if (folder is null)
+            // Paused before any file is written, so the monitor ignores our own tmp+move writes too.
+            using (_library.PauseMonitoring(key.Kind))
             {
-                var meta = await FetchMetaAsync(key, shown!).ConfigureAwait(false);
-                if (meta is null)
+                var folder = known?.Folder;
+                if (folder is null)
                 {
-                    return OpenOutcome.Failed($"AIOMetadata has no episode list for {shown!.Name} right now.");
+                    var meta = await FetchMetaAsync(key, shown!).ConfigureAwait(false);
+                    if (meta is null)
+                    {
+                        return OpenOutcome.Failed($"AIOMetadata has no episode list for {shown!.Name} right now.");
+                    }
+
+                    folder = _titles.AddFromSearch(key, meta).RelativeFolder;
+                    _logger.LogInformation("Added {Folder} from search", folder);
                 }
 
-                folder = _titles.AddFromSearch(key, meta).RelativeFolder;
-                _logger.LogInformation("Added {Folder} from search", folder);
+                var itemId = await _library.AddAsync(key.Kind, folder, CancellationToken.None).ConfigureAwait(false);
+                return itemId is { } id
+                    ? OpenOutcome.Opened(id)
+                    : OpenOutcome.Failed($"Add the Currents {folders} folder to a Jellyfin library first.");
             }
-
-            var itemId = await _library.AddAsync(key.Kind, folder, CancellationToken.None).ConfigureAwait(false);
-            return itemId is { } id
-                ? OpenOutcome.Opened(id)
-                : OpenOutcome.Failed($"Add the Currents {folders} folder to a Jellyfin library first.");
         }
         catch (Exception ex) when (ex is AioMetadataException or HttpRequestException or InvalidOperationException or IOException or UnauthorizedAccessException)
         {

@@ -27,6 +27,11 @@ public interface ILibraryItems
     /// <returns>The item id, or null.</returns>
     Task<Guid?> AddAsync(MediaKind kind, string relativeFolder, CancellationToken cancellationToken);
 
+    /// <summary>Stops Jellyfin's realtime library monitor from reacting to Currents' own writes under the kind's folder until the returned handle is disposed.</summary>
+    /// <param name="kind">The media kind.</param>
+    /// <returns>A handle; dispose it to resume monitoring.</returns>
+    IDisposable PauseMonitoring(MediaKind kind);
+
     /// <summary>Gets the kinds whose Currents folder is a location of the library (collection folder) with this id.</summary>
     /// <param name="libraryId">The library id.</param>
     /// <returns>The kinds held.</returns>
