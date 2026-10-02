@@ -9,6 +9,7 @@ using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Users;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -54,6 +55,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<RequestContext>();
         serviceCollection.AddSingleton<IInternalBaseUrl, InternalBaseUrl>();
         serviceCollection.AddSingleton<CurrentsItemLocator>();
+
+        // Jellyfin registers IMediaSourceManager before plugins (ApplicationHost.cs:597 -> :492); wrap it last.
+        serviceCollection.Decorate<IMediaSourceManager, CurrentsMediaSourceManager>();
     }
 
     private static void AddUpstreamClient(IServiceCollection services, string name)

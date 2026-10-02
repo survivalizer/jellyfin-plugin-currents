@@ -1,7 +1,11 @@
 using System.Net;
 using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Common;
+using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
+using MediaBrowser.Common.Net;
+using MediaBrowser.Controller;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -17,7 +21,12 @@ public class ServiceRegistratorTests
         services.AddLogging(b => b.AddProvider(logs ?? new CapturingLoggerProvider()).SetMinimumLevel(LogLevel.Trace));
 
         // Jellyfin registers IMediaSourceManager before plugins; the Currents decorator (Task 14) wraps it.
-        services.AddSingleton<IMediaSourceManager>(_ => throw new NotSupportedException("Jellyfin's media source manager is not available in unit tests."));
+        services.AddSingleton<IMediaSourceManager>(InterfaceFake.Create<IDisposableMediaSourceManager>().Instance);
+        services.AddSingleton(InterfaceFake.Create<IUserManager>().Instance);
+        services.AddSingleton(InterfaceFake.Create<ILibraryManager>().Instance);
+        services.AddSingleton(InterfaceFake.Create<IServerApplicationHost>().Instance);
+        services.AddSingleton(InterfaceFake.Create<INetworkManager>().Instance);
+        services.AddSingleton(InterfaceFake.Create<IServerConfigurationManager>().Instance);
         new ServiceRegistrator().RegisterServices(services, null!);
         services.AddSingleton<ICurrentsSettings>(new FakeSettings());
         return services;
@@ -40,5 +49,13 @@ public class ServiceRegistratorTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.DoesNotContain(logs.Messages, m => m.Contains("SECRETKEY", StringComparison.Ordinal));
         Assert.DoesNotContain(logs.Categories, c => c.StartsWith("System.Net.Http.HttpClient", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Media_source_manager_is_decorated()
+    {
+        await using var provider = Register().BuildServiceProvider();
+
+        Assert.IsType<CurrentsMediaSourceManager>(provider.GetRequiredService<IMediaSourceManager>());
     }
 }
