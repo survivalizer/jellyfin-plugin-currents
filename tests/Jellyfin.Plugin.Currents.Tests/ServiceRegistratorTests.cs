@@ -7,8 +7,10 @@ using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests;
@@ -57,5 +59,17 @@ public class ServiceRegistratorTests
         await using var provider = Register().BuildServiceProvider();
 
         Assert.IsType<CurrentsMediaSourceManager>(provider.GetRequiredService<IMediaSourceManager>());
+    }
+
+    [Fact]
+    public async Task Filters_are_registered_in_order()
+    {
+        await using var provider = Register().BuildServiceProvider();
+
+        var filters = provider.GetRequiredService<IOptions<MvcOptions>>().Value.Filters.OfType<ServiceFilterAttribute>().ToList();
+
+        Assert.Equal(typeof(SyntheticVersionIdFilter), filters.Single(f => f.Order == -1000).ServiceType);
+        Assert.Equal(typeof(PlaybackInfoFilter), filters.Single(f => f.Order == -999).ServiceType);
+        Assert.NotNull(provider.GetRequiredService<PlaybackInfoFilter>());
     }
 }

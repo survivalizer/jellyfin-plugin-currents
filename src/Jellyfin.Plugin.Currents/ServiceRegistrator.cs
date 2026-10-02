@@ -11,6 +11,7 @@ using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -55,6 +56,17 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<RequestContext>();
         serviceCollection.AddSingleton<IInternalBaseUrl, InternalBaseUrl>();
         serviceCollection.AddSingleton<CurrentsItemLocator>();
+
+        serviceCollection.AddSingleton<VersionProber>();
+        serviceCollection.AddSingleton<SyntheticVersionIdFilter>();
+        serviceCollection.AddSingleton<PlaybackInfoFilter>();
+
+        // MVC is configured after plugins register, hence PostConfigure. The id filter must run before PlaybackInfoFilter.
+        serviceCollection.PostConfigure<MvcOptions>(options =>
+        {
+            options.Filters.AddService<SyntheticVersionIdFilter>(order: -1000);
+            options.Filters.AddService<PlaybackInfoFilter>(order: -999);
+        });
 
         // Jellyfin registers IMediaSourceManager before plugins (ApplicationHost.cs:597 -> :492); wrap it last.
         serviceCollection.Decorate<IMediaSourceManager, CurrentsMediaSourceManager>();
