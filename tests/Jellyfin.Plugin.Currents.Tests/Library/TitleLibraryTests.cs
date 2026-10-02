@@ -61,7 +61,7 @@ public sealed class TitleLibraryTests : IDisposable
         titles.AddFromSearch(Key("tt1"), new StremioMeta { Id = "tt1", Name = "Alpha" });
 
         titles.Get("movie/tt1")!.Catalogs.Add("mutated");
-        titles.FindBySearchId(SearchItemId.For("movie/tt1"))!.MissCount = 99;
+        titles.FindBySearchId(SearchItemId.For(FakeSettings.Secret, "movie/tt1"))!.MissCount = 99;
 
         var state = titles.Get("movie/tt1")!;
         Assert.Empty(state.Catalogs);

@@ -73,6 +73,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ILibraryItems, JellyfinLibraryItems>();
         serviceCollection.AddSingleton<SearchTitleOpener>();
         serviceCollection.AddSingleton<IPosterClient, PosterClient>();
+        serviceCollection.AddSingleton<PosterCache>();
         serviceCollection.AddSingleton<SearchItemFilter>();
         serviceCollection.AddSingleton<SearchResultsFilter>();
 

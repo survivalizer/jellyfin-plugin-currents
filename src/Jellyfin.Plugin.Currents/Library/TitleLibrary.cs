@@ -27,7 +27,7 @@ public sealed class TitleLibrary
     {
         lock (_gate)
         {
-            _state ??= StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), _logger);
+            _state ??= StateStore.Load(Path.Combine(_settings.DataFolderPath, "state.json"), _logger, SearchIdOf);
             return action(_state);
         }
     }
@@ -37,6 +37,11 @@ public sealed class TitleLibrary
         action(state);
         return true;
     });
+
+    /// <summary>Computes a title's search id with the install secret.</summary>
+    /// <param name="stateId">The state id.</param>
+    /// <returns>The search id.</returns>
+    public Guid SearchIdOf(string stateId) => SearchItemId.For(_settings.Current.SigningSecret, stateId);
 
     public TitleState? Get(string stateId) => Use(state => Copy(state.Get(stateId)));
 

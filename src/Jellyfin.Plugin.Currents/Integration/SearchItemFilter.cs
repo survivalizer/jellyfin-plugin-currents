@@ -11,7 +11,7 @@ namespace Jellyfin.Plugin.Currents.Integration;
 /// <summary>
 /// Search cards carry search ids (Task 1). When a client asks for one, this opens it: the real item when it exists,
 /// otherwise the title is added (signed-in users with search auto-add only). Image requests are anonymous and never
-/// add titles; until the title exists they get the poster, fetched by the server.
+/// add titles; until the title exists they get the poster, fetched by the server and cached per search id.
 /// </summary>
 public sealed class SearchItemFilter : IAsyncActionFilter
 {
@@ -28,9 +28,9 @@ public sealed class SearchItemFilter : IAsyncActionFilter
     private readonly SearchResultRegistry _registry;
     private readonly StreamProfileResolver _profiles;
     private readonly RequestContext _request;
-    private readonly IPosterClient _posters;
+    private readonly PosterCache _posters;
 
-    public SearchItemFilter(SearchTitleOpener opener, SearchResultRegistry registry, StreamProfileResolver profiles, RequestContext request, IPosterClient posters)
+    public SearchItemFilter(SearchTitleOpener opener, SearchResultRegistry registry, StreamProfileResolver profiles, RequestContext request, PosterCache posters)
     {
         _opener = opener;
         _registry = registry;
@@ -78,7 +78,7 @@ public sealed class SearchItemFilter : IAsyncActionFilter
     private async Task<IActionResult> PosterAsync(HttpContext http, Guid id)
     {
         if (!_registry.TryGet(id, out var result) || !Uri.TryCreate(result.Meta.Poster, UriKind.Absolute, out var uri)
-            || await _posters.GetAsync(uri, http.RequestAborted).ConfigureAwait(false) is not { } poster)
+            || await _posters.GetAsync(id, uri, http.RequestAborted).ConfigureAwait(false) is not { } poster)
         {
             return new NotFoundResult();
         }

@@ -99,7 +99,7 @@ public sealed class SearchResultsFilterTests : IDisposable
         Assert.Equal(3, page.Items.Count);
         Assert.Equal(local, page.Items[0].Id);
         Assert.Equal(("The Matrix", BaseItemKind.Movie, ServerId), (page.Items[1].Name, page.Items[1].Type, page.Items[1].ServerId));
-        Assert.Equal(SearchItemId.For("movie/tt0133093"), page.Items[1].Id);
+        Assert.Equal(SearchItemId.For(FakeSettings.Secret, "movie/tt0133093"), page.Items[1].Id);
         Assert.Equal(BaseItemKind.Series, page.Items[2].Type);
         Assert.Equal(3, page.TotalRecordCount);
         Assert.True(page.Items[1].ImageTags.ContainsKey(ImageType.Primary));

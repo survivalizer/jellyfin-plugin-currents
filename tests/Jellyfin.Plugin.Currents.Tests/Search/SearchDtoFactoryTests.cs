@@ -3,6 +3,7 @@ using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Search;
+using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using MediaBrowser.Model.Entities;
 using Xunit;
 
@@ -16,7 +17,7 @@ public class SearchDtoFactoryTests
     [Fact]
     public void Movie_card_has_what_jellyfin_web_needs()
     {
-        var result = new SearchResult(new TitleKey(MediaKind.Movie, "imdb", "tt0133093"), new StremioMeta { Id = "tt0133093", Name = "The Matrix", Year = "1999", Description = "Neo.", Poster = RpdbPoster }, "movie");
+        var result = SearchResults.For(new TitleKey(MediaKind.Movie, "imdb", "tt0133093"), new StremioMeta { Id = "tt0133093", Name = "The Matrix", Year = "1999", Description = "Neo.", Poster = RpdbPoster }, "movie");
 
         var dto = SearchDtoFactory.Create(result, ServerId);
 
@@ -40,7 +41,7 @@ public class SearchDtoFactoryTests
     [Fact]
     public void Series_card_is_a_folder_with_tmdb_ids()
     {
-        var result = new SearchResult(new TitleKey(MediaKind.Series, "tmdb", "1399"), new StremioMeta { Id = "tmdb:1399", Name = "GoT" }, "series");
+        var result = SearchResults.For(new TitleKey(MediaKind.Series, "tmdb", "1399"), new StremioMeta { Id = "tmdb:1399", Name = "GoT" }, "series");
 
         var dto = SearchDtoFactory.Create(result, ServerId);
 
@@ -57,7 +58,7 @@ public class SearchDtoFactoryTests
     [Fact]
     public void The_poster_url_never_appears_in_the_dto()
     {
-        var result = new SearchResult(new TitleKey(MediaKind.Movie, "imdb", "tt0133093"), new StremioMeta { Id = "tt0133093", Name = "The Matrix", Poster = RpdbPoster }, "movie");
+        var result = SearchResults.For(new TitleKey(MediaKind.Movie, "imdb", "tt0133093"), new StremioMeta { Id = "tt0133093", Name = "The Matrix", Poster = RpdbPoster }, "movie");
 
         var json = JsonSerializer.Serialize(SearchDtoFactory.Create(result, ServerId));
 

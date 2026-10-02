@@ -167,6 +167,18 @@ public class RemoteSearchTests
         Assert.Equal(2, results.Count);
         Assert.True(_registry.TryGet(results[1].Id, out var registered));
         Assert.Equal("movie/tt2", registered!.Key.StateId);
-        Assert.False(_registry.TryGet(SearchItemId.For("movie/tt3"), out _));
+        Assert.False(_registry.TryGet(SearchItemId.For(FakeSettings.Secret, "movie/tt3"), out _));
+    }
+
+    [Fact]
+    public async Task Result_ids_are_keyed_with_the_install_secret()
+    {
+        _settings.Current.SigningSecret = Convert.ToBase64String(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray());
+        _client.Searches["movie/search.movie?matrix"] = [Meta("tt0133093", "The Matrix")];
+
+        var result = Assert.Single(await Create().SearchAsync("matrix", [MediaKind.Movie], CancellationToken.None));
+
+        Assert.Equal(SearchItemId.For(_settings.Current.SigningSecret, "movie/tt0133093"), result.Id);
+        Assert.NotEqual(SearchItemId.For(FakeSettings.Secret, "movie/tt0133093"), result.Id);
     }
 }

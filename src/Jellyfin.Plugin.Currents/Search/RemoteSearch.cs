@@ -86,9 +86,10 @@ public sealed partial class RemoteSearch
         {
             var metas = await _client.SearchAsync(endpoint, catalog.Type, catalog.Id, query, CancellationToken.None).ConfigureAwait(false);
             var kind = KindOf(catalog);
+            var secret = _settings.Current.SigningSecret;
             IReadOnlyList<SearchResult> results = metas
                 .Where(m => !m.Id.StartsWith("aiom.error.", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(m.Name))
-                .Select(m => TitleKey.FromMeta(kind, m) is { } key ? new SearchResult(key, m, catalog.Type) : null)
+                .Select(m => TitleKey.FromMeta(kind, m) is { } key ? new SearchResult(SearchItemId.For(secret, key.StateId), key, m, catalog.Type) : null)
                 .OfType<SearchResult>()
                 .Take(Math.Clamp(catalog.MaxItems, 1, 100))
                 .ToList();

@@ -38,7 +38,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
 
     private SearchResult Shown(MediaKind kind, string imdb, string name, string catalogType = "movie")
     {
-        var result = new SearchResult(new TitleKey(kind, "imdb", imdb), new StremioMeta { Id = imdb, Name = name, Year = "1999" }, catalogType);
+        var result = SearchResults.For(new TitleKey(kind, "imdb", imdb), new StremioMeta { Id = imdb, Name = name, Year = "1999" }, catalogType);
         _registry.Add(result);
         return result;
     }
@@ -118,7 +118,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         _titles.Use(s => s.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]", Catalogs = ["movie/top"] }));
         _library.Titles["movie/tt1"] = Item;
 
-        var outcome = await Create().OpenAsync(SearchItemId.For("movie/tt1"), Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(SearchItemId.For(FakeSettings.Secret, "movie/tt1"), Alice, mayAdd: true, CancellationToken.None);
 
         Assert.Equal(OpenOutcome.Opened(Item), outcome);
         Assert.Empty(_client.MetaRequests);
@@ -223,7 +223,7 @@ public sealed class SearchTitleOpenerTests : IDisposable
         _titles.Use(s => s.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]", AddedBySearch = true }));
         _library.AddResult = (_, _) => Item;
 
-        var outcome = await Create().OpenAsync(SearchItemId.For("movie/tt1"), Alice, mayAdd: true, CancellationToken.None);
+        var outcome = await Create().OpenAsync(SearchItemId.For(FakeSettings.Secret, "movie/tt1"), Alice, mayAdd: true, CancellationToken.None);
 
         Assert.Equal(OpenOutcome.Opened(Item), outcome);
         Assert.Equal((MediaKind.Movie, "Movies/A [imdbid-tt1]"), Assert.Single(_library.Added));

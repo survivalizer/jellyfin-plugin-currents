@@ -141,8 +141,9 @@ misconfiguration above a leaked log line is replayable from outside until it exp
 - `Library/TitleLibrary`: the one locked state (`state.json` in memory). Catalog sync and search-add both go through
   it, so neither loses the other's entry. `AddFromSearch` writes a title through the M1 `LibraryWriter` and marks it
   `AddedBySearch`. State is kept in memory between runs; a cancelled or failed sync's unsaved changes are saved by the
-  next writer. Search ids (`Library/SearchItemId`) are GUIDs derived from the state id (`movie/tt123`), so they are
-  stable and recomputable after a restart. `Library/ILibraryItems` is what `Search/` needs from Jellyfin (`FindTitle`,
+  next writer. Search ids (`Library/SearchItemId`) are the first 16 bytes of HMAC-SHA256 over
+  `currents/search/` + the state id (`movie/tt123`), keyed with the install `SigningSecret`, so they are stable and
+  recomputable after a restart but cannot be computed from public ids by anyone without the secret. `Library/ILibraryItems` is what `Search/` needs from Jellyfin (`FindTitle`,
   `FindExisting`, `CanAdd`, `AddAsync`, `KindsIn`, `PauseMonitoring`), implemented in `Integration/`.
 - `Search/`:
   - `RemoteSearch` queries the enabled AIOMetadata search catalogs (`search.movie`, `search.series`, anime variants)
@@ -167,6 +168,9 @@ misconfiguration above a leaked log line is replayable from outside until it exp
 - `Clients/Posters/PosterClient`: fetches a search card's poster. Raster images only, at most 10 MB, 10 s for the
   whole request including the body, logs only the host. A network error mid-body gives a 404. Poster URLs can embed
   the user's RPDB key, so they never reach clients.
+- `Clients/Posters/PosterCache`: poster requests are anonymous, so posters are cached in memory per search id: one
+  upstream fetch per id at a time, a poster kept for 1 h and a missing one for 5 min, at most 200 posters and 64 MB
+  (the oldest go first).
 
 Series added by search get new episodes on every catalog sync. Search-added titles are never pruned.
 

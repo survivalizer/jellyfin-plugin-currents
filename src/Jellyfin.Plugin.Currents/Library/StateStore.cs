@@ -11,26 +11,36 @@ public sealed class StateStore
     private readonly string _path;
     private readonly Dictionary<string, TitleState> _titles;
     private readonly Dictionary<Guid, string> _bySearchId = [];
+    private readonly Func<string, Guid>? _searchIdOf;
 
-    private StateStore(string path, Dictionary<string, TitleState> titles)
+    private StateStore(string path, Dictionary<string, TitleState> titles, Func<string, Guid>? searchIdOf)
     {
         _path = path;
         _titles = titles;
-        foreach (var id in titles.Keys)
+        _searchIdOf = searchIdOf;
+        if (searchIdOf is not null)
         {
-            _bySearchId[SearchItemId.For(id)] = id;
+            foreach (var id in titles.Keys)
+            {
+                _bySearchId[searchIdOf(id)] = id;
+            }
         }
     }
 
     /// <summary>Gets a snapshot of the titles; later changes to the store do not affect it.</summary>
     public IReadOnlyList<TitleState> Titles => _titles.Values.ToList();
 
-    public static StateStore Load(string path, ILogger logger)
+    /// <summary>Loads the state file.</summary>
+    /// <param name="path">The state file.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="searchIdOf">Computes a title's search id from its state id; without it, nothing is found by search id.</param>
+    /// <returns>The loaded store (empty when the file is missing or unreadable).</returns>
+    public static StateStore Load(string path, ILogger logger, Func<string, Guid>? searchIdOf = null)
     {
         var titles = new Dictionary<string, TitleState>(StringComparer.Ordinal);
         if (!File.Exists(path))
         {
-            return new StateStore(path, titles);
+            return new StateStore(path, titles, searchIdOf);
         }
 
         try
@@ -63,7 +73,7 @@ public sealed class StateStore
             logger.LogError(ex, "Currents sync state was unreadable and was moved to {Path}; starting fresh", aside);
         }
 
-        return new StateStore(path, titles);
+        return new StateStore(path, titles, searchIdOf);
     }
 
     private static void Normalize(TitleState title)
@@ -84,12 +94,19 @@ public sealed class StateStore
     public void Upsert(TitleState title)
     {
         _titles[title.StateId] = title;
-        _bySearchId[SearchItemId.For(title.StateId)] = title.StateId;
+        if (_searchIdOf is not null)
+        {
+            _bySearchId[_searchIdOf(title.StateId)] = title.StateId;
+        }
     }
 
     public bool Remove(string stateId)
     {
-        _bySearchId.Remove(SearchItemId.For(stateId));
+        if (_searchIdOf is not null)
+        {
+            _bySearchId.Remove(_searchIdOf(stateId));
+        }
+
         return _titles.Remove(stateId);
     }
 

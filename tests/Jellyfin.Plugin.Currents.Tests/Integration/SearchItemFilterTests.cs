@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
+using Jellyfin.Plugin.Currents.Clients.Posters;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Search;
@@ -24,6 +25,7 @@ public sealed class SearchItemFilterTests : IDisposable
     private readonly FakeAioMetadataClient _client = new();
     private readonly FakeLibraryItems _library = new();
     private readonly FakePosterClient _posters = new();
+    private readonly PosterCache _posterCache;
     private readonly SearchResultRegistry _registry;
     private readonly TitleLibrary _titles;
     private readonly UserStore _users;
@@ -35,10 +37,11 @@ public sealed class SearchItemFilterTests : IDisposable
         _settings.Current.AioMetadataManifestUrl = "https://meta.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/manifest.json";
         _settings.Current.LibraryRoot = Path.Combine(_settings.DataFolderPath, "library");
         _registry = new SearchResultRegistry(_time);
+        _posterCache = new PosterCache(_posters, _time);
         _titles = new TitleLibrary(_settings, _time, NullLogger<TitleLibrary>.Instance);
         _users = new UserStore(_settings, NullLogger<UserStore>.Instance);
         _opener = new SearchTitleOpener(_titles, _registry, _library, _client, _settings, NullLogger<SearchTitleOpener>.Instance);
-        _matrix = new SearchResult(new TitleKey(MediaKind.Movie, "imdb", "tt0133093"), new StremioMeta { Id = "tt0133093", Name = "The Matrix", Year = "1999", Poster = "https://img.example.com/matrix.jpg" }, "movie");
+        _matrix = SearchResults.For(new TitleKey(MediaKind.Movie, "imdb", "tt0133093"), new StremioMeta { Id = "tt0133093", Name = "The Matrix", Year = "1999", Poster = "https://img.example.com/matrix.jpg" }, "movie");
         _registry.Add(_matrix);
         _client.Metas["movie/tt0133093"] = _matrix.Meta;
         _library.AddResult = (_, _) => Item;
@@ -53,7 +56,7 @@ public sealed class SearchItemFilterTests : IDisposable
     }
 
     private SearchItemFilter Create(Guid? user) =>
-        new(_opener, _registry, new StreamProfileResolver(_users, _settings), RequestContextTests.Create(RequestContextTests.Http(user)), _posters);
+        new(_opener, _registry, new StreamProfileResolver(_users, _settings), RequestContextTests.Create(RequestContextTests.Http(user)), _posterCache);
 
     private static ActionExecutingContext Context(string method, string controller, string action, Guid id)
     {
@@ -161,6 +164,19 @@ public sealed class SearchItemFilterTests : IDisposable
         Assert.Equal(new Uri("https://img.example.com/matrix.jpg"), Assert.Single(_posters.Requests));
         Assert.Null(_titles.Get("movie/tt0133093"));
         Assert.Empty(_library.Added);
+    }
+
+    [Fact]
+    public async Task A_second_anonymous_image_request_does_not_fetch_the_poster_again()
+    {
+        var first = Context("GET", "Image", "GetItemImage", _matrix.Id);
+        var second = Context("GET", "Image", "GetItemImage", _matrix.Id);
+
+        await Run(Create(null), first);
+        await Run(Create(null), second);
+
+        Assert.Equal(new byte[] { 1, 2, 3 }, Assert.IsType<FileContentResult>(second.Result).FileContents);
+        Assert.Single(_posters.Requests);
     }
 
     [Fact]

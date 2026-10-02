@@ -10,6 +10,8 @@ public sealed class StateStoreTests : IDisposable
 
     private string StatePath => Path.Combine(_dir, "state.json");
 
+    private static Guid SearchId(string stateId) => SearchItemId.For(Convert.ToBase64String(new byte[32]), stateId);
+
     public void Dispose()
     {
         if (Directory.Exists(_dir))
@@ -136,7 +138,7 @@ public sealed class StateStoreTests : IDisposable
     public void Titles_is_a_snapshot()
     {
         var path = Path.Combine(Path.GetTempPath(), "currents-state-" + Guid.NewGuid().ToString("N"), "state.json");
-        var store = StateStore.Load(path, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = StateStore.Load(path, NullLogger.Instance);
         store.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]" });
 
         var snapshot = store.Titles;
@@ -151,17 +153,17 @@ public sealed class StateStoreTests : IDisposable
     public void Finds_titles_by_search_id_after_upsert_remove_and_reload()
     {
         var path = Path.Combine(Path.GetTempPath(), "currents-state-" + Guid.NewGuid().ToString("N"), "state.json");
-        var store = StateStore.Load(path, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = StateStore.Load(path, NullLogger.Instance, SearchId);
         store.Upsert(new TitleState { StateId = "movie/tt1", StremioId = "tt1", Folder = "Movies/A [imdbid-tt1]" });
         store.Upsert(new TitleState { StateId = "series/tt2", StremioId = "tt2", Kind = MediaKind.Series, Folder = "Shows/B [imdbid-tt2]" });
         store.Remove("series/tt2");
         store.Save();
 
-        var reloaded = StateStore.Load(path, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var reloaded = StateStore.Load(path, NullLogger.Instance, SearchId);
 
-        Assert.Equal("movie/tt1", store.FindBySearchId(SearchItemId.For("movie/tt1"))?.StateId);
-        Assert.Null(store.FindBySearchId(SearchItemId.For("series/tt2")));
-        Assert.Equal("movie/tt1", reloaded.FindBySearchId(SearchItemId.For("movie/tt1"))?.StateId);
+        Assert.Equal("movie/tt1", store.FindBySearchId(SearchId("movie/tt1"))?.StateId);
+        Assert.Null(store.FindBySearchId(SearchId("series/tt2")));
+        Assert.Equal("movie/tt1", reloaded.FindBySearchId(SearchId("movie/tt1"))?.StateId);
         Assert.Null(reloaded.FindBySearchId(Guid.NewGuid()));
         Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
     }
