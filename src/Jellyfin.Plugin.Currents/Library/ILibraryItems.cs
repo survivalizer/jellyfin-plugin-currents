@@ -14,7 +14,7 @@ public interface ILibraryItems
     /// <returns>Item ids keyed by state id.</returns>
     IReadOnlyDictionary<string, Guid> FindExisting(Guid userId, IReadOnlyCollection<TitleKey> keys);
 
-    /// <summary>Gets whether the user can see a library whose locations include the Currents folder for this kind.</summary>
+    /// <summary>Gets whether the user can see a library whose locations include the Currents folder for this kind and has no parental controls (remote results carry no rating to filter on).</summary>
     /// <param name="userId">The user.</param>
     /// <param name="kind">The media kind.</param>
     /// <returns>True when the user can see such a library.</returns>

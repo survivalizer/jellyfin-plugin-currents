@@ -1,4 +1,7 @@
+using Jellyfin.Data;
 using Jellyfin.Data.Enums;
+using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Library;
 using MediaBrowser.Controller.Entities;
@@ -100,7 +103,9 @@ public sealed class JellyfinLibraryItems : ILibraryItems
 
     public bool CanAdd(Guid userId, MediaKind kind)
     {
+        // Remote results carry no rating or tags Jellyfin could filter on, so users with parental controls get none.
         if (_users.GetUserById(userId) is not { } user
+            || HasParentalControls(user)
             || PhysicalFolder(kind) is not { } physical
             || !ContentTypeFits(kind, _library.GetContentType(physical)))
         {
@@ -148,6 +153,12 @@ public sealed class JellyfinLibraryItems : ILibraryItems
         _monitor.ReportFileSystemChangeBeginning(root);
         return new MonitorPause(_monitor, root);
     }
+
+    private static bool HasParentalControls(User user) =>
+        user.MaxParentalRatingScore.HasValue
+        || user.GetPreference(PreferenceKind.BlockUnratedItems).Length > 0
+        || user.GetPreference(PreferenceKind.BlockedTags).Length > 0
+        || user.GetPreference(PreferenceKind.AllowedTags).Length > 0;
 
     private static bool ContentTypeFits(MediaKind kind, CollectionType? type) =>
         kind == MediaKind.Movie ? type is null or CollectionType.movies : type == CollectionType.tvshows;

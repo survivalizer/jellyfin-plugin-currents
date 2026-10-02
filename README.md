@@ -43,6 +43,10 @@ Each user has one switch on `/Currents/user` (when self-service is allowed and t
 admin's per-user off wins over the user's choice, which wins over the default. A user with it off sees no
 AIOMetadata results and cannot add titles.
 
+Users with parental controls (a maximum parental rating, blocked unrated items, or blocked or allowed tags) never see
+AIOMetadata results and cannot add titles, whatever their switch says: remote results carry no rating or tags that
+Jellyfin could filter on.
+
 The Currents Movies and Shows folders must be in Movies/Shows libraries the user can see. Search covers the main
 `GET /Items` search used by Jellyfin Web, Android TV, Swiftfin and Findroid, not the legacy `/Search/Hints`.
 

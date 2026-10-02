@@ -200,6 +200,9 @@ entry removed, logged at Information) instead of writing it again, unless the ki
   user searches again (the id is only recomputable once the title is in `state.json`).
 - `/Search/Hints` is not covered; legacy clients that use it see no AIOMetadata results (M6 client matrix).
 - The Currents folders must be in Movies/Shows libraries the user can see; otherwise nothing can be added for them.
+- Users with parental controls never see AIOMetadata results and cannot add titles: `JellyfinLibraryItems.CanAdd`
+  is false for a user with a maximum parental rating, blocked unrated items, blocked tags or allowed tags, because a
+  remote result has no rating or tags Jellyfin could filter on. Both the search filter and the opener use `CanAdd`.
 
 ## Admin API
 `Web/AdminController` (admin only), used by the configuration page:

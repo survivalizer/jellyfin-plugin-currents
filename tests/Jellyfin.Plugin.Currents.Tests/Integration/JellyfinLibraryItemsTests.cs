@@ -1,5 +1,7 @@
+using Jellyfin.Data;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
@@ -136,6 +138,41 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
     }
 
     [Fact]
+    public void Can_add_for_a_user_without_parental_controls_who_sees_the_library()
+    {
+        UsePlainLibraryFolder();
+
+        Assert.True(Create().CanAdd(_alice.Id, MediaKind.Movie));
+    }
+
+    [Theory]
+    [InlineData("rating")]
+    [InlineData("unrated")]
+    [InlineData("blocked-tags")]
+    [InlineData("allowed-tags")]
+    public void Users_with_parental_controls_can_never_add(string restriction)
+    {
+        switch (restriction)
+        {
+            case "rating":
+                _alice.MaxParentalRatingScore = 13;
+                break;
+            case "unrated":
+                _alice.SetPreference(PreferenceKind.BlockUnratedItems, new[] { UnratedItem.Movie });
+                break;
+            case "blocked-tags":
+                _alice.SetPreference(PreferenceKind.BlockedTags, ["gore"]);
+                break;
+            case "allowed-tags":
+                _alice.SetPreference(PreferenceKind.AllowedTags, ["kids"]);
+                break;
+        }
+
+        UsePlainLibraryFolder();
+        Assert.False(Create().CanAdd(_alice.Id, MediaKind.Movie));
+    }
+
+    [Fact]
     public void Kinds_in_maps_a_library_to_its_currents_folders()
     {
         Assert.Equal(new[] { MediaKind.Movie }, Create().KindsIn(MoviesLibrary));
@@ -254,6 +291,11 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
         Assert.Equal("Jellyfin did not recognise A [imdbid-tt1] as a title.", error.Message);
         Assert.Empty(_monitor.Fake.Calls(nameof(ILibraryMonitor.ReportFileSystemChangeComplete)));
     }
+
+    // A CollectionFolder's IsVisible reads library options through Jellyfin's static XML serializer; a plain Folder
+    // runs the same user checks (IsParentalAllowed) without it.
+    private void UsePlainLibraryFolder() =>
+        _library.Fake.On(nameof(ILibraryManager.GetCollectionFolders), args => args[0] == _moviesFolder ? new List<Folder> { new() { Id = MoviesLibrary } } : new List<Folder>());
 
     private static async Task<ItemUpdateType> Hang(CancellationToken cancellationToken)
     {
