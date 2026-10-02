@@ -42,4 +42,13 @@ public class StreamLabelTests
     [InlineData(1_000L, "1 MB")]
     public void Sizes_use_decimal_units(long bytes, string expected) =>
         Assert.Equal(expected, StreamLabel.FormatSize(bytes));
+
+    [Fact]
+    public void Null_tags_are_skipped()
+    {
+        var result = new StreamResult { ParsedFile = new ParsedFile { Resolution = "1080p", VisualTags = [null!, "HDR10"], AudioTags = [null!, "DD+"] } };
+
+        Assert.Equal("1080p HDR10 · DD+", StreamLabel.For(result));
+        Assert.True(StreamRanker.IsHdr(result));
+    }
 }

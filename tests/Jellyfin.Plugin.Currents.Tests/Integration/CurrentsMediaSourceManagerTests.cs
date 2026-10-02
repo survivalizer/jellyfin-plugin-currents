@@ -32,6 +32,8 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
     private readonly VersionRegistry _registry;
     private readonly VersionCatalog _catalog;
     private readonly VersionSourceBuilder _builder;
+    private readonly ProbeCache _probes;
+    private readonly ListLogger<CurrentsMediaSourceManager> _logger = new();
     private readonly CurrentsItemLocator _locator;
     private readonly Movie _movie;
 
@@ -53,7 +55,8 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
         users.Update(Alice, r => r.Self.AioStreamsManifestUrl = AliceUrl);
         _registry = new VersionRegistry(_settings, _time);
         _catalog = new VersionCatalog(new StreamService(_client, _settings, _time, NullLogger<StreamService>.Instance), new StreamProfileResolver(users, _settings), _registry, _settings);
-        _builder = new VersionSourceBuilder(_settings, _time, new ProbeCache(_time));
+        _probes = new ProbeCache(_time);
+        _builder = new VersionSourceBuilder(_settings, _time, _probes);
         _locator = new CurrentsItemLocator(_settings, _time);
         _inner.Fake.On(nameof(IMediaSourceManager.GetStaticMediaSources), _ => _innerSources);
         _inner.Fake.On(nameof(IMediaSourceManager.GetPlaybackMediaSources), _ => Task.FromResult<IReadOnlyList<MediaSourceInfo>>(_innerSources));
@@ -68,7 +71,7 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
     }
 
     private CurrentsMediaSourceManager Create(HttpContext? http) =>
-        new(_inner.Instance, _locator, _catalog, _registry, _builder, RequestContextTests.Create(http), new FixedInternalBaseUrl(Internal), _settings);
+        new(_inner.Instance, _locator, _catalog, _registry, _builder, RequestContextTests.Create(http), new FixedInternalBaseUrl(Internal), _settings, _logger);
 
     private static HttpContext Request(Guid? user, (string, string) action) => RequestContextTests.Http(user, action: action);
 
@@ -216,6 +219,45 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
 
         Assert.Equal(defaults.Select(s => s.Id), anonymous.Select(s => s.Id));
         Assert.Equal(defaults[0].Id, byId!.Id);
+    }
+
+    [Fact]
+    public void A_version_that_fails_to_build_is_skipped()
+    {
+        var keys = StreamIdentity.Keys(_client.Outcome.Results);
+        _probes.Set(keys[0], new ProbedMedia("not json", "mkv", null, null, null));
+
+        var sources = Create(Request(Alice, ItemPage)).GetStaticMediaSources(_movie, true);
+
+        Assert.StartsWith("1080p", Assert.Single(sources).Name, StringComparison.Ordinal);
+        Assert.Contains(_logger.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+    }
+
+    [Fact]
+    public void When_every_version_fails_to_build_a_notice_is_shown()
+    {
+        foreach (var key in StreamIdentity.Keys(_client.Outcome.Results))
+        {
+            _probes.Set(key, new ProbedMedia("not json", "mkv", null, null, null));
+        }
+
+        var sources = Create(Request(Alice, ItemPage)).GetStaticMediaSources(_movie, true);
+
+        Assert.Equal("No playable streams for this title.", Assert.Single(sources).Name);
+        Assert.Equal("currents://notice", sources[0].Path);
+    }
+
+    [Fact]
+    public async Task A_known_user_keeps_registered_versions_when_a_new_search_finds_none()
+    {
+        var page = Create(Request(Alice, ItemPage)).GetStaticMediaSources(_movie, true);
+        _time.Advance(TimeSpan.FromMinutes(61));
+        _client.Outcome = new SearchOutcome([], []);
+
+        var resumed = await Create(Request(Alice, Stream)).GetPlaybackMediaSources(_movie, null!, false, false, CancellationToken.None);
+
+        Assert.Equal(2, _client.Calls);
+        Assert.Equal(page.Select(s => s.Id), resumed.Select(s => s.Id));
     }
 
     [Fact]

@@ -164,4 +164,30 @@ public class MediaStreamMapperTests
         Assert.Null(MediaStreamMapper.RunTimeTicks(new StreamResult { Duration = double.NaN }));
         Assert.Null(MediaStreamMapper.RunTimeTicks(new StreamResult()));
     }
+
+    [Fact]
+    public void Null_and_blank_tags_and_channels_are_ignored()
+    {
+        var result = new StreamResult
+        {
+            ParsedFile = new ParsedFile
+            {
+                Encode = "HEVC",
+                Resolution = "2160p",
+                VisualTags = [null!, " ", "HDR10"],
+                AudioTags = [null!, string.Empty, "DD+"],
+                AudioChannels = [null!, " ", "7.1"],
+                Languages = [null!, "English"],
+            },
+        };
+
+        var media = MediaStreamMapper.Prefill(result, null);
+
+        var video = media.Streams[0];
+        var audio = media.Streams[1];
+        Assert.Equal("smpte2084", video.ColorTransfer);
+        Assert.Equal("eac3", audio.Codec);
+        Assert.Equal(8, audio.Channels);
+        Assert.Equal("eng", audio.Language);
+    }
 }

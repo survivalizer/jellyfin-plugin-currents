@@ -11,6 +11,7 @@ using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.MediaInfo;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Currents.Integration;
 
@@ -26,6 +27,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
     private readonly RequestContext _request;
     private readonly IInternalBaseUrl _internalUrl;
     private readonly ICurrentsSettings _settings;
+    private readonly ILogger<CurrentsMediaSourceManager> _logger;
 
     public CurrentsMediaSourceManager(
         IMediaSourceManager inner,
@@ -35,7 +37,8 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         VersionSourceBuilder builder,
         RequestContext request,
         IInternalBaseUrl internalUrl,
-        ICurrentsSettings settings)
+        ICurrentsSettings settings,
+        ILogger<CurrentsMediaSourceManager> logger)
     {
         _inner = inner;
         _locator = locator;
@@ -45,6 +48,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         _request = request;
         _internalUrl = internalUrl;
         _settings = settings;
+        _logger = logger;
     }
 
     [SuppressMessage("Usage", "VSTHRD002", Justification = "Jellyfin's contract is synchronous; ASP.NET Core has no synchronization context and only single-item requests wait, bounded by SearchWait.")]
@@ -75,6 +79,13 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         var list = userId != Guid.Empty || _request.IsSingleItemRequest
             ? await _catalog.GetAsync(item.Id, title, userId, SearchWait, cancellationToken).ConfigureAwait(false)
             : Registered(item.Id, _request.IsAnonymousRequest);
+
+        // A playback resumed after the stream cache expired must not lose its version when a fresh search comes back empty.
+        if (userId != Guid.Empty && list is { Versions.Count: 0 } && _registry.ForItemAndUser(item.Id, userId) is { Count: > 0 } registered)
+        {
+            list = new VersionList(registered, null);
+        }
+
         return Sources(item, list, enablePathSubstitution, user);
     }
 
@@ -167,6 +178,20 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         user?.HasPermission(PermissionKind.EnablePlaybackRemuxing) ?? true,
         user?.HasPermission(PermissionKind.EnableVideoPlaybackTranscoding) ?? true);
 
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "One malformed stream must not take down the whole version list; it is skipped and logged.")]
+    private MediaSourceInfo? TryBuild(VersionEntry version, VersionContext context)
+    {
+        try
+        {
+            return _builder.Build(version, context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Skipping version {VersionId} of item {ItemId}: {Error}: {Message}", version.VersionId, version.BaseItemId, ex.GetType().Name, SecretMasker.Mask(ex.Message));
+            return null;
+        }
+    }
+
     private List<MediaSourceInfo> Sources(BaseItem item, VersionList? list, bool redact, User? user)
     {
         if (list is null)
@@ -180,7 +205,20 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         }
 
         var context = Context(item, redact, user);
-        var sources = list.Versions.Select(v => _builder.Build(v, context)).ToList();
+        var sources = new List<MediaSourceInfo>(list.Versions.Count);
+        foreach (var version in list.Versions)
+        {
+            if (TryBuild(version, context) is { } source)
+            {
+                sources.Add(source);
+            }
+        }
+
+        if (sources.Count == 0)
+        {
+            return [VersionSourceBuilder.Notice(item.Id, "No playable streams for this title.")];
+        }
+
         if (user is not null)
         {
             foreach (var source in sources)

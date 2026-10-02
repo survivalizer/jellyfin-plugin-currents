@@ -94,7 +94,7 @@ public static class MediaStreamMapper
     public static PrefilledMedia Prefill(StreamResult result, long? itemRunTimeTicks)
     {
         var parsed = result.ParsedFile;
-        var tags = parsed?.VisualTags ?? [];
+        var tags = NonBlank(parsed?.VisualTags);
         var runtime = RunTimeTicks(result) ?? (itemRunTimeTicks is > 0 ? itemRunTimeTicks : null);
         var total = TotalBitrate(result, runtime);
         var languages = parsed?.Languages?.Where(l => !string.IsNullOrWhiteSpace(l) && !NotLanguages.Contains(l)).ToList() ?? [];
@@ -154,6 +154,10 @@ public static class MediaStreamMapper
         tag.Equals("DV", StringComparison.OrdinalIgnoreCase)
         || tag.Equals("DV Only", StringComparison.OrdinalIgnoreCase)
         || tag.Equals("HDR+DV", StringComparison.OrdinalIgnoreCase);
+
+    // AIOStreams lists can hold null or blank entries; they carry no information.
+    private static List<string> NonBlank(List<string>? values) =>
+        values?.Where(v => !string.IsNullOrWhiteSpace(v)).ToList() ?? [];
 
     private static bool Has(List<string> tags, string tag) => tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
 
@@ -235,7 +239,7 @@ public static class MediaStreamMapper
 
     private static MediaStream Audio(ParsedFile? parsed, List<string> languages)
     {
-        var tags = parsed?.AudioTags ?? [];
+        var tags = NonBlank(parsed?.AudioTags);
         var atmos = Has(tags, "Atmos");
         var match = AudioCodecs.FirstOrDefault(a => Has(tags, a.Tag));
         string? codec = match.Codec;
@@ -252,7 +256,7 @@ public static class MediaStreamMapper
             profile = codec == "truehd" ? "Dolby TrueHD + Dolby Atmos" : "Dolby Digital Plus + Dolby Atmos";
         }
 
-        var layout = parsed?.AudioChannels?.FirstOrDefault(ChannelLayouts.ContainsKey);
+        var layout = NonBlank(parsed?.AudioChannels).FirstOrDefault(ChannelLayouts.ContainsKey);
         var (channels, channelLayout) = layout is not null
             ? ChannelLayouts[layout]
             : codec is "aac" or "opus" ? (2, "stereo") : (6, "5.1");
