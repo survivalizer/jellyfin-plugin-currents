@@ -46,6 +46,10 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<UserStore>();
         serviceCollection.AddSingleton<StreamProfileResolver>();
         serviceCollection.AddSingleton<IStreamService, StreamService>();
+        serviceCollection.AddHttpContextAccessor();
+        serviceCollection.AddSingleton<RequestContext>();
+        serviceCollection.AddSingleton<IInternalBaseUrl, InternalBaseUrl>();
+        serviceCollection.AddSingleton<CurrentsItemLocator>();
     }
 
     private static void AddUpstreamClient(IServiceCollection services, string name)
