@@ -56,8 +56,12 @@ public sealed class VersionRegistry
             return _latestByItem.TryGet(itemId, out var latest) ? latest : [];
         }
 
-        return _byItemAndUser.TryGet(Key(itemId, userId), out var list) ? list : [];
+        return ForItemAndUser(itemId, userId);
     }
+
+    /// <summary>Gets the versions registered for exactly this user (no fallback to the latest list).</summary>
+    public IReadOnlyList<VersionEntry> ForItemAndUser(Guid itemId, Guid userId) =>
+        _byItemAndUser.TryGet(Key(itemId, userId), out var list) ? list : [];
 
     private static string Key(Guid itemId, Guid userId) => $"{itemId:N}|{userId:N}";
 }

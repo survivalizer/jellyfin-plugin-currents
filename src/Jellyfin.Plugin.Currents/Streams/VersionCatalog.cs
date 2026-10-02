@@ -40,10 +40,11 @@ public sealed class VersionCatalog
             return VersionList.Unavailable(lookup.Error ?? "No streams found for this title.");
         }
 
-        var count = profile.AutoSelect ? 1 : Math.Max(1, _settings.Current.MaxVersions);
+        var settings = _settings.Current;
+        var count = profile.AutoSelect ? 1 : Math.Max(1, settings.MaxVersions);
         var versions = lookup.Streams
             .Take(count)
-            .Select(s => new VersionEntry(StreamIdentity.VersionId(itemId, userId, s.Key), itemId, userId, title, s))
+            .Select(s => new VersionEntry(StreamIdentity.VersionId(itemId, userId, s.Key, settings.SigningSecret), itemId, userId, title, s))
             .ToList();
         _registry.Register(itemId, userId, versions);
         return new VersionList(versions, null);

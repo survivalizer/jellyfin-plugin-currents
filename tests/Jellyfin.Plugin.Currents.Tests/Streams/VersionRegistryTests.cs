@@ -14,7 +14,7 @@ public class VersionRegistryTests
     private readonly FakeSettings _settings = new();
 
     private static VersionEntry Entry(Guid user, string key) =>
-        new(StreamIdentity.VersionId(Item, user, key), Item, user, new CurrentsTitle("movie", "tt1"), new RankedStream(key, new StreamResult { Url = $"https://x/{key}" }));
+        new(StreamIdentity.VersionId(Item, user, key, FakeSettings.Secret), Item, user, new CurrentsTitle("movie", "tt1"), new RankedStream(key, new StreamResult { Url = $"https://x/{key}" }));
 
     private VersionRegistry Create() => new(_settings, _time);
 

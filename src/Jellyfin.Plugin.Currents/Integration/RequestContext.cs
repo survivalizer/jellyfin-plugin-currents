@@ -47,6 +47,10 @@ public sealed class RequestContext
         }
     }
 
+    /// <summary>Gets a value indicating whether this is an HTTP request with no user and no API key. Background work (no request) is not anonymous.</summary>
+    public bool IsAnonymousRequest =>
+        Context() is { } context && UserId == Guid.Empty && !JellyfinClaims.IsApiKey(context.User);
+
     public User? User => UserId is var id && id != Guid.Empty ? _users.GetUserById(id) : null;
 
     /// <summary>Gets a value indicating whether this request is an item detail or PlaybackInfo call, the only places a cold AIOStreams search may run.</summary>

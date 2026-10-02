@@ -21,7 +21,7 @@ public class SyntheticVersionIdFilterTests
 
     public SyntheticVersionIdFilterTests()
     {
-        var id = StreamIdentity.VersionId(Item, Alice, "k");
+        var id = StreamIdentity.VersionId(Item, Alice, "k", FakeSettings.Secret);
         _registry.Register(Item, Alice, [new VersionEntry(id, Item, Alice, new CurrentsTitle("movie", "tt1"), new RankedStream("k", new StreamResult()))]);
         _version = Guid.ParseExact(id, "N");
     }

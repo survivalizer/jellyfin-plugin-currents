@@ -74,7 +74,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         var userId = user?.Id ?? _request.UserId;
         var list = userId != Guid.Empty || _request.IsSingleItemRequest
             ? await _catalog.GetAsync(item.Id, title, userId, SearchWait, cancellationToken).ConfigureAwait(false)
-            : Registered(item.Id);
+            : Registered(item.Id, _request.IsAnonymousRequest);
         return Sources(item, list, enablePathSubstitution, user);
     }
 
@@ -88,8 +88,12 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         var requester = _request.UserId;
         if (_registry.TryGet(mediaSourceId, out var entry) && entry.BaseItemId == item.Id)
         {
-            // A user may only reach their own versions; anonymous/background callers (sessions, timers) may look any up by id.
-            return requester == Guid.Empty || requester == entry.UserId
+            // A user may only reach their own versions and an anonymous HTTP caller only default-config ones;
+            // background callers with no request (sessions, timers) may look any up by id.
+            var allowed = requester == Guid.Empty
+                ? !_request.IsAnonymousRequest || entry.UserId == Guid.Empty
+                : requester == entry.UserId;
+            return allowed
                 ? _builder.Build(entry, Context(item, enablePathSubstitution, requester == Guid.Empty ? null : _request.User))
                 : null;
         }
@@ -149,9 +153,10 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         return _settings.Current.EnableVersions && _locator.TryGetTitle(item, out title);
     }
 
-    private VersionList? Registered(Guid itemId)
+    // Background work (no request) gets the item's latest list; an anonymous HTTP caller only default-config versions.
+    private VersionList? Registered(Guid itemId, bool anonymous)
     {
-        var entries = _registry.ForItem(itemId, Guid.Empty);
+        var entries = anonymous ? _registry.ForItemAndUser(itemId, Guid.Empty) : _registry.ForItem(itemId, Guid.Empty);
         return entries.Count == 0 ? null : new VersionList(entries, null);
     }
 

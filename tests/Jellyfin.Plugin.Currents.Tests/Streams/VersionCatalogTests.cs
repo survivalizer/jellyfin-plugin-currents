@@ -55,7 +55,7 @@ public sealed class VersionCatalogTests : IDisposable
 
         Assert.Null(list.Notice);
         Assert.Equal(5, list.Versions.Count);
-        Assert.All(list.Versions, v => Assert.Equal(StreamIdentity.VersionId(Item, Alice, v.Stream.Key), v.VersionId));
+        Assert.All(list.Versions, v => Assert.Equal(StreamIdentity.VersionId(Item, Alice, v.Stream.Key, _settings.Current.SigningSecret), v.VersionId));
         Assert.Equal("f1.mkv", list.Versions[0].Stream.Result.Filename);
         Assert.True(_registry.TryGet(list.Versions[4].VersionId, out var entry));
         Assert.Equal(new VersionTicket(Alice, "movie", "tt1", list.Versions[4].Stream.Key), entry.Ticket);

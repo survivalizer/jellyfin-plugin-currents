@@ -73,6 +73,15 @@ public class RequestContextTests
         Assert.False(context.IsSingleItemRequest);
     }
 
+    [Fact]
+    public void Anonymous_means_a_request_with_no_user_and_no_api_key()
+    {
+        Assert.True(Create(Http()).IsAnonymousRequest);
+        Assert.False(Create(null).IsAnonymousRequest);
+        Assert.False(Create(Http(Alice)).IsAnonymousRequest);
+        Assert.False(Create(Http(apiKey: true)).IsAnonymousRequest);
+    }
+
     [Theory]
     [InlineData("UserLibrary", "GetItem", true)]
     [InlineData("UserLibrary", "GetItemLegacy", true)]

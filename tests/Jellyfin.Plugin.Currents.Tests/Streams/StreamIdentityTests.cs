@@ -1,5 +1,6 @@
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 using Jellyfin.Plugin.Currents.Streams;
+using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Streams;
@@ -53,13 +54,23 @@ public class StreamIdentityTests
         var item = Guid.Parse("9bb016e527c151f6e01595cd9d762c5a");
         var alice = Guid.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         var bob = Guid.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-        var id = StreamIdentity.VersionId(item, alice, "k1");
+        var id = StreamIdentity.VersionId(item, alice, "k1", FakeSettings.Secret);
 
         Assert.Matches("^[0-9a-f]{32}$", id);
-        Assert.Equal(id, StreamIdentity.VersionId(item, alice, "k1"));
-        Assert.NotEqual(id, StreamIdentity.VersionId(item, alice, "k2"));
-        Assert.NotEqual(id, StreamIdentity.VersionId(item, bob, "k1"));
-        Assert.NotEqual(id, StreamIdentity.VersionId(Guid.NewGuid(), alice, "k1"));
+        Assert.Equal(id, StreamIdentity.VersionId(item, alice, "k1", FakeSettings.Secret));
+        Assert.NotEqual(id, StreamIdentity.VersionId(item, alice, "k2", FakeSettings.Secret));
+        Assert.NotEqual(id, StreamIdentity.VersionId(item, bob, "k1", FakeSettings.Secret));
+        Assert.NotEqual(id, StreamIdentity.VersionId(Guid.NewGuid(), alice, "k1", FakeSettings.Secret));
         Assert.NotEqual(item.ToString("N"), id);
+    }
+
+    [Fact]
+    public void Version_ids_are_keyed_by_the_install_secret()
+    {
+        var item = Guid.Parse("9bb016e527c151f6e01595cd9d762c5a");
+        var alice = Guid.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        var other = Convert.ToBase64String(Enumerable.Repeat((byte)7, 32).ToArray());
+
+        Assert.NotEqual(StreamIdentity.VersionId(item, alice, "k1", FakeSettings.Secret), StreamIdentity.VersionId(item, alice, "k1", other));
     }
 }

@@ -26,13 +26,18 @@ public static class StreamIdentity
         return keys;
     }
 
-    /// <summary>The synthetic MediaSource id for one stream of one item, for one user.</summary>
+    /// <summary>The synthetic MediaSource id for one stream of one item, for one user. Keyed with the install secret so ids cannot be computed from public data.</summary>
     /// <param name="itemId">The base library item id.</param>
     /// <param name="userId">The Jellyfin user (<see cref="Guid.Empty"/> for no user).</param>
     /// <param name="key">The stream key from <see cref="Keys"/>.</param>
+    /// <param name="secret">The install <c>SigningSecret</c> (base64).</param>
     /// <returns>A lower-case GUID in "N" format.</returns>
-    public static string VersionId(Guid itemId, Guid userId, string key) =>
-        new Guid(SHA256.HashData(Encoding.UTF8.GetBytes($"{itemId:N}|{userId:N}|{key}")).AsSpan(0, 16)).ToString("N");
+    public static string VersionId(Guid itemId, Guid userId, string key, string secret)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(secret);
+        var data = Encoding.UTF8.GetBytes($"currents/version-id/v1|{itemId:N}|{userId:N}|{key}");
+        return new Guid(HMACSHA256.HashData(Convert.FromBase64String(secret), data).AsSpan(0, 16)).ToString("N");
+    }
 
     private static string Raw(StreamResult result)
     {

@@ -191,6 +191,34 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task Anonymous_requests_never_get_another_users_versions()
+    {
+        var alice = Create(Request(Alice, ItemPage)).GetStaticMediaSources(_movie, true);
+
+        var anonymous = await Create(Request(null, Stream)).GetPlaybackMediaSources(_movie, null!, false, false, CancellationToken.None);
+        var byId = await Create(Request(null, Stream)).GetMediaSource(_movie, alice[0].Id, null!, false, CancellationToken.None);
+
+        Assert.Equal(_movie.Id.ToString("N"), Assert.Single(anonymous).Id);
+        Assert.Equal("currents://pending", anonymous[0].Path);
+        Assert.Null(byId);
+        Assert.Equal(1, _client.Calls);
+    }
+
+    [Fact]
+    public async Task Anonymous_requests_may_use_default_config_versions()
+    {
+        _settings.Current.AioStreamsManifestUrl = AliceUrl;
+        var defaults = Create(Request(null, ItemPage)).GetStaticMediaSources(_movie, true);
+        Create(Request(Alice, ItemPage)).GetStaticMediaSources(_movie, true);
+
+        var anonymous = await Create(Request(null, Stream)).GetPlaybackMediaSources(_movie, null!, false, false, CancellationToken.None);
+        var byId = await Create(Request(null, Stream)).GetMediaSource(_movie, defaults[0].Id, null!, false, CancellationToken.None);
+
+        Assert.Equal(defaults.Select(s => s.Id), anonymous.Select(s => s.Id));
+        Assert.Equal(defaults[0].Id, byId!.Id);
+    }
+
+    [Fact]
     public void Every_call_returns_new_objects()
     {
         var manager = Create(Request(Alice, ItemPage));

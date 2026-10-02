@@ -28,7 +28,7 @@ public class VersionProberTests
         new(_media.Instance, _library.Instance, _probes, new VersionSourceBuilder(_settings, _time, _probes), new FixedUrl("http://127.0.0.1:8096"), _time, _logger);
 
     private static VersionEntry Entry(StreamResult result) =>
-        new(StreamIdentity.VersionId(Item, Alice, "k"), Item, Alice, new CurrentsTitle("movie", "tt1"), new RankedStream("k", result));
+        new(StreamIdentity.VersionId(Item, Alice, "k", FakeSettings.Secret), Item, Alice, new CurrentsTitle("movie", "tt1"), new RankedStream("k", result));
 
     private static StreamResult Unparsed() => new() { Url = "https://aio.example.com/play/1", Filename = "x.mkv" };
 

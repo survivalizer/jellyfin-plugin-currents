@@ -32,7 +32,7 @@ public class VersionSourceBuilderTests
             ParsedFile = new ParsedFile { Resolution = "2160p", Encode = "HEVC", VisualTags = ["HDR10"], AudioTags = ["DD+"], AudioChannels = ["5.1"] },
         };
         const string key = "0123456789abcdef0123456789abcdef";
-        return new VersionEntry(StreamIdentity.VersionId(Item, Alice, key), Item, Alice, new CurrentsTitle("movie", "tt1"), new RankedStream(key, result));
+        return new VersionEntry(StreamIdentity.VersionId(Item, Alice, key, FakeSettings.Secret), Item, Alice, new CurrentsTitle("movie", "tt1"), new RankedStream(key, result));
     }
 
     private VersionSourceBuilder Create() => new(_settings, _time, _probes);
