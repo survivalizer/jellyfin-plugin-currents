@@ -27,7 +27,11 @@ Manifest URLs travel in request bodies, never query strings, because they contai
 M1 has no media-source decorator, so Jellyfin exposes each `.strm` as a remote media source whose path is the
 `.strm` URL. The M0 spike (S4, `docs/spikes/2026-10-m0-findings.md`) showed the stock web client direct-plays
 that URL itself, and falls back to a full server transcode only if that fails. Consequences in M1:
-- `StrmBaseUrl` (default `http://127.0.0.1:8096`) must be an address **clients** can reach, not just the server.
+- `StrmBaseUrl` (default `http://127.0.0.1:8096`) must be reachable by **both** clients and Jellyfin's own ffmpeg
+  (which opens the `.strm` URL for every transcode or remux), normally the server's LAN address such as
+  `http://192.168.x.y:8096`. `localhost` fails both ways: a containerised ffmpeg cannot reach the published host port
+  through it, and a remote client resolves it to itself. (M1 end-to-end: real 4K/EAC3 streams were all served via
+  server HLS; direct play of the `.strm` URL was only observed with browser-compatible placeholder/sample videos.)
 - Clients may follow the redirect from `/Currents/play/...` to the final stream URL themselves, bypassing Jellyfin.
 This is fixed in M2, where the `IMediaSourceManager` decorator forces streaming through Jellyfin
 (`SupportsDirectPlay=false`).

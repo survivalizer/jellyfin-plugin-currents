@@ -14,7 +14,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets the folder that holds Movies/ and Shows/. Empty means the plugin data folder.</summary>
     public string LibraryRoot { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the base URL written into .strm files. Jellyfin must be reachable at it.</summary>
+    /// <summary>Gets or sets the base URL written into .strm files. Both clients and the Jellyfin server itself (its ffmpeg) must reach Jellyfin at it.</summary>
     public string StrmBaseUrl { get; set; } = "http://127.0.0.1:8096";
 
     /// <summary>Gets or sets the HMAC secret for resolve URLs (base64, generated on first start).</summary>

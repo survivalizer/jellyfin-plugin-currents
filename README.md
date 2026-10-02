@@ -18,11 +18,14 @@ into your library as real titles and plays them through [AIOStreams](https://git
    - **Save**, then **Sync now**.
 3. Add the two folders shown on the settings page as a Movies library and a Shows library.
    In each library's settings enable the **Currents (AIOMetadata)** metadata and image fetchers and the NFO reader.
-4. Set *Jellyfin address written into .strm files* (`StrmBaseUrl`) to an address your **clients** can reach
-   (not `127.0.0.1` unless every client runs on the server). In M1 the stock web client direct-plays the `.strm`
-   URL itself, and in this degraded mode clients may follow the redirect to the final stream URL themselves
-   rather than streaming through Jellyfin. This is fixed in M2 (see `docs/spikes/2026-10-m0-findings.md`, S4,
-   and `docs/architecture.md`).
+4. Set *Jellyfin address written into .strm files* (`StrmBaseUrl`) to an address that **both your clients and
+   the Jellyfin server itself** can reach, normally the server's LAN address, e.g. `http://192.168.x.y:8096`
+   (or your public URL). Jellyfin's own ffmpeg opens the `.strm` URL whenever it transcodes or remuxes, and
+   clients may open it directly when they can play the source as-is. `localhost`/`127.0.0.1` works for neither
+   case in common setups: inside a Docker container it does not reach the published host port, and on a remote
+   client it points at the client itself. In this degraded mode clients that direct-play may also follow the
+   redirect to the final stream URL themselves rather than streaming through Jellyfin. This is fixed in M2 (see
+   `docs/spikes/2026-10-m0-findings.md`, S4, and `docs/architecture.md`).
 
 Currents only manages title folders it created (each has a `.currents` marker file); it never deletes or
 overwrites other folders, and pruning removes only files the plugin wrote.
