@@ -98,10 +98,31 @@ public class MetadataProviderTests
     public async Task Meta_cache_shares_one_request_between_concurrent_callers()
     {
         var cache = Cache();
+        _client.MetaGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var metas = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => cache.GetAsync("series", "tt2", CancellationToken.None)));
+        var calls = Enumerable.Range(0, 10).Select(_ => cache.GetAsync("series", "tt2", CancellationToken.None)).ToList();
+        _client.MetaGate.SetResult();
+        var metas = await Task.WhenAll(calls);
 
         Assert.All(metas, m => Assert.Equal("Show Two", m!.Name));
+        Assert.Single(_client.MetaRequests);
+    }
+
+    [Fact]
+    public async Task Meta_cache_cancelling_one_waiter_does_not_cancel_the_shared_request()
+    {
+        var cache = Cache();
+        _client.MetaGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cts = new CancellationTokenSource();
+
+        var cancelled = cache.GetAsync("series", "tt2", cts.Token);
+        var other = cache.GetAsync("series", "tt2", CancellationToken.None);
+        await cts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
+        _client.MetaGate.SetResult();
+        var meta = await other;
+
+        Assert.Equal("Show Two", meta!.Name);
         Assert.Single(_client.MetaRequests);
     }
 

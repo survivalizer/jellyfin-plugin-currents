@@ -27,6 +27,9 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
 
     public List<string> MetaRequests { get; } = [];
 
+    /// <summary>When set, a meta request is recorded and then waits for this gate before answering.</summary>
+    public TaskCompletionSource? MetaGate { get; set; }
+
     public Task<StremioManifest> GetManifestAsync(AioMetadataEndpoint endpoint, CancellationToken cancellationToken) =>
         Task.FromResult(Manifest);
 
@@ -44,10 +47,14 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
         return Task.FromResult(page);
     }
 
-    public Task<StremioMeta?> GetMetaAsync(AioMetadataEndpoint endpoint, string type, string id, CancellationToken cancellationToken)
+    public async Task<StremioMeta?> GetMetaAsync(AioMetadataEndpoint endpoint, string type, string id, CancellationToken cancellationToken)
     {
         var key = $"{type}/{id}";
-        MetaRequests.Add(key);
+        lock (MetaRequests)
+        {
+            MetaRequests.Add(key);
+        }
+
         if (FailingMetas.Contains(key))
         {
             throw new AioMetadataException("simulated meta outage");
@@ -58,6 +65,11 @@ internal sealed class FakeAioMetadataClient : IAioMetadataClient
             throw new TaskCanceledException("simulated timeout");
         }
 
-        return Task.FromResult(Metas.GetValueOrDefault(key));
+        if (MetaGate is { } gate)
+        {
+            await gate.Task.ConfigureAwait(false);
+        }
+
+        return Metas.GetValueOrDefault(key);
     }
 }
