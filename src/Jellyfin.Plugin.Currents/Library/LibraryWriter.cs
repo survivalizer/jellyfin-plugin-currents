@@ -23,7 +23,7 @@ public sealed class LibraryWriter
 
     public WriteResult WriteMovie(TitleKey key, StremioMeta meta, string? existingRelativeFolder)
     {
-        var folderName = FolderName(key, meta, existingRelativeFolder);
+        var folderName = FolderName("Movies", key, meta, existingRelativeFolder);
         var folder = Path.Combine(_paths.Movies, folderName);
 
         var changed = WriteIfChanged(Path.Combine(folder, "movie.nfo"), NfoWriter.Movie(key, meta));
@@ -33,7 +33,7 @@ public sealed class LibraryWriter
 
     public WriteResult WriteSeries(TitleKey key, StremioMeta meta, string? existingRelativeFolder)
     {
-        var folderName = FolderName(key, meta, existingRelativeFolder);
+        var folderName = FolderName("Shows", key, meta, existingRelativeFolder);
         var folder = Path.Combine(_paths.Shows, folderName);
 
         var changed = WriteIfChanged(Path.Combine(folder, "tvshow.nfo"), NfoWriter.TvShow(key, meta));
@@ -48,11 +48,11 @@ public sealed class LibraryWriter
 
     public void Delete(string relativeFolder)
     {
-        var full = Path.GetFullPath(Path.Combine(_paths.Root, relativeFolder));
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(_paths.Root, relativeFolder)));
         if (string.IsNullOrWhiteSpace(relativeFolder)
-            || !full.StartsWith(_paths.Root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            || !(IsBelow(full, _paths.Movies) || IsBelow(full, _paths.Shows)))
         {
-            throw new InvalidOperationException("Refusing to delete a folder outside the Currents library root.");
+            throw new InvalidOperationException("Refusing to delete a folder outside the Currents title folders.");
         }
 
         if (Directory.Exists(full))
@@ -61,10 +61,25 @@ public sealed class LibraryWriter
         }
     }
 
-    private static string FolderName(TitleKey key, StremioMeta meta, string? existingRelativeFolder) =>
-        string.IsNullOrEmpty(existingRelativeFolder)
-            ? PathNaming.TitleFolder(meta.Name, MetaMapper.ParseYear(meta), key)
-            : Path.GetFileName(existingRelativeFolder);
+    private static bool IsBelow(string full, string parent) =>
+        full.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+
+    private static string FolderName(string category, TitleKey key, StremioMeta meta, string? existingRelativeFolder)
+    {
+        if (existingRelativeFolder is not null)
+        {
+            var parts = existingRelativeFolder.Replace('\\', '/').Split('/');
+            if (parts.Length == 2
+                && string.Equals(parts[0], category, StringComparison.Ordinal)
+                && !string.IsNullOrWhiteSpace(parts[1])
+                && parts[1] is not "." and not "..")
+            {
+                return parts[1];
+            }
+        }
+
+        return PathNaming.TitleFolder(meta.Name, MetaMapper.ParseYear(meta), key);
+    }
 
     private static bool WriteIfChanged(string path, string content)
     {

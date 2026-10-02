@@ -131,4 +131,50 @@ public sealed class LibraryWriterTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => _writer.Delete(Path.Combine("..", "elsewhere")));
         Assert.Throws<InvalidOperationException>(() => _writer.Delete(string.Empty));
     }
+
+    [Theory]
+    [InlineData("Movies")]
+    [InlineData("Shows")]
+    [InlineData("Shows/")]
+    [InlineData("Movies/X/..")]
+    public void Delete_refuses_category_folders(string relative)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "Movies", "X"));
+        Directory.CreateDirectory(Path.Combine(_root, "Shows"));
+
+        Assert.Throws<InvalidOperationException>(() => _writer.Delete(relative.Replace('/', Path.DirectorySeparatorChar)));
+
+        Assert.True(Directory.Exists(Path.Combine(_root, "Movies")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "Shows")));
+    }
+
+    [Fact]
+    public void Series_ignores_existing_folder_from_movies_category()
+    {
+        var key = new TitleKey(MediaKind.Series, "imdb", "tt1");
+        var meta = new StremioMeta { Id = "tt1", Name = "Show", Year = "2000" };
+
+        var result = _writer.WriteSeries(key, meta, Path.Combine("Movies", "X [imdbid-tt1]"));
+
+        Assert.Equal(Path.Combine("Shows", "Show (2000) [imdbid-tt1]"), result.RelativeFolder);
+        Assert.True(File.Exists(Path.Combine(_root, result.RelativeFolder, "tvshow.nfo")));
+        Assert.False(Directory.Exists(Path.Combine(_root, "Movies")));
+    }
+
+    [Theory]
+    [InlineData("Movies/..")]
+    [InlineData("Movies/")]
+    [InlineData("..")]
+    public void Movie_ignores_malformed_existing_folder(string existing)
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var meta = new StremioMeta { Id = "tt1", Name = "A", Year = "2000" };
+
+        var result = _writer.WriteMovie(key, meta, existing);
+
+        Assert.Equal(Path.Combine("Movies", "A (2000) [imdbid-tt1]"), result.RelativeFolder);
+        Assert.Empty(Directory.GetFiles(_root));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, "Movies")));
+        Assert.Single(Directory.GetDirectories(_root));
+    }
 }
