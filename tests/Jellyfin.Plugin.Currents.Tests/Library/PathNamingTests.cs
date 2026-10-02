@@ -61,6 +61,15 @@ public class PathNamingTests
     }
 
     [Theory]
+    [InlineData("Medusa (2025)", 2025, "Medusa (2025) [imdbid-tt0117060]")]
+    [InlineData("1917", 2019, "1917 (2019) [imdbid-tt0117060]")]
+    [InlineData("Dune (2021)", 2024, "Dune (2021) (2024) [imdbid-tt0117060]")]
+    public void Does_not_double_a_year_already_in_the_title(string name, int year, string expected)
+    {
+        Assert.Equal(expected, PathNaming.TitleFolder(name, year, Key));
+    }
+
+    [Theory]
     [InlineData(0, "Specials")]
     [InlineData(1, "Season 01")]
     [InlineData(12, "Season 12")]

@@ -72,10 +72,19 @@ public static partial class PathNaming
         return cleaned.Length == 0 || cleaned.All(c => !char.IsLetterOrDigit(c)) ? Fallback : cleaned;
     }
 
-    public static string TitleFolder(string? name, int? year, TitleKey key) =>
-        year is int y
-            ? string.Create(CultureInfo.InvariantCulture, $"{SanitizeTitle(name)} ({y}) {key.FolderTag}")
-            : $"{SanitizeTitle(name)} {key.FolderTag}";
+    public static string TitleFolder(string? name, int? year, TitleKey key)
+    {
+        var title = SanitizeTitle(name);
+        if (year is not int y)
+        {
+            return $"{title} {key.FolderTag}";
+        }
+
+        var suffix = string.Create(CultureInfo.InvariantCulture, $"({y})");
+        return title.EndsWith(suffix, StringComparison.Ordinal)
+            ? $"{title} {key.FolderTag}"
+            : $"{title} {suffix} {key.FolderTag}";
+    }
 
     public static string StripTag(string folderName) => TrailingTag().Replace(folderName, string.Empty);
 

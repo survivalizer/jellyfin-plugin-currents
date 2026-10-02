@@ -23,6 +23,7 @@ public sealed class JellyfinLibraryRefresher : ILibraryRefresher
 
     public async Task RefreshAsync(IReadOnlyCollection<string> folders, CancellationToken cancellationToken)
     {
+        var scanQueued = false;
         foreach (var path in folders.Where(Directory.Exists))
         {
             if (_libraryManager.FindByPath(path, isFolder: true) is Folder folder)
@@ -35,7 +36,16 @@ public sealed class JellyfinLibraryRefresher : ILibraryRefresher
             }
             else
             {
-                _logger.LogWarning("Currents folder {Path} is not in any Jellyfin library yet. Add it to a Movies or Shows library.", path);
+                // A library created without a scan has no folder item for its root yet; a full scan creates it.
+                if (!scanQueued)
+                {
+                    _libraryManager.QueueLibraryScan();
+                    scanQueued = true;
+                }
+
+                _logger.LogInformation(
+                    "Currents folder {Path} has not been scanned into a Jellyfin library yet; queued a library scan. If it is not part of any library, add it to a Movies or Shows library.",
+                    path);
             }
         }
     }
