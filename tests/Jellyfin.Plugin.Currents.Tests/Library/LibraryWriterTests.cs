@@ -1,0 +1,134 @@
+using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
+using Jellyfin.Plugin.Currents.Library;
+using Jellyfin.Plugin.Currents.Tests.TestSupport;
+using Xunit;
+
+namespace Jellyfin.Plugin.Currents.Tests.Library;
+
+public sealed class LibraryWriterTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "currents-writer-" + Guid.NewGuid().ToString("N"));
+    private readonly StrmSigner _signer = new(StrmSigner.NewSecret());
+    private readonly LibraryWriter _writer;
+
+    public LibraryWriterTests()
+    {
+        var time = new ManualTimeProvider(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
+        _writer = new LibraryWriter(new LibraryPaths(_root), _signer, "http://127.0.0.1:8096", time);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Writes_movie_folder_nfo_and_signed_strm()
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt0111161");
+        var meta = new StremioMeta { Id = "tt0111161", Name = "The Shawshank Redemption", Year = "1994" };
+
+        var result = _writer.WriteMovie(key, meta, existingRelativeFolder: null);
+
+        Assert.True(result.Changed);
+        Assert.Equal(Path.Combine("Movies", "The Shawshank Redemption (1994) [imdbid-tt0111161]"), result.RelativeFolder);
+        var folder = Path.Combine(_root, result.RelativeFolder);
+        Assert.True(File.Exists(Path.Combine(folder, "movie.nfo")));
+        var strm = File.ReadAllText(Path.Combine(folder, "The Shawshank Redemption (1994).strm"));
+        Assert.StartsWith("http://127.0.0.1:8096/Currents/play/movie/tt0111161?sig=", strm, StringComparison.Ordinal);
+        Assert.EndsWith("\n", strm, StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFiles(folder, "*.tmp"));
+    }
+
+    [Fact]
+    public void Rewriting_identical_content_reports_unchanged()
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var meta = new StremioMeta { Id = "tt1", Name = "A", Year = "2000" };
+
+        _writer.WriteMovie(key, meta, null);
+        var second = _writer.WriteMovie(key, meta, null);
+
+        Assert.False(second.Changed);
+    }
+
+    [Fact]
+    public void Keeps_existing_folder_when_title_is_renamed()
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var first = _writer.WriteMovie(key, new StremioMeta { Id = "tt1", Name = "Old Name", Year = "2000" }, null);
+
+        var second = _writer.WriteMovie(key, new StremioMeta { Id = "tt1", Name = "New Name", Year = "2000" }, first.RelativeFolder);
+
+        Assert.Equal(first.RelativeFolder, second.RelativeFolder);
+        Assert.Single(Directory.GetDirectories(Path.Combine(_root, "Movies")));
+    }
+
+    [Fact]
+    public void Writes_released_episodes_including_specials_and_skips_future_or_invalid()
+    {
+        var key = new TitleKey(MediaKind.Series, "imdb", "tt0944947");
+        var meta = new StremioMeta
+        {
+            Id = "tt0944947",
+            Name = "Game of Thrones",
+            ReleaseInfo = "2011-2019",
+            Videos =
+            [
+                new StremioVideo { Id = "tt0944947:1:1", Season = 1, Episode = 1, Released = "2011-04-17T00:00:00Z" },
+                new StremioVideo { Season = 1, Episode = 2, Released = "2011-04-24T00:00:00Z" },
+                new StremioVideo { Id = "tt0944947:0:1", Season = 0, Episode = 1, Released = "2011-04-10T00:00:00Z" },
+                new StremioVideo { Id = "tt0944947:9:1", Season = 9, Episode = 1, Released = "2030-01-01T00:00:00Z" },
+                new StremioVideo { Id = "bad", Season = 1, Episode = 0 },
+                new StremioVideo { Id = "dup", Season = 1, Episode = 1 },
+            ],
+        };
+
+        var result = _writer.WriteSeries(key, meta, null);
+        var folder = Path.Combine(_root, result.RelativeFolder);
+
+        Assert.True(File.Exists(Path.Combine(folder, "tvshow.nfo")));
+        var files = Directory.GetFiles(folder, "*.strm", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(folder, f))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(
+            new[] {
+                Path.Combine("Season 01", "Game of Thrones (2011) S01E01.strm"),
+                Path.Combine("Season 01", "Game of Thrones (2011) S01E02.strm"),
+                Path.Combine("Specials", "Game of Thrones (2011) S00E01.strm"),
+            },
+            files);
+        var e2 = File.ReadAllText(Path.Combine(folder, "Season 01", "Game of Thrones (2011) S01E02.strm"));
+        Assert.Contains("/Currents/play/series/tt0944947%3A1%3A2?sig=", e2, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Anime_episode_without_id_uses_episode_only_convention()
+    {
+        var key = new TitleKey(MediaKind.Series, "kitsu", "1376");
+        var meta = new StremioMeta { Id = "kitsu:1376", Name = "Death Note", Videos = [new StremioVideo { Season = 1, Episode = 5 }] };
+
+        var result = _writer.WriteSeries(key, meta, null);
+        var strm = Directory.GetFiles(Path.Combine(_root, result.RelativeFolder), "*.strm", SearchOption.AllDirectories).Single();
+
+        Assert.Contains("/Currents/play/series/kitsu%3A1376%3A5?sig=", File.ReadAllText(strm), StringComparison.Ordinal);
+        Assert.Equal("[kitsu-1376]", key.FolderTag);
+    }
+
+    [Fact]
+    public void Delete_removes_folder_but_refuses_paths_outside_root()
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var result = _writer.WriteMovie(key, new StremioMeta { Id = "tt1", Name = "A" }, null);
+
+        _writer.Delete(result.RelativeFolder);
+
+        Assert.False(Directory.Exists(Path.Combine(_root, result.RelativeFolder)));
+        Assert.Throws<InvalidOperationException>(() => _writer.Delete(Path.Combine("..", "elsewhere")));
+        Assert.Throws<InvalidOperationException>(() => _writer.Delete(string.Empty));
+    }
+}
