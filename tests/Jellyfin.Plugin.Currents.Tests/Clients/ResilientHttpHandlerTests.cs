@@ -24,6 +24,17 @@ public class ResilientHttpHandlerTests
         return (new HttpMessageInvoker(handler), stub, breaker);
     }
 
+    private (HttpMessageInvoker Invoker, CircuitBreaker Breaker) CreateWith(HttpMessageHandler inner, int threshold = 100, TimeSpan? attemptTimeout = null)
+    {
+        var breaker = new CircuitBreaker(threshold, TimeSpan.FromSeconds(30), new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+        var limiter = new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = 10, QueueLimit = 10 });
+        var handler = new ResilientHttpHandler(limiter, breaker, maxRetries: 2, delay: (d, _) => { _delays.Add(d); return Task.CompletedTask; }, attemptTimeout: attemptTimeout)
+        {
+            InnerHandler = inner,
+        };
+        return (new HttpMessageInvoker(handler), breaker);
+    }
+
     [Fact]
     public async Task Retries_server_errors_then_succeeds()
     {
@@ -87,5 +98,140 @@ public class ResilientHttpHandlerTests
 
         await Assert.ThrowsAsync<CircuitOpenException>(() => invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, Target), CancellationToken.None));
         Assert.Empty(stub.Requests);
+    }
+
+    [Fact]
+    public async Task Retries_transport_exceptions_then_succeeds()
+    {
+        var inner = new FuncHandler((n, _) => n < 2
+            ? throw new HttpRequestException("boom")
+            : Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
+        var (invoker, _) = CreateWith(inner);
+
+        using var response = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, Target), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(3, inner.Calls);
+        Assert.Equal(2, _delays.Count);
+    }
+
+    [Fact]
+    public async Task Rethrows_transport_exception_after_max_retries_and_records_failures()
+    {
+        var inner = new FuncHandler((_, _) => throw new HttpRequestException("boom"));
+        var (invoker, breaker) = CreateWith(inner, threshold: 3);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, Target), CancellationToken.None));
+
+        Assert.Equal(3, inner.Calls);
+        Assert.True(breaker.IsOpen);
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_during_send_is_not_retried_or_counted()
+    {
+        using var cts = new CancellationTokenSource();
+        var inner = new FuncHandler(async (_, ct) =>
+        {
+            await cts.CancelAsync();
+            await Task.Delay(Timeout.Infinite, ct);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var (invoker, breaker) = CreateWith(inner, threshold: 1);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, Target), cts.Token));
+
+        Assert.Equal(1, inner.Calls);
+        Assert.Empty(_delays);
+        Assert.False(breaker.IsOpen);
+    }
+
+    [Fact]
+    public async Task Pre_cancelled_caller_does_not_call_the_server_or_count()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var inner = new FuncHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
+        var (invoker, breaker) = CreateWith(inner, threshold: 1);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, Target), cts.Token));
+
+        Assert.Equal(0, inner.Calls);
+        Assert.False(breaker.IsOpen);
+    }
+
+    [Fact]
+    public async Task Repeated_429_does_not_open_the_breaker()
+    {
+        var (invoker, stub, breaker) = Create(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests), threshold: 1);
+
+        using var response = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, Target), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.Equal(3, stub.Requests.Count);
+        Assert.False(breaker.IsOpen);
+    }
+
+    [Fact]
+    public async Task Attempt_timeout_is_retried()
+    {
+        var inner = new FuncHandler(async (n, ct) =>
+        {
+            if (n == 0)
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var (invoker, _) = CreateWith(inner, attemptTimeout: TimeSpan.FromMilliseconds(50));
+
+        using var response = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, Target), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2, inner.Calls);
+        Assert.Single(_delays);
+    }
+
+    [Fact]
+    public async Task Attempt_timeout_counts_as_a_breaker_failure()
+    {
+        var inner = new FuncHandler(async (_, ct) =>
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var (invoker, breaker) = CreateWith(inner, threshold: 1, attemptTimeout: TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAsync<CircuitOpenException>(() => invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, Target), CancellationToken.None));
+
+        Assert.Equal(1, inner.Calls);
+        Assert.True(breaker.IsOpen);
+    }
+
+    [Fact]
+    public async Task Task_canceled_with_timeout_inner_exception_is_retried()
+    {
+        var inner = new FuncHandler((n, _) => n == 0
+            ? throw new TaskCanceledException("timeout", new TimeoutException())
+            : Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
+        var (invoker, _) = CreateWith(inner);
+
+        using var response = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, Target), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2, inner.Calls);
+    }
+
+    private sealed class FuncHandler : HttpMessageHandler
+    {
+        private readonly Func<int, CancellationToken, Task<HttpResponseMessage>> _send;
+
+        public FuncHandler(Func<int, CancellationToken, Task<HttpResponseMessage>> send) => _send = send;
+
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            _send(Calls++, cancellationToken);
     }
 }

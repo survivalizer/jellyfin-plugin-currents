@@ -21,8 +21,18 @@ public sealed class OutboundPolicies : IDisposable
     public DelegatingHandler CreateHandler(string clientName)
     {
         var policy = _policies.GetOrAdd(clientName, Create);
-        return new ResilientHttpHandler(policy.Limiter, policy.Breaker);
+        return new ResilientHttpHandler(policy.Limiter, policy.Breaker, attemptTimeout: AttemptTimeout(clientName));
     }
+
+    /// <summary>Gets the per-attempt timeout for a client, or null when it has none.</summary>
+    /// <param name="clientName">The HttpClient name.</param>
+    /// <returns>The timeout, or null.</returns>
+    public static TimeSpan? AttemptTimeout(string clientName) => clientName switch
+    {
+        HttpClientNames.AioStreams => TimeSpan.FromSeconds(10),
+        HttpClientNames.AioMetadata => TimeSpan.FromSeconds(30),
+        _ => null,
+    };
 
     public void Dispose()
     {

@@ -16,8 +16,8 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ICurrentsSettings, PluginSettings>();
         serviceCollection.AddSingleton<OutboundPolicies>();
 
-        AddUpstreamClient(serviceCollection, HttpClientNames.AioStreams, TimeSpan.FromSeconds(10));
-        AddUpstreamClient(serviceCollection, HttpClientNames.AioMetadata, TimeSpan.FromSeconds(30));
+        AddUpstreamClient(serviceCollection, HttpClientNames.AioStreams);
+        AddUpstreamClient(serviceCollection, HttpClientNames.AioMetadata);
         serviceCollection.AddHttpClient(HttpClientNames.Resolve, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(15);
@@ -26,11 +26,12 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
     }
 
-    private static void AddUpstreamClient(IServiceCollection services, string name, TimeSpan timeout)
+    private static void AddUpstreamClient(IServiceCollection services, string name)
     {
         services.AddHttpClient(name, client =>
             {
-                client.Timeout = timeout;
+                // Three attempts (maxRetries 2) each bounded by the handler's per-attempt timeout, plus slack for backoff.
+                client.Timeout = ((OutboundPolicies.AttemptTimeout(name) ?? TimeSpan.FromSeconds(10)) * 3) + TimeSpan.FromSeconds(5);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
             })
             .AddHttpMessageHandler(sp => sp.GetRequiredService<OutboundPolicies>().CreateHandler(name));
