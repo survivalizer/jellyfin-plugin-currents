@@ -1,5 +1,6 @@
 using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
+using Jellyfin.Plugin.Currents.Configuration;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using Jellyfin.Plugin.Currents.Web;
 using Microsoft.AspNetCore.Mvc;
@@ -88,5 +89,43 @@ public class AdminControllerTests
 
         Assert.Equal(Path.Combine(Path.GetTempPath(), "currents-root", "Movies"), paths.Movies);
         Assert.Equal(Path.Combine(Path.GetTempPath(), "currents-root", "Shows"), paths.Shows);
+    }
+
+    [Fact]
+    public async Task Lists_movie_series_and_anime_search_catalogs_with_a_target()
+    {
+        var search = new List<StremioExtra> { new() { Name = "search", IsRequired = true }, new() { Name = "skip" } };
+        _metadata.Manifest = new StremioManifest
+        {
+            Catalogs =
+            [
+                new StremioCatalog { Type = "movie", Id = "tmdb.top", Name = "Popular" },
+                new StremioCatalog { Type = "movie", Id = "search.movie", Name = "Movies", Extra = search },
+                new StremioCatalog { Type = "series", Id = "search.series", Name = "Series", Extra = search },
+                new StremioCatalog { Type = "anime.series", Id = "search.anime_series", Name = "Anime", Extra = search },
+                new StremioCatalog { Type = "anime.movie", Id = "search.anime_movie", Extra = search },
+                new StremioCatalog { Type = "collection", Id = "search.tvdb.collections.search", Name = "Collections", Extra = search },
+                new StremioCatalog { Type = "other", Id = "gemini.search", Name = "AI", Extra = search },
+            ],
+        };
+
+        var result = await Create().GetSearchCatalogs(new ManifestUrlRequest(MetaUrl), CancellationToken.None);
+
+        var options = Assert.IsAssignableFrom<IEnumerable<SearchCatalogOption>>(Assert.IsType<OkObjectResult>(result.Result).Value).ToList();
+        Assert.Equal(
+            new[]
+            {
+                new SearchCatalogOption("movie", "search.movie", "Movies", CatalogTarget.Movies),
+                new SearchCatalogOption("series", "search.series", "Series", CatalogTarget.Shows),
+                new SearchCatalogOption("anime.series", "search.anime_series", "Anime", CatalogTarget.Shows),
+                new SearchCatalogOption("anime.movie", "search.anime_movie", "search.anime_movie", CatalogTarget.Movies),
+            },
+            options);
+    }
+
+    [Fact]
+    public async Task Search_catalogs_with_an_invalid_url_are_a_bad_request()
+    {
+        Assert.IsType<BadRequestObjectResult>((await Create().GetSearchCatalogs(new ManifestUrlRequest("nope"), CancellationToken.None)).Result);
     }
 }

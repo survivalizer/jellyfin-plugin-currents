@@ -2,6 +2,7 @@ using System.Globalization;
 using Jellyfin.Plugin.Currents.Clients.AioMetadata;
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Common;
+using Jellyfin.Plugin.Currents.Configuration;
 using Jellyfin.Plugin.Currents.Library;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Model.Tasks;
@@ -54,6 +55,31 @@ public sealed class AdminController : ControllerBase
         }
     }
 
+    [HttpPost("search-catalogs")]
+    public async Task<ActionResult<IReadOnlyList<SearchCatalogOption>>> GetSearchCatalogs([FromBody] ManifestUrlRequest? request, CancellationToken cancellationToken)
+    {
+        if (!AioMetadataEndpoint.TryParse(request?.ManifestUrl, out var endpoint, out var error))
+        {
+            return BadRequest(new StatusMessage(SecretMasker.Mask(error!)));
+        }
+
+        try
+        {
+            var manifest = await _metadata.GetManifestAsync(endpoint, cancellationToken).ConfigureAwait(false);
+            var options = manifest.Catalogs
+                .Where(c => !string.IsNullOrEmpty(c.Id) && c.Extra.Exists(e => e.IsRequired && string.Equals(e.Name, "search", StringComparison.Ordinal)))
+                .Select(c => (Catalog: c, Target: SearchTarget(c.Type)))
+                .Where(x => x.Target is not null)
+                .Select(x => new SearchCatalogOption(x.Catalog.Type, x.Catalog.Id, string.IsNullOrWhiteSpace(x.Catalog.Name) ? x.Catalog.Id : x.Catalog.Name, x.Target!.Value))
+                .ToList();
+            return Ok(options);
+        }
+        catch (Exception ex) when (ex is AioMetadataException or HttpRequestException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new StatusMessage(SecretMasker.Mask(ex.Message)));
+        }
+    }
+
     [HttpPost("test-streams")]
     public async Task<ActionResult<StatusMessage>> TestStreams([FromBody] ManifestUrlRequest? request, CancellationToken cancellationToken)
     {
@@ -88,4 +114,12 @@ public sealed class AdminController : ControllerBase
         var paths = LibraryPaths.FromSettings(_settings);
         return new LibraryPathsResponse(paths.Movies, paths.Shows);
     }
+
+    private static CatalogTarget? SearchTarget(string type) => type switch
+    {
+        "movie" or "anime.movie" => CatalogTarget.Movies,
+        "series" => CatalogTarget.Shows,
+        _ when type.StartsWith("anime.", StringComparison.Ordinal) => CatalogTarget.Shows,
+        _ => null,
+    };
 }

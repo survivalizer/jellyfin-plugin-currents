@@ -15,4 +15,8 @@ public sealed class UserSettingsUpdate
     public bool? AutoSelect { get; set; }
 
     public bool ClearAutoSelect { get; set; }
+
+    public bool? SearchAutoAdd { get; set; }
+
+    public bool ClearSearchAutoAdd { get; set; }
 }

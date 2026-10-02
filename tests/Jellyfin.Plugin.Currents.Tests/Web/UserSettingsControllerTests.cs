@@ -127,4 +127,30 @@ public sealed class UserSettingsControllerTests : IDisposable
         Assert.True(settings.StreamsDisabled);
         Assert.Equal("None", settings.Source);
     }
+
+    [Fact]
+    public async Task User_turns_search_add_off_and_back_to_the_default()
+    {
+        var off = Ok(await Create(Alice).UpdateSettings(new UserSettingsUpdate { SearchAutoAdd = false }, CancellationToken.None));
+        Assert.False(off.SearchAutoAdd);
+        Assert.False(off.EffectiveSearchAutoAdd);
+        Assert.True(off.SearchAvailable);
+        Assert.False(_users.Get(Alice).Self.SearchAutoAdd);
+
+        var reset = Ok(await Create(Alice).UpdateSettings(new UserSettingsUpdate { ClearSearchAutoAdd = true }, CancellationToken.None));
+        Assert.Null(reset.SearchAutoAdd);
+        Assert.True(reset.EffectiveSearchAutoAdd);
+    }
+
+    [Fact]
+    public void Response_reports_search_off_by_admin_and_globally()
+    {
+        _users.Update(Alice, r => r.SearchAutoAddDisabled = true);
+        var settings = Ok(Create(Alice).GetSettings());
+        Assert.True(settings.SearchAddDisabledByAdmin);
+        Assert.False(settings.EffectiveSearchAutoAdd);
+
+        _settings.Current.EnableSearch = false;
+        Assert.False(Ok(Create(Alice).GetSettings()).SearchAvailable);
+    }
 }

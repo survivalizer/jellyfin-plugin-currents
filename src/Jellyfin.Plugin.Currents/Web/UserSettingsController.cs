@@ -83,7 +83,18 @@ public sealed class UserSettingsController : ControllerBase
         }
 
         update.Preferences?.Normalize();
-        _users.Update(userId, record => Apply(record.Self, url, update.Preferences, update.ClearPreferences, update.AutoSelect, update.ClearAutoSelect));
+        _users.Update(userId, record =>
+        {
+            Apply(record.Self, url, update.Preferences, update.ClearPreferences, update.AutoSelect, update.ClearAutoSelect);
+            if (update.ClearSearchAutoAdd)
+            {
+                record.Self.SearchAutoAdd = null;
+            }
+            else if (update.SearchAutoAdd is not null)
+            {
+                record.Self.SearchAutoAdd = update.SearchAutoAdd;
+            }
+        });
         return Ok(Describe(userId));
     }
 
@@ -127,6 +138,10 @@ public sealed class UserSettingsController : ControllerBase
             record.Self.Preferences,
             record.Self.AutoSelect,
             profile.Preferences,
-            profile.AutoSelect);
+            profile.AutoSelect,
+            _settings.Current.EnableSearch,
+            record.Self.SearchAutoAdd,
+            _profiles.SearchAutoAdd(userId),
+            record.SearchAutoAddDisabled);
     }
 }

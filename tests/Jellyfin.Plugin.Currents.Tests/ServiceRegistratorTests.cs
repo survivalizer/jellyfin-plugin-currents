@@ -2,11 +2,14 @@ using System.Net;
 using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Integration;
+using Jellyfin.Plugin.Currents.Search;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.IO;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -29,6 +32,9 @@ public class ServiceRegistratorTests
         services.AddSingleton(InterfaceFake.Create<IServerApplicationHost>().Instance);
         services.AddSingleton(InterfaceFake.Create<INetworkManager>().Instance);
         services.AddSingleton(InterfaceFake.Create<IServerConfigurationManager>().Instance);
+        services.AddSingleton(InterfaceFake.Create<IProviderManager>().Instance);
+        services.AddSingleton(InterfaceFake.Create<ILibraryMonitor>().Instance);
+        services.AddSingleton(InterfaceFake.Create<IFileSystem>().Instance);
         new ServiceRegistrator().RegisterServices(services, null!);
         services.AddSingleton<ICurrentsSettings>(new FakeSettings());
         return services;
@@ -38,6 +44,7 @@ public class ServiceRegistratorTests
     [InlineData(HttpClientNames.Resolve)]
     [InlineData(HttpClientNames.AioStreams)]
     [InlineData(HttpClientNames.AioMetadata)]
+    [InlineData(HttpClientNames.Posters)]
     public async Task Outbound_clients_never_log_request_urls(string name)
     {
         var logs = new CapturingLoggerProvider();
@@ -71,5 +78,10 @@ public class ServiceRegistratorTests
         Assert.Equal(typeof(SyntheticVersionIdFilter), filters.Single(f => f.Order == -1000).ServiceType);
         Assert.Equal(typeof(PlaybackInfoFilter), filters.Single(f => f.Order == -999).ServiceType);
         Assert.NotNull(provider.GetRequiredService<PlaybackInfoFilter>());
+        Assert.Equal(typeof(SearchItemFilter), filters.Single(f => f.Order == -1001).ServiceType);
+        Assert.Equal(typeof(SearchResultsFilter), filters.Single(f => f.Order == -998).ServiceType);
+        Assert.NotNull(provider.GetRequiredService<SearchItemFilter>());
+        Assert.NotNull(provider.GetRequiredService<SearchResultsFilter>());
+        Assert.IsType<JellyfinLibraryItems>(provider.GetRequiredService<Jellyfin.Plugin.Currents.Library.ILibraryItems>());
     }
 }

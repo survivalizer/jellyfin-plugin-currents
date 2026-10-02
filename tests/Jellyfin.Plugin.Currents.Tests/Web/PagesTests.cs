@@ -69,4 +69,28 @@ public sealed class PagesTests : IDisposable
         Assert.Contains("ClearAutoSelect", html, StringComparison.Ordinal);
         Assert.Contains("OverridePreferences", html, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Admin_page_has_the_search_section()
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
+
+        foreach (var id in new[] { "EnableSearch", "DefaultSearchAutoAdd", "LoadSearchCatalogs", "SearchCatalogTable" })
+        {
+            Assert.Contains($"id=\"{id}\"", html, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("Currents/admin/search-catalogs", html, StringComparison.Ordinal);
+        Assert.Contains("SearchCatalogs", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void User_page_has_the_search_switch()
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Web.userPage.html");
+
+        Assert.Contains("id=\"searchAutoAdd\"", html, StringComparison.Ordinal);
+        Assert.Contains("SearchAutoAdd", html, StringComparison.Ordinal);
+        Assert.Contains("SearchAvailable", html, StringComparison.Ordinal);
+    }
 }

@@ -39,6 +39,12 @@
       <h2>Versions</h2>
       <div class="check"><input type="checkbox" id="autoSelect"><label for="autoSelect">Only show the best stream (hide the version list)</label></div>
 
+      <section id="searchSection" hidden>
+        <h2>Search</h2>
+        <div class="check"><input type="checkbox" id="searchAutoAdd"><label for="searchAutoAdd">Show titles from AIOMetadata in search, and add them when I open one</label></div>
+        <p class="hint" id="searchHint"></p>
+      </section>
+
       <h2>Preferences</h2>
       <p class="hint">Lists are comma-separated and in order of preference, for example <code>2160p, 1080p</code>. Leave a list empty for no preference.</p>
       <label for="resolutionOrder">Resolutions</label>
@@ -102,6 +108,10 @@
         $('removeConfig').hidden = !s.ConfigHost;
         const p = s.EffectivePreferences;
         $('autoSelect').checked = !!s.EffectiveAutoSelect;
+        $('searchSection').hidden = !s.SearchAvailable;
+        $('searchAutoAdd').checked = !!s.EffectiveSearchAutoAdd;
+        $('searchAutoAdd').disabled = !!s.SearchAddDisabledByAdmin;
+        $('searchHint').textContent = s.SearchAddDisabledByAdmin ? 'Your admin turned this off for your account.' : '';
         $('resolutionOrder').value = join(p.ResolutionOrder);
         $('hdr').value = p.Hdr || 'Any';
         $('audioLanguages').value = join(p.AudioLanguages);
@@ -124,6 +134,7 @@
         save({
           AioStreamsManifestUrl: url || null,
           AutoSelect: $('autoSelect').checked,
+          SearchAutoAdd: $('searchAutoAdd').disabled ? null : $('searchAutoAdd').checked,
           Preferences: {
             ResolutionOrder: list($('resolutionOrder').value),
             Hdr: $('hdr').value,
@@ -137,7 +148,7 @@
         }, 'Saved. Reopen a title to see your versions.');
       });
       $('removeConfig').addEventListener('click', () => save({ AioStreamsManifestUrl: '' }, 'Removed your config.'));
-      $('resetPreferences').addEventListener('click', () => save({ ClearPreferences: true, ClearAutoSelect: true }, 'Preferences reset.'));
+      $('resetPreferences').addEventListener('click', () => save({ ClearPreferences: true, ClearAutoSelect: true, ClearSearchAutoAdd: true }, 'Preferences reset.'));
 
       try { fill(await api('Currents/user/settings')); }
       catch (e) { status(e.message, true); }

@@ -1,10 +1,12 @@
 using Jellyfin.Plugin.Currents.Clients.AioMetadata;
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.Http;
+using Jellyfin.Plugin.Currents.Clients.Posters;
 using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Metadata;
+using Jellyfin.Plugin.Currents.Search;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Users;
 using MediaBrowser.Common.Net;
@@ -29,6 +31,13 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 
         AddUpstreamClient(serviceCollection, HttpClientNames.AioStreams);
         AddUpstreamClient(serviceCollection, HttpClientNames.AioMetadata);
+        serviceCollection.AddHttpClient(HttpClientNames.Posters, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(10);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { MaxAutomaticRedirections = 5 })
+            .RemoveAllLoggers();
         serviceCollection.AddHttpClient(HttpClientNames.Resolve, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(15);
@@ -59,6 +68,14 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IInternalBaseUrl, InternalBaseUrl>();
         serviceCollection.AddSingleton<CurrentsItemLocator>();
 
+        serviceCollection.AddSingleton<SearchResultRegistry>();
+        serviceCollection.AddSingleton<RemoteSearch>();
+        serviceCollection.AddSingleton<ILibraryItems, JellyfinLibraryItems>();
+        serviceCollection.AddSingleton<SearchTitleOpener>();
+        serviceCollection.AddSingleton<IPosterClient, PosterClient>();
+        serviceCollection.AddSingleton<SearchItemFilter>();
+        serviceCollection.AddSingleton<SearchResultsFilter>();
+
         serviceCollection.AddSingleton<VersionProber>();
         serviceCollection.AddSingleton<SyntheticVersionIdFilter>();
         serviceCollection.AddSingleton<PlaybackInfoFilter>();
@@ -66,8 +83,11 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         // MVC is configured after plugins register, hence PostConfigure. The id filter must run before PlaybackInfoFilter.
         serviceCollection.PostConfigure<MvcOptions>(options =>
         {
+            // Search ids become real items before the version-id filter and PlaybackInfo see them.
+            options.Filters.AddService<SearchItemFilter>(order: -1001);
             options.Filters.AddService<SyntheticVersionIdFilter>(order: -1000);
             options.Filters.AddService<PlaybackInfoFilter>(order: -999);
+            options.Filters.AddService<SearchResultsFilter>(order: -998);
         });
 
         // Jellyfin registers IMediaSourceManager before plugins (ApplicationHost.cs:597 -> :492); wrap it last.

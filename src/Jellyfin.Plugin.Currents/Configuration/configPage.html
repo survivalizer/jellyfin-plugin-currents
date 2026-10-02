@@ -27,6 +27,22 @@
           </table>
           <div class="fieldDescription">Unticking a catalog removes its unwatched titles after the configured number of syncs.</div>
 
+          <h3>Search (AIOMetadata)</h3>
+          <div class="checkboxContainer">
+            <label><input is="emby-checkbox" type="checkbox" id="EnableSearch" /><span>Show AIOMetadata titles in Jellyfin search, and add them when opened</span></label>
+          </div>
+          <div class="checkboxContainer">
+            <label><input is="emby-checkbox" type="checkbox" id="DefaultSearchAutoAdd" /><span>On for users who have not chosen</span></label>
+            <div class="fieldDescription">Users can change this on their Currents page when self-service is allowed; the Users table below can turn it off per user.</div>
+          </div>
+          <button is="emby-button" type="button" id="LoadSearchCatalogs" class="raised button-alt"><span>Load search catalogs</span></button>
+          <div id="SearchCatalogStatus" class="fieldDescription"></div>
+          <table id="SearchCatalogTable" class="detailTable" style="width:100%;margin:1em 0">
+            <thead><tr><th>Use</th><th>Catalog</th><th>Type</th><th>Library</th><th>Results</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="fieldDescription">Titles opened from search are added to the library and are never pruned.</div>
+
           <h3>Streams (AIOStreams)</h3>
           <div class="inputContainer">
             <input is="emby-input" type="url" id="AioStreamsManifestUrl" label="Default AIOStreams manifest URL" />
@@ -280,6 +296,77 @@
           });
         }
 
+        function renderSearchCatalogs(options) {
+          const body = $('#SearchCatalogTable tbody');
+          body.replaceChildren();
+          const saved = new Map((config.SearchCatalogs || []).map((c) => [c.Type + '/' + c.Id, c]));
+          const all = options.slice();
+          saved.forEach((c, key) => {
+            if (!all.some((o) => o.Type + '/' + o.Id === key)) { all.push({ Type: c.Type, Id: c.Id, Name: c.Name, Target: c.Target }); }
+          });
+
+          for (const option of all) {
+            const existing = saved.get(option.Type + '/' + option.Id);
+            const row = document.createElement('tr');
+            row.dataset.type = option.Type;
+            row.dataset.id = option.Id;
+            row.dataset.name = option.Name;
+
+            const use = document.createElement('input');
+            use.type = 'checkbox';
+            use.className = 'use';
+            use.checked = !!(existing && existing.Enabled !== false);
+
+            const target = document.createElement('select');
+            target.className = 'target';
+            for (const value of ['Movies', 'Shows']) {
+              const opt = document.createElement('option');
+              opt.value = value;
+              opt.textContent = value;
+              target.appendChild(opt);
+            }
+            target.value = existing ? existing.Target : (option.Target || 'Movies');
+
+            const max = document.createElement('input');
+            max.type = 'number';
+            max.min = '1';
+            max.max = '100';
+            max.className = 'max';
+            max.style.width = '6em';
+            max.value = existing ? existing.MaxItems : 20;
+
+            row.append(cell(use), cell(option.Name), cell(option.Type), cell(target), cell(max));
+            body.appendChild(row);
+          }
+        }
+
+        function selectedSearchCatalogs() {
+          return Array.from(page.querySelectorAll('#SearchCatalogTable tbody tr'))
+            .filter((row) => row.querySelector('.use').checked)
+            .map((row) => ({
+              Type: row.dataset.type,
+              Id: row.dataset.id,
+              Name: row.dataset.name,
+              Target: row.querySelector('.target').value,
+              MaxItems: parseInt(row.querySelector('.max').value, 10) || 20,
+              Enabled: true
+            }));
+        }
+
+        function loadSearchCatalogs() {
+          const url = $('#AioMetadataManifestUrl').value.trim();
+          setText('#SearchCatalogStatus', 'Loading…');
+          ApiClient.ajax({
+            type: 'POST',
+            url: ApiClient.getUrl('Currents/admin/search-catalogs'),
+            data: JSON.stringify({ ManifestUrl: url }),
+            contentType: 'application/json',
+            dataType: 'json'
+          })
+            .then((options) => { renderSearchCatalogs(options); setText('#SearchCatalogStatus', options.length + ' search catalogs available.'); })
+            .catch((err) => errorText(err, 'Could not load search catalogs.').then((msg) => setText('#SearchCatalogStatus', msg)));
+        }
+
         function loadCatalogs() {
           const url = $('#AioMetadataManifestUrl').value.trim();
           setText('#CatalogStatus', 'Loading…');
@@ -312,11 +399,14 @@
             $('#MaxVersions').value = c.MaxVersions || 20;
             $('#StreamCacheMinutes').value = c.StreamCacheMinutes || 60;
             fillDefaultPreferences(c.DefaultPreferences);
+            $('#EnableSearch').checked = c.EnableSearch !== false;
+            $('#DefaultSearchAutoAdd').checked = c.DefaultSearchAutoAdd !== false;
+            renderSearchCatalogs([]);
             setText('#SelfServiceUrl', 'Users change their own settings at ' + ApiClient.getUrl('Currents/user') + ' — add it to Jellyfin\'s web config "menuLinks" to show it in the menu.');
             loadUsers();
             renderCatalogs([]);
             loadPaths();
-            if (c.AioMetadataManifestUrl) { loadCatalogs(); }
+            if (c.AioMetadataManifestUrl) { loadCatalogs(); loadSearchCatalogs(); }
             $('#SaveButton').disabled = false;
             Dashboard.hideLoadingMsg();
           }).catch(() => {
@@ -326,6 +416,7 @@
         });
 
         $('#LoadCatalogs').addEventListener('click', loadCatalogs);
+        $('#LoadSearchCatalogs').addEventListener('click', loadSearchCatalogs);
 
         $('#TestStreams').addEventListener('click', () => {
           setText('#TestStreamsResult', 'Testing…');
@@ -362,6 +453,9 @@
           config.StreamCacheMinutes = parseInt($('#StreamCacheMinutes').value, 10) || 60;
           config.DefaultPreferences = readDefaultPreferences();
           config.Catalogs = selectedCatalogs();
+          config.EnableSearch = $('#EnableSearch').checked;
+          config.DefaultSearchAutoAdd = $('#DefaultSearchAutoAdd').checked;
+          config.SearchCatalogs = selectedSearchCatalogs();
           ApiClient.updatePluginConfiguration(pluginId, config).then((result) => {
             Dashboard.processPluginConfigurationUpdateResult(result);
             loadPaths();

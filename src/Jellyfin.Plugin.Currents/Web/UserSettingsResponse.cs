@@ -11,6 +11,10 @@ namespace Jellyfin.Plugin.Currents.Web;
 /// <param name="AutoSelect">The user's own auto-select choice, if any.</param>
 /// <param name="EffectivePreferences">The preferences in force.</param>
 /// <param name="EffectiveAutoSelect">The auto-select setting in force.</param>
+/// <param name="SearchAvailable">The admin turned search auto-add on for the server.</param>
+/// <param name="SearchAutoAdd">The user's own search choice, if any.</param>
+/// <param name="EffectiveSearchAutoAdd">Whether search results show and can be added for this user.</param>
+/// <param name="SearchAddDisabledByAdmin">The admin turned search auto-add off for this user.</param>
 public sealed record UserSettingsResponse(
     bool CanEdit,
     bool StreamsDisabled,
@@ -19,4 +23,8 @@ public sealed record UserSettingsResponse(
     StreamPreferences? Preferences,
     bool? AutoSelect,
     StreamPreferences EffectivePreferences,
-    bool EffectiveAutoSelect);
+    bool EffectiveAutoSelect,
+    bool SearchAvailable,
+    bool? SearchAutoAdd,
+    bool EffectiveSearchAutoAdd,
+    bool SearchAddDisabledByAdmin);
