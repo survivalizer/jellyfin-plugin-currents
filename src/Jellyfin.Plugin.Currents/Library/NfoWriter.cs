@@ -19,19 +19,23 @@ public static class NfoWriter
     {
         var root = new XElement(
             rootName,
-            new XElement("title", meta.Name ?? string.Empty),
+            new XElement("title", Clean(meta.Name)),
             Optional("plot", meta.Description),
             Optional("year", MetaMapper.ParseYear(meta)?.ToString(CultureInfo.InvariantCulture)),
             Optional("premiered", MetaMapper.ParseDate(meta.Released)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
 
         foreach (var genre in meta.Genres ?? [])
         {
-            root.Add(new XElement("genre", genre));
+            var clean = Clean(genre);
+            if (!string.IsNullOrWhiteSpace(clean))
+            {
+                root.Add(new XElement("genre", clean));
+            }
         }
 
         foreach (var (type, value) in UniqueIds(key, meta))
         {
-            root.Add(new XElement("uniqueid", new XAttribute("type", type), value));
+            root.Add(new XElement("uniqueid", new XAttribute("type", type), Clean(value)));
         }
 
         var settings = new XmlWriterSettings { Indent = true, Encoding = new UTF8Encoding(false), NewLineChars = "\n" };
@@ -66,7 +70,32 @@ public static class NfoWriter
     }
 
     private static XElement? Optional(string name, string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : new XElement(name, value);
+        Clean(value) is { } clean && !string.IsNullOrWhiteSpace(clean) ? new XElement(name, clean) : null;
+
+    private static string Clean(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(value.Length);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var c = value[i];
+            if (i + 1 < value.Length && XmlConvert.IsXmlSurrogatePair(value[i + 1], c))
+            {
+                builder.Append(c).Append(value[i + 1]);
+                i++;
+            }
+            else if (XmlConvert.IsXmlChar(c))
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString();
+    }
 
     private sealed class StringWriterUtf8 : StringWriter
     {

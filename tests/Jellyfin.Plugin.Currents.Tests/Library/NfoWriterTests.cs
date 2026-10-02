@@ -51,4 +51,27 @@ public class NfoWriterTests
 
         Assert.Equal(NfoWriter.Movie(key, meta), NfoWriter.Movie(key, meta));
     }
+
+    [Fact]
+    public void Strips_xml_invalid_characters()
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var meta = new StremioMeta { Id = "tt1", Name = "Bad\u0001Title", Description = "Lone\uD800 surrogate \uD83C\uDFAC ok" };
+
+        var root = XDocument.Parse(NfoWriter.Movie(key, meta)).Root!;
+
+        Assert.Equal("BadTitle", root.Element("title")!.Value);
+        Assert.Equal("Lone surrogate \uD83C\uDFAC ok", root.Element("plot")!.Value);
+    }
+
+    [Fact]
+    public void Skips_blank_genres()
+    {
+        var key = new TitleKey(MediaKind.Movie, "imdb", "tt1");
+        var meta = new StremioMeta { Id = "tt1", Name = "A", Genres = ["Drama", "", "  "] };
+
+        var root = XDocument.Parse(NfoWriter.Movie(key, meta)).Root!;
+
+        Assert.Equal(new[] { "Drama" }, root.Elements("genre").Select(e => e.Value));
+    }
 }
