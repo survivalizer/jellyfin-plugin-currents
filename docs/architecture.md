@@ -178,8 +178,10 @@ Series added by search get new episodes on every catalog sync. Titles added by s
 pruned; a catalog title that was only opened from search keeps its catalog origin and is pruned as usual.
 
 Deleting a search-added title in Jellyfin removes its folder. The next catalog sync then forgets it (`state.json`
-entry removed, logged at Information) instead of writing it again, unless the kind's Currents root itself is missing
-(an unmounted share is not a deletion). Opening its search id before that sync, or a known title whose files are gone
+entry removed, logged at Information) instead of writing it again, unless the kind's Currents root was missing when
+the sync started (an unmounted share is not a deletion; the check runs before catalog writes, which would recreate the
+root locally). With the Shows root missing, search-added series are not refreshed either, so nothing is written in
+place of the share. Opening its search id before that sync, or a known title whose files are gone
 (no folder, or a movie folder without its `.strm`), writes it again like a new add, in its old folder name.
 
 ### Request walkthrough (web client)

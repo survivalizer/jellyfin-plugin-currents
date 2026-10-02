@@ -579,6 +579,38 @@ public sealed class CatalogSyncServiceTests : IDisposable
         Assert.NotNull(_titles.Get("movie/tt9"));
     }
 
+    [Fact]
+    public async Task Search_added_titles_are_kept_when_catalog_writes_recreate_a_missing_kind_root()
+    {
+        // Enabled catalogs of both kinds write first, which recreates the roots of an unmounted share locally.
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Alpha")];
+        _client.Catalogs[ShowCatalog] = [new StremioMeta { Id = "tt0903747", Name = "Breaking Bad", ReleaseInfo = "2008" }];
+        _client.Metas["series/tt0903747"] = new StremioMeta { Id = "tt0903747", Name = "Breaking Bad", ReleaseInfo = "2008" };
+        _titles.AddFromSearch(new TitleKey(MediaKind.Series, "imdb", "tt0944947"), new StremioMeta { Id = "tt0944947", Name = "Game of Thrones", ReleaseInfo = "2011" });
+        _titles.AddFromSearch(new TitleKey(MediaKind.Movie, "imdb", "tt9"), Movie("tt9", "Searched"));
+        Directory.Delete(Path.Combine(_root, "library", "Shows"), recursive: true); // e.g. an unmounted share
+        Directory.Delete(MoviesDir, recursive: true);
+
+        await SyncAsync();
+
+        Assert.NotNull(_titles.Get("series/tt0944947"));
+        Assert.NotNull(_titles.Get("movie/tt9"));
+        Assert.DoesNotContain("series/tt0944947", _client.MetaRequests);
+        Assert.False(Directory.Exists(Path.Combine(_root, "library", "Shows", "Game of Thrones (2011) [imdbid-tt0944947]")));
+    }
+
+    [Fact]
+    public async Task Search_added_titles_are_forgotten_when_their_folder_is_gone_but_the_root_is_there()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Alpha")];
+        _titles.AddFromSearch(new TitleKey(MediaKind.Movie, "imdb", "tt9"), Movie("tt9", "Searched"));
+        Directory.Delete(Path.Combine(MoviesDir, "Searched (2000) [imdbid-tt9]"), recursive: true);
+
+        await SyncAsync();
+
+        Assert.Null(_titles.Get("movie/tt9"));
+    }
+
     private sealed class FakePlayedLookup : IPlayedLookup
     {
         public HashSet<string> PlayedFolderNames { get; } = new(StringComparer.Ordinal);

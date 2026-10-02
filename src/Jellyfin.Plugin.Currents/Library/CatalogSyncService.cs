@@ -54,6 +54,9 @@ public sealed class CatalogSyncService
         var protectedIds = new HashSet<string>(StringComparer.Ordinal);
         int written = 0, unchanged = 0;
 
+        // Taken before any catalog write: writing a catalog title recreates a missing root (e.g. an unmounted share).
+        var mountedKinds = Enum.GetValues<MediaKind>().Where(k => Directory.Exists(paths.RootFor(k))).ToHashSet();
+
         for (var i = 0; i < catalogs.Count; i++)
         {
             var catalog = catalogs[i];
@@ -113,8 +116,8 @@ public sealed class CatalogSyncService
             progress.Report((i + 1) * 90.0 / catalogs.Count);
         }
 
-        _titles.Use(state => ForgetDeletedSearchTitles(state, paths, seen));
-        var (refreshed, kept) = await RefreshSearchAddedSeriesAsync(endpoint, writer, seen, cancellationToken).ConfigureAwait(false);
+        _titles.Use(state => ForgetDeletedSearchTitles(state, paths, seen, mountedKinds));
+        var (refreshed, kept) = await RefreshSearchAddedSeriesAsync(endpoint, writer, seen, mountedKinds, cancellationToken).ConfigureAwait(false);
         written += refreshed;
         unchanged += kept;
 
@@ -283,13 +286,13 @@ public sealed class CatalogSyncService
 
     /// <summary>
     /// A search-added title whose folder is gone was deleted in Jellyfin; it is forgotten rather than written again. A
-    /// missing kind root (e.g. an unmounted share) is not a deletion, so its titles are kept.
+    /// kind root that was missing when the sync started (e.g. an unmounted share) is not a deletion, so its titles are kept.
     /// </summary>
-    private void ForgetDeletedSearchTitles(StateStore state, LibraryPaths paths, HashSet<string> seen)
+    private void ForgetDeletedSearchTitles(StateStore state, LibraryPaths paths, HashSet<string> seen, HashSet<MediaKind> mountedKinds)
     {
         foreach (var title in state.Titles)
         {
-            if (!title.AddedBySearch || seen.Contains(title.StateId) || !Directory.Exists(paths.RootFor(title.Kind)))
+            if (!title.AddedBySearch || seen.Contains(title.StateId) || !mountedKinds.Contains(title.Kind))
             {
                 continue;
             }
@@ -303,9 +306,15 @@ public sealed class CatalogSyncService
     }
 
     [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "One search-added series must never stop the sync; cancellation still propagates.")]
-    private async Task<(int Written, int Unchanged)> RefreshSearchAddedSeriesAsync(AioMetadataEndpoint endpoint, LibraryWriter writer, HashSet<string> seen, CancellationToken cancellationToken)
+    private async Task<(int Written, int Unchanged)> RefreshSearchAddedSeriesAsync(AioMetadataEndpoint endpoint, LibraryWriter writer, HashSet<string> seen, HashSet<MediaKind> mountedKinds, CancellationToken cancellationToken)
     {
         int written = 0, unchanged = 0;
+        if (!mountedKinds.Contains(MediaKind.Series))
+        {
+            // Writing them now would put them into a local folder in place of the unmounted share.
+            return (written, unchanged);
+        }
+
         var titles = _titles.Use(s => s.Titles.Where(t => t.AddedBySearch && t.Kind == MediaKind.Series && !seen.Contains(t.StateId)).ToList());
         foreach (var title in titles)
         {
