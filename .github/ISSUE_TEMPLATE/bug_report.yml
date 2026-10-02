@@ -1,0 +1,25 @@
+name: Bug report
+description: Something does not work
+labels: [bug]
+body:
+  - type: input
+    id: jellyfin
+    attributes: { label: Jellyfin version, placeholder: "12.1.0" }
+    validations: { required: true }
+  - type: input
+    id: currents
+    attributes: { label: Currents version }
+    validations: { required: true }
+  - type: input
+    id: client
+    attributes: { label: Client app and version, placeholder: "Jellyfin Web 12.1 / Android TV 0.18 / Infuse 8" }
+  - type: textarea
+    id: what
+    attributes: { label: What happened and what you expected }
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Jellyfin log lines mentioning Currents. Remove any URLs that still contain credentials.
+      render: text

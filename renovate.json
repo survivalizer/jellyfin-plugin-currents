@@ -1,0 +1,8 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    { "matchPackageNames": ["Jellyfin.Controller", "Jellyfin.Model"], "groupName": "Jellyfin packages", "automerge": false },
+    { "matchManagers": ["github-actions"], "groupName": "GitHub Actions" }
+  ]
+}
