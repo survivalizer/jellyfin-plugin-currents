@@ -1,0 +1,91 @@
+using System.Globalization;
+using Jellyfin.Plugin.Currents.Clients.AioMetadata;
+using Jellyfin.Plugin.Currents.Clients.AioStreams;
+using Jellyfin.Plugin.Currents.Common;
+using Jellyfin.Plugin.Currents.Library;
+using MediaBrowser.Common.Api;
+using MediaBrowser.Model.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Jellyfin.Plugin.Currents.Web;
+
+/// <summary>Endpoints used by the Currents admin page.</summary>
+[ApiController]
+[Route("Currents/admin")]
+[Authorize(Policy = Policies.RequiresElevation)]
+public sealed class AdminController : ControllerBase
+{
+    private const string TestTitle = "tt0111161";
+    private readonly IAioMetadataClient _metadata;
+    private readonly IAioStreamsClient _streams;
+    private readonly ICurrentsSettings _settings;
+    private readonly ITaskManager _taskManager;
+
+    public AdminController(IAioMetadataClient metadata, IAioStreamsClient streams, ICurrentsSettings settings, ITaskManager taskManager)
+    {
+        _metadata = metadata;
+        _streams = streams;
+        _settings = settings;
+        _taskManager = taskManager;
+    }
+
+    [HttpGet("catalogs")]
+    public async Task<ActionResult<IReadOnlyList<CatalogOption>>> GetCatalogs([FromQuery] string manifestUrl, CancellationToken cancellationToken)
+    {
+        if (!AioMetadataEndpoint.TryParse(manifestUrl, out var endpoint, out var error))
+        {
+            return BadRequest(new StatusMessage(SecretMasker.Mask(error!)));
+        }
+
+        try
+        {
+            var manifest = await _metadata.GetManifestAsync(endpoint, cancellationToken).ConfigureAwait(false);
+            var options = manifest.Catalogs
+                .Where(c => !c.RequiresExtra && !string.IsNullOrEmpty(c.Id) && !string.IsNullOrEmpty(c.Type))
+                .Select(c => new CatalogOption(c.Type, c.Id, string.IsNullOrWhiteSpace(c.Name) ? c.Id : c.Name))
+                .ToList();
+            return Ok(options);
+        }
+        catch (Exception ex) when (ex is AioMetadataException or HttpRequestException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new StatusMessage(SecretMasker.Mask(ex.Message)));
+        }
+    }
+
+    [HttpPost("test-streams")]
+    public async Task<ActionResult<StatusMessage>> TestStreams([FromQuery] string manifestUrl, CancellationToken cancellationToken)
+    {
+        if (!AioStreamsCredentials.TryParse(manifestUrl, out var credentials, out var error))
+        {
+            return BadRequest(new StatusMessage(SecretMasker.Mask(error!)));
+        }
+
+        try
+        {
+            var outcome = await _streams.SearchAsync(credentials, "movie", TestTitle, cancellationToken).ConfigureAwait(false);
+            return Ok(new StatusMessage(string.Create(
+                CultureInfo.InvariantCulture,
+                $"Connected. {outcome.Results.Count} stream(s) found for a test title.")));
+        }
+        catch (Exception ex) when (ex is AioStreamsException or HttpRequestException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new StatusMessage(SecretMasker.Mask(ex.Message)));
+        }
+    }
+
+    [HttpPost("sync")]
+    public ActionResult SyncNow()
+    {
+        _taskManager.QueueScheduledTask<CatalogSyncTask>();
+        return Accepted();
+    }
+
+    [HttpGet("paths")]
+    public ActionResult<LibraryPathsResponse> GetPaths()
+    {
+        var paths = LibraryPaths.FromSettings(_settings);
+        return new LibraryPathsResponse(paths.Movies, paths.Shows);
+    }
+}

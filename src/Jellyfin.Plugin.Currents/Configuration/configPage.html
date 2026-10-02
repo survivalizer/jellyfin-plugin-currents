@@ -1,12 +1,207 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Currents</title></head>
+<head>
+  <meta charset="utf-8">
+  <title>Currents</title>
+</head>
 <body>
-  <div id="CurrentsConfigPage" data-role="page" class="page type-interior pluginConfigurationPage">
-    <div data-role="content"><div class="content-primary">
-      <h2>Currents</h2>
-      <p>Configuration UI arrives in a later build.</p>
-    </div></div>
+  <div id="CurrentsConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+    <div data-role="content">
+      <div class="content-primary">
+        <form id="CurrentsConfigForm">
+          <div class="verticalSection">
+            <h2 class="sectionTitle">Currents</h2>
+            <p>AIOStreams &amp; AIOMetadata for Jellyfin.</p>
+          </div>
+
+          <h3>Catalogs (AIOMetadata)</h3>
+          <div class="inputContainer">
+            <input is="emby-input" type="url" id="AioMetadataManifestUrl" label="AIOMetadata manifest URL" />
+            <div class="fieldDescription">https://your-aiometadata/stremio/&lt;uuid&gt;/manifest.json</div>
+          </div>
+          <button is="emby-button" type="button" id="LoadCatalogs" class="raised button-alt"><span>Load catalogs</span></button>
+          <div id="CatalogStatus" class="fieldDescription"></div>
+          <table id="CatalogTable" class="detailTable" style="width:100%;margin:1em 0">
+            <thead><tr><th>Sync</th><th>Catalog</th><th>Type</th><th>Library</th><th>Max items</th></tr></thead>
+            <tbody></tbody>
+          </table>
+
+          <h3>Streams (AIOStreams)</h3>
+          <div class="inputContainer">
+            <input is="emby-input" type="url" id="AioStreamsManifestUrl" label="Default AIOStreams manifest URL" />
+            <div class="fieldDescription">https://your-aiostreams/stremio/&lt;uuid&gt;/&lt;password&gt;/manifest.json. Used for every user in this version.</div>
+          </div>
+          <button is="emby-button" type="button" id="TestStreams" class="raised button-alt"><span>Test connection</span></button>
+          <div id="TestStreamsResult" class="fieldDescription"></div>
+
+          <h3>Library</h3>
+          <div class="inputContainer">
+            <input is="emby-input" type="text" id="LibraryRoot" label="Library root (leave empty for the plugin data folder)" />
+          </div>
+          <div id="LibraryPaths" class="fieldDescription"></div>
+          <div class="inputContainer">
+            <input is="emby-input" type="url" id="StrmBaseUrl" label="Jellyfin address written into .strm files" />
+            <div class="fieldDescription">Default http://127.0.0.1:8096. Changing it rewrites the .strm files on the next sync.</div>
+          </div>
+          <div class="inputContainer">
+            <input is="emby-input" type="number" min="1" id="PruneAfterMisses" label="Remove a title after this many syncs without it" />
+          </div>
+          <div class="inputContainer">
+            <input is="emby-input" type="number" min="1" max="10" id="FailoverAttempts" label="Streams to try before giving up" />
+          </div>
+
+          <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+          <button is="emby-button" type="button" id="SyncNow" class="raised block"><span>Sync now</span></button>
+        </form>
+      </div>
+    </div>
+
+    <script type="text/javascript">
+      (function () {
+        const pluginId = '483F31F4-DB4A-4900-A3B5-EE0FBA5084AC';
+        const page = document.querySelector('#CurrentsConfigPage');
+        const $ = (selector) => page.querySelector(selector);
+        let config = null;
+
+        function setText(selector, value) { $(selector).textContent = value; }
+
+        function errorText(err, fallback) {
+          if (err && typeof err.json === 'function') {
+            return err.json().then((body) => (body && body.Message) || fallback).catch(() => fallback);
+          }
+          return Promise.resolve(fallback);
+        }
+
+        function cell(child) {
+          const td = document.createElement('td');
+          if (typeof child === 'string') { td.textContent = child; } else { td.appendChild(child); }
+          return td;
+        }
+
+        function renderCatalogs(options) {
+          const body = $('#CatalogTable tbody');
+          body.replaceChildren();
+          const saved = new Map((config.Catalogs || []).map((c) => [c.Type + '/' + c.Id, c]));
+          const all = options.slice();
+          saved.forEach((c, key) => {
+            if (!all.some((o) => o.Type + '/' + o.Id === key)) { all.push({ Type: c.Type, Id: c.Id, Name: c.Name }); }
+          });
+
+          for (const option of all) {
+            const existing = saved.get(option.Type + '/' + option.Id);
+            const row = document.createElement('tr');
+            row.dataset.type = option.Type;
+            row.dataset.id = option.Id;
+            row.dataset.name = option.Name;
+
+            const sync = document.createElement('input');
+            sync.type = 'checkbox';
+            sync.className = 'sync';
+            sync.checked = !!(existing && existing.Enabled !== false);
+
+            const target = document.createElement('select');
+            target.className = 'target';
+            for (const value of ['Movies', 'Shows']) {
+              const opt = document.createElement('option');
+              opt.value = value;
+              opt.textContent = value;
+              target.appendChild(opt);
+            }
+            const looksLikeMovie = option.Type === 'movie' || option.Type.endsWith('.movie');
+            target.value = existing ? existing.Target : (looksLikeMovie ? 'Movies' : 'Shows');
+
+            const max = document.createElement('input');
+            max.type = 'number';
+            max.min = '1';
+            max.className = 'max';
+            max.style.width = '6em';
+            max.value = existing ? existing.MaxItems : 100;
+
+            row.append(cell(sync), cell(option.Name), cell(option.Type), cell(target), cell(max));
+            body.appendChild(row);
+          }
+        }
+
+        function selectedCatalogs() {
+          return Array.from(page.querySelectorAll('#CatalogTable tbody tr'))
+            .filter((row) => row.querySelector('.sync').checked)
+            .map((row) => ({
+              Type: row.dataset.type,
+              Id: row.dataset.id,
+              Name: row.dataset.name,
+              Target: row.querySelector('.target').value,
+              MaxItems: parseInt(row.querySelector('.max').value, 10) || 100,
+              Enabled: true
+            }));
+        }
+
+        function loadPaths() {
+          ApiClient.getJSON(ApiClient.getUrl('Currents/admin/paths')).then((paths) => {
+            setText('#LibraryPaths', 'Add these folders to Jellyfin libraries — Movies: ' + paths.Movies + ' · Shows: ' + paths.Shows);
+          });
+        }
+
+        function loadCatalogs() {
+          const url = $('#AioMetadataManifestUrl').value.trim();
+          setText('#CatalogStatus', 'Loading…');
+          ApiClient.getJSON(ApiClient.getUrl('Currents/admin/catalogs', { manifestUrl: url }))
+            .then((options) => { renderCatalogs(options); setText('#CatalogStatus', options.length + ' catalogs available.'); })
+            .catch((err) => errorText(err, 'Could not load catalogs.').then((msg) => setText('#CatalogStatus', msg)));
+        }
+
+        page.addEventListener('pageshow', () => {
+          Dashboard.showLoadingMsg();
+          ApiClient.getPluginConfiguration(pluginId).then((c) => {
+            config = c;
+            $('#AioMetadataManifestUrl').value = c.AioMetadataManifestUrl || '';
+            $('#AioStreamsManifestUrl').value = c.AioStreamsManifestUrl || '';
+            $('#LibraryRoot').value = c.LibraryRoot || '';
+            $('#StrmBaseUrl').value = c.StrmBaseUrl || '';
+            $('#PruneAfterMisses').value = c.PruneAfterMisses;
+            $('#FailoverAttempts').value = c.FailoverAttempts;
+            renderCatalogs([]);
+            loadPaths();
+            if (c.AioMetadataManifestUrl) { loadCatalogs(); }
+            Dashboard.hideLoadingMsg();
+          });
+        });
+
+        $('#LoadCatalogs').addEventListener('click', loadCatalogs);
+
+        $('#TestStreams').addEventListener('click', () => {
+          setText('#TestStreamsResult', 'Testing…');
+          ApiClient.ajax({
+            type: 'POST',
+            url: ApiClient.getUrl('Currents/admin/test-streams', { manifestUrl: $('#AioStreamsManifestUrl').value.trim() }),
+            dataType: 'json'
+          })
+            .then((result) => setText('#TestStreamsResult', result.Message))
+            .catch((err) => errorText(err, 'Connection failed.').then((msg) => setText('#TestStreamsResult', msg)));
+        });
+
+        $('#SyncNow').addEventListener('click', () => {
+          ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('Currents/admin/sync') })
+            .then(() => Dashboard.alert('Catalog sync started. Progress is shown under Dashboard → Scheduled Tasks.'));
+        });
+
+        $('#CurrentsConfigForm').addEventListener('submit', (e) => {
+          e.preventDefault();
+          Dashboard.showLoadingMsg();
+          config.AioMetadataManifestUrl = $('#AioMetadataManifestUrl').value.trim();
+          config.AioStreamsManifestUrl = $('#AioStreamsManifestUrl').value.trim();
+          config.LibraryRoot = $('#LibraryRoot').value.trim();
+          config.StrmBaseUrl = $('#StrmBaseUrl').value.trim() || 'http://127.0.0.1:8096';
+          config.PruneAfterMisses = parseInt($('#PruneAfterMisses').value, 10) || 3;
+          config.FailoverAttempts = parseInt($('#FailoverAttempts').value, 10) || 3;
+          config.Catalogs = selectedCatalogs();
+          ApiClient.updatePluginConfiguration(pluginId, config).then((result) => {
+            Dashboard.processPluginConfigurationUpdateResult(result);
+            loadPaths();
+          });
+          return false;
+        });
+      })();
+    </script>
   </div>
 </body>
 </html>
