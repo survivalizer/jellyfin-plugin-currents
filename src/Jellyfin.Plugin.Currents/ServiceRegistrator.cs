@@ -29,7 +29,8 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
                 client.Timeout = TimeSpan.FromSeconds(15);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
             })
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
 
         serviceCollection.AddSingleton<IAioMetadataClient, AioMetadataClient>();
         serviceCollection.AddSingleton<IAioStreamsClient, AioStreamsClient>();
@@ -49,6 +50,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
                 client.Timeout = ((OutboundPolicies.AttemptTimeout(name) ?? TimeSpan.FromSeconds(10)) * 3) + TimeSpan.FromSeconds(5);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
             })
-            .AddHttpMessageHandler(sp => sp.GetRequiredService<OutboundPolicies>().CreateHandler(name));
+            .AddHttpMessageHandler(sp => sp.GetRequiredService<OutboundPolicies>().CreateHandler(name))
+            .RemoveAllLoggers();
     }
 }

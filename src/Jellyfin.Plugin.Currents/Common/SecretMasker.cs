@@ -14,13 +14,18 @@ public static partial class SecretMasker
             return string.Empty;
         }
 
-        var masked = StremioUuidAndPassword().Replace(value, "/stremio/***/***/");
+        var masked = VersionToken().Replace(value, "/Currents/play/s/***");
+        masked = StremioUuidAndPassword().Replace(masked, "/stremio/***/***/");
         masked = StremioUuid().Replace(masked, "/stremio/***/");
         masked = PlaybackToken().Replace(masked, "/api/v1/${kind}/***/");
         masked = ResolveKey().Replace(masked, "/resolve/${service}/***");
         masked = PlaybackBlob().Replace(masked, "/playback/***");
         return QuerySecret().Replace(masked, "${key}=***");
     }
+
+    // Expiring version tokens (Task 6) name a user, title and stream; they appear in ffmpeg command lines.
+    [GeneratedRegex(@"/Currents/play/s/[^/?#\s""']+", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex VersionToken();
 
     // /stremio/{uuid}/{password}/ — the password segment is anything but a known route name.
     [GeneratedRegex(@"/stremio/[0-9a-fA-F-]{36}/(?!manifest\.json|catalog/|meta/|stream/|subtitles/|configure)[^/?#]+/", RegexOptions.CultureInvariant)]

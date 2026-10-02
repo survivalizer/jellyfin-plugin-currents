@@ -64,4 +64,10 @@ public class SecretMaskerTests
         Assert.Equal("https://example.com/resolve/realdebrid", SecretMasker.Mask("https://example.com/resolve/realdebrid"));
         Assert.Equal(string.Empty, SecretMasker.Mask((string?)null));
     }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:8096/Currents/play/s/eyJ1IjoiYWJjIn0.c2lnbmF0dXJl", "http://127.0.0.1:8096/Currents/play/s/***")]
+    [InlineData("ffmpeg -i \"http://127.0.0.1:8096/jf/Currents/play/s/abc.def\" -map 0", "ffmpeg -i \"http://127.0.0.1:8096/jf/Currents/play/s/***\" -map 0")]
+    public void Masks_version_tokens(string input, string expected) =>
+        Assert.Equal(expected, SecretMasker.Mask(input));
 }
