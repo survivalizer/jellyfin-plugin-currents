@@ -81,6 +81,7 @@
       let creds = {};
       try { creds = JSON.parse(localStorage.getItem('jellyfin_credentials') || '{}'); } catch { creds = {}; }
       let serverId = null;
+      let searchShown = false;
       try { serverId = (await (await fetch(`${base}/System/Info/Public`)).json()).Id; } catch { serverId = null; }
       const servers = (creds.Servers || []).filter((s) => s.AccessToken);
       const server = servers.find((s) => s.Id === serverId)
@@ -110,6 +111,7 @@
         $('autoSelect').checked = !!s.EffectiveAutoSelect;
         $('searchSection').hidden = !s.SearchAvailable;
         $('searchAutoAdd').checked = !!s.EffectiveSearchAutoAdd;
+        searchShown = !!s.EffectiveSearchAutoAdd;
         $('searchAutoAdd').disabled = !!s.SearchAddDisabledByAdmin;
         $('searchHint').textContent = s.SearchAddDisabledByAdmin ? 'Your admin turned this off for your account.' : '';
         $('resolutionOrder').value = join(p.ResolutionOrder);
@@ -134,7 +136,7 @@
         save({
           AioStreamsManifestUrl: url || null,
           AutoSelect: $('autoSelect').checked,
-          SearchAutoAdd: $('searchAutoAdd').disabled ? null : $('searchAutoAdd').checked,
+          SearchAutoAdd: (!$('searchSection').hidden && !$('searchAutoAdd').disabled && $('searchAutoAdd').checked !== searchShown) ? $('searchAutoAdd').checked : null,
           Preferences: {
             ResolutionOrder: list($('resolutionOrder').value),
             Hdr: $('hdr').value,

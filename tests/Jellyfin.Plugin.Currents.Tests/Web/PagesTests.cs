@@ -93,4 +93,14 @@ public sealed class PagesTests : IDisposable
         Assert.Contains("SearchAutoAdd", html, StringComparison.Ordinal);
         Assert.Contains("SearchAvailable", html, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void User_page_only_sends_a_changed_search_choice()
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Web.userPage.html");
+
+        Assert.Contains("searchShown", html, StringComparison.Ordinal);
+        Assert.Contains("!$('searchSection').hidden", html, StringComparison.Ordinal);
+        Assert.Contains("$('searchAutoAdd').checked !== searchShown", html, StringComparison.Ordinal);
+    }
 }
