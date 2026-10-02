@@ -9,6 +9,12 @@ public sealed class StreamResult
 
     public long? Size { get; set; }
 
+    /// <summary>Gets or sets the runtime in milliseconds, when an addon or AIOStreams knows it.</summary>
+    public double? Duration { get; set; }
+
+    /// <summary>Gets or sets the overall bitrate in bits per second, when known.</summary>
+    public double? Bitrate { get; set; }
+
     public bool? Cached { get; set; }
 
     public string? Type { get; set; }

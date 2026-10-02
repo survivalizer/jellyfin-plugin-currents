@@ -14,4 +14,12 @@ public sealed class ParsedFile
     public List<string>? AudioTags { get; set; }
 
     public List<string>? Languages { get; set; }
+
+    public List<string>? AudioChannels { get; set; }
+
+    public List<string>? Subtitles { get; set; }
+
+    public string? Container { get; set; }
+
+    public string? Extension { get; set; }
 }

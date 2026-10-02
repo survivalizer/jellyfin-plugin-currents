@@ -13,7 +13,9 @@
         "fileIdx": 0,
         "service": "realdebrid",
         "addon": "Torrentio",
-        "parsedFile": { "resolution": "2160p", "quality": "WEB-DL", "encode": "HEVC", "visualTags": ["DV"], "audioTags": ["Atmos"], "languages": ["English"] }
+        "duration": 8473120.5,
+        "bitrate": 17372000,
+        "parsedFile": { "resolution": "2160p", "quality": "WEB-DL", "encode": "HEVC", "visualTags": ["DV"], "audioTags": ["Atmos"], "audioChannels": ["7.1"], "languages": ["English"], "subtitles": ["English", "French"], "container": "mkv" }
       },
       {
         "url": "https://cdn.example.com/needs-headers.mkv",

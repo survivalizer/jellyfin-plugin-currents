@@ -86,4 +86,19 @@ public class AioStreamsClientTests
 
         Assert.Contains("credentials", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task Parses_duration_bitrate_and_file_details()
+    {
+        var (client, _) = Create(_ => StubHttpHandler.Json(Fixture.Read("aiostreams/search-ok.json")));
+
+        var first = (await client.SearchAsync(Creds(), "movie", "tt0111161", CancellationToken.None)).Results[0];
+
+        Assert.Equal(8473120.5, first.Duration!.Value);
+        Assert.Equal(17372000d, first.Bitrate!.Value);
+        Assert.Equal(new[] { "7.1" }, first.ParsedFile!.AudioChannels);
+        Assert.Equal(new[] { "English", "French" }, first.ParsedFile.Subtitles);
+        Assert.Equal("mkv", first.ParsedFile.Container);
+        Assert.Null(first.ParsedFile.Extension);
+    }
 }
