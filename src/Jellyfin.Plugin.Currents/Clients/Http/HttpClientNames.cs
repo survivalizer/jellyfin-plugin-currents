@@ -6,4 +6,5 @@ public static class HttpClientNames
     public const string AioStreams = "Currents.AioStreams";
     public const string AioMetadata = "Currents.AioMetadata";
     public const string Resolve = "Currents.Resolve";
+    public const string Posters = "Currents.Posters";
 }
