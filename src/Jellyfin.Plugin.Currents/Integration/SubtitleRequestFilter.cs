@@ -8,8 +8,10 @@ using Microsoft.AspNetCore.Mvc.Filters;
 namespace Jellyfin.Plugin.Currents.Integration;
 
 /// <summary>
-/// Guards Jellyfin's subtitle routes for Currents versions. These routes answer anonymous callers, and for a Currents
-/// item Jellyfin would then fail with a 500 on the empty placeholder source: an anonymous caller gets 404 instead.
+/// Guards Jellyfin's subtitle routes for Currents versions: callers only reach subtitles of versions they may play,
+/// and anonymous callers never reach Currents subtitles. These routes answer anonymous callers, and Jellyfin would
+/// fail with a 500 on the empty placeholder source of a Currents item, or when the media source decorator refuses
+/// another user's version (same rule as <c>CurrentsMediaSourceManager.GetMediaSource</c>); both get 404 instead.
 /// A built-in subtitle of a version over the admin's size limit also gets 404, so Jellyfin never starts reading the
 /// whole remote file to extract it (stream-attached 1000+ and downloaded 2000+ subtitles are unaffected).
 /// </summary>
@@ -64,8 +66,19 @@ public sealed class SubtitleRequestFilter : IAsyncActionFilter
             return true;
         }
 
+        if (version is not null && !MayPlay(version))
+        {
+            return true;
+        }
+
         return version is not null && index is < TrackIndexes.StreamSubtitles && _builder.HidesBuiltInSubtitles(version);
     }
+
+    // The same rule as CurrentsMediaSourceManager.GetMediaSource: a user reaches only their own versions; background and API-key callers any.
+    private bool MayPlay(VersionEntry entry) =>
+        _request.UserId is var requester && requester == Guid.Empty
+            ? !_request.IsAnonymousRequest || entry.UserId == Guid.Empty
+            : requester == entry.UserId;
 
     private bool IsCurrentsItem(Guid? itemId) =>
         itemId is { } id && id != Guid.Empty

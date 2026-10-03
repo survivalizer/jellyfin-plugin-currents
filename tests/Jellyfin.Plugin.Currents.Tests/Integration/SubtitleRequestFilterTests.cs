@@ -54,11 +54,11 @@ public sealed class SubtitleRequestFilterTests : IDisposable
         }
     }
 
-    private SubtitleRequestFilter Create(Guid? user)
+    private SubtitleRequestFilter Create(Guid? user, bool apiKey = false)
     {
         var probes = new ProbeCache(_settings, _time);
         var builder = new VersionSourceBuilder(_settings, _time, probes, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
-        var request = RequestContextTests.Create(RequestContextTests.Http(user));
+        var request = RequestContextTests.Create(RequestContextTests.Http(user, apiKey));
         return new SubtitleRequestFilter(_library.Instance, new CurrentsItemLocator(_settings, _time), _registry, builder, request, _compat, _settings);
     }
 
@@ -105,6 +105,26 @@ public sealed class SubtitleRequestFilterTests : IDisposable
         Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitleWithTicks", Subtitle(_version.VersionId, 3)));
         Assert.Null(await Run(Create(Alice), "GetSubtitle", Subtitle(_version.VersionId, 1000)));
         Assert.Null(await Run(Create(Alice), "GetSubtitle", Subtitle(_version.VersionId, 2000)));
+    }
+
+    [Theory]
+    [InlineData(2000)]
+    [InlineData(1000)]
+    public async Task Another_users_version_gets_404(int index)
+    {
+        var bob = Guid.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+        Assert.IsType<NotFoundResult>(await Run(Create(bob), "GetSubtitle", Subtitle(_version.VersionId, index)));
+    }
+
+    [Theory]
+    [InlineData(40)]
+    [InlineData(0)]
+    public async Task An_api_key_caller_may_reach_any_version(int limitGb)
+    {
+        _settings.Current.EmbeddedSubtitleMaxGb = limitGb;
+
+        Assert.Null(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle(_version.VersionId, 2000)));
     }
 
     [Fact]
