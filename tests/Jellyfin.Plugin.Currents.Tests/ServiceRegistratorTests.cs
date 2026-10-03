@@ -16,6 +16,7 @@ using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.IO;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -46,6 +47,37 @@ public class ServiceRegistratorTests
         new ServiceRegistrator().RegisterServices(services, null!);
         services.AddSingleton<ICurrentsSettings>(new FakeSettings());
         return services;
+    }
+
+    [Theory]
+    [InlineData(HttpClientNames.Posters)]
+    [InlineData(HttpClientNames.Subtitles)]
+    public async Task Poster_and_subtitle_clients_dial_only_public_addresses(string name)
+    {
+        await using var provider = Register().BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>().Get(name);
+        var builder = new FakeHandlerBuilder(provider);
+
+        foreach (var action in options.HttpMessageHandlerBuilderActions)
+        {
+            action(builder);
+        }
+
+        var handler = Assert.IsType<SocketsHttpHandler>(builder.PrimaryHandler);
+        Assert.NotNull(handler.ConnectCallback);
+    }
+
+    private sealed class FakeHandlerBuilder(IServiceProvider services) : HttpMessageHandlerBuilder
+    {
+        public override string? Name { get; set; }
+
+        public override HttpMessageHandler PrimaryHandler { get; set; } = new HttpClientHandler();
+
+        public override IList<DelegatingHandler> AdditionalHandlers { get; } = [];
+
+        public override IServiceProvider Services => services;
+
+        public override HttpMessageHandler Build() => PrimaryHandler;
     }
 
     [Fact]

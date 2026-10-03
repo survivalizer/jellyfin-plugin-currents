@@ -47,7 +47,11 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
                 client.Timeout = TimeSpan.FromSeconds(10);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
             })
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { MaxAutomaticRedirections = 5 })
+            .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
+            {
+                MaxAutomaticRedirections = 5,
+                ConnectCallback = PublicOnlyConnector.Create(() => PublicOnlyConnector.AdminHosts(sp.GetRequiredService<ICurrentsSettings>().Current)),
+            })
             .RemoveAllLoggers();
         serviceCollection.AddHttpClient(HttpClientNames.RemuxDb, client =>
             {
@@ -57,12 +61,19 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .RemoveAllLoggers();
         serviceCollection.AddSingleton<IRemuxDbClient, RemuxDbClient>();
         serviceCollection.AddSingleton<RemuxDbCache>();
+
+        // Subtitle and poster URLs come from upstream data: they may only reach public addresses (or the admin's own hosts).
         serviceCollection.AddHttpClient(HttpClientNames.Subtitles, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(15);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
             })
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { MaxAutomaticRedirections = 5, AutomaticDecompression = System.Net.DecompressionMethods.All })
+            .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
+            {
+                MaxAutomaticRedirections = 5,
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+                ConnectCallback = PublicOnlyConnector.Create(() => PublicOnlyConnector.AdminHosts(sp.GetRequiredService<ICurrentsSettings>().Current)),
+            })
             .RemoveAllLoggers();
         serviceCollection.AddSingleton<SubtitleDownloader>();
         serviceCollection.AddSingleton<ISubtitleProvider, CurrentsSubtitleProvider>();
