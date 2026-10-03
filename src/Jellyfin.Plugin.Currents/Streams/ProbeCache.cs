@@ -33,6 +33,23 @@ public sealed partial class ProbeCache
 
     private string Folder => Path.Combine(_settings.DataFolderPath, "probes");
 
+    /// <summary>Forgets every probe result, in memory and on disk.</summary>
+    public void Clear()
+    {
+        _memory.Clear();
+        try
+        {
+            if (Directory.Exists(Folder))
+            {
+                Directory.Delete(Folder, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A file held open elsewhere stays until the next clear; the memory cache is already empty.
+        }
+    }
+
     public bool TryGet(string streamKey, [NotNullWhen(true)] out ProbedMedia? media)
     {
         if (!_memory.TryGet(streamKey, out var entry))

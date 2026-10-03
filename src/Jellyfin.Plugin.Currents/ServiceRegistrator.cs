@@ -108,6 +108,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<CatalogSyncService>();
         serviceCollection.AddSingleton<LibraryJobGate>();
         serviceCollection.AddSingleton<ICollectionSync, JellyfinCollectionSync>();
+        serviceCollection.AddSingleton<LibraryMaintenance>();
         serviceCollection.AddSingleton<IStreamResolver, StreamResolver>();
         serviceCollection.AddSingleton<MetaCache>();
         serviceCollection.AddSingleton<UserStore>();
