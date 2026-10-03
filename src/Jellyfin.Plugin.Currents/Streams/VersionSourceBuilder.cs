@@ -141,6 +141,8 @@ public sealed class VersionSourceBuilder
     // Jellyfin extracts a built-in text subtitle by reading the whole remote file (SubtitleEncoder.ExtractAllExtractableSubtitles).
     // Display drops them all, and ones of unknown codec too. Playback may only drop a trailing run: ffmpeg maps embedded streams
     // by their position among streams sharing a Path (EncodingHelper.FindIndex), so removing one before an audio track would shift it.
+    // Streams of type EmbeddedImage, Data and Lyric (cover art, timecodes, lyrics) are never mapped for playback, so the walk steps
+    // over them and a removal before them shifts nothing ffmpeg uses. External streams are stepped over for the same reason.
     // Graphical subtitles stay: burning them in reads them from the same input without extraction.
     private static void HideBuiltInTextSubtitles(List<MediaStream> streams, bool forPlayback)
     {
@@ -152,7 +154,7 @@ public sealed class VersionSourceBuilder
 
         for (var i = streams.Count - 1; i >= 0; i--)
         {
-            if (streams[i].IsExternal)
+            if (streams[i].IsExternal || streams[i].Type is MediaStreamType.EmbeddedImage or MediaStreamType.Data or MediaStreamType.Lyric)
             {
                 continue;
             }

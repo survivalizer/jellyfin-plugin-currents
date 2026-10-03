@@ -312,6 +312,38 @@ public sealed class VersionSourceBuilderTests : IDisposable
         Assert.Equal(new[] { 0, 1, 2 }, playback.MediaStreams.Select(s => s.Index));
     }
 
+    [Fact]
+    public void Builtin_text_subtitles_before_trailing_cover_art_leave_the_playback_view()
+    {
+        var entry = Probed(
+            20_000_000_000,
+            Track(MediaStreamType.Video, 0, "h264"),
+            Track(MediaStreamType.Audio, 1, "aac"),
+            Track(MediaStreamType.Subtitle, 2, "subrip"),
+            Track(MediaStreamType.Subtitle, 3, "subrip"),
+            Track(MediaStreamType.EmbeddedImage, 4, "mjpeg"));
+
+        var playback = Create().Build(entry, Context() with { ForPlayback = true });
+
+        Assert.Equal(new[] { 0, 1, 4 }, playback.MediaStreams.Select(s => s.Index));
+    }
+
+    [Fact]
+    public void A_graphical_subtitle_still_stops_the_playback_walk()
+    {
+        var entry = Probed(
+            20_000_000_000,
+            Track(MediaStreamType.Video, 0, "h264"),
+            Track(MediaStreamType.Audio, 1, "aac"),
+            Track(MediaStreamType.Subtitle, 2, "subrip"),
+            Track(MediaStreamType.Subtitle, 3, "PGSSUB"),
+            Track(MediaStreamType.EmbeddedImage, 4, "mjpeg"));
+
+        var playback = Create().Build(entry, Context() with { ForPlayback = true });
+
+        Assert.Equal(new[] { 0, 1, 2, 3, 4 }, playback.MediaStreams.Select(s => s.Index));
+    }
+
     [Theory]
     [InlineData(0, 20_000_000_000L)]
     [InlineData(15, 15_000_000_000L)]
