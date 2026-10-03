@@ -23,9 +23,10 @@ public sealed class SegmentRequestFilter : IAsyncActionFilter
     private readonly SegmentGate _gate;
     private readonly VersionSourceBuilder _builder;
     private readonly RequestContext _request;
+    private readonly CompatState _compat;
     private readonly ICurrentsSettings _settings;
 
-    public SegmentRequestFilter(VersionRegistry registry, ILibraryManager library, CurrentsItemLocator locator, SegmentGate gate, VersionSourceBuilder builder, RequestContext request, ICurrentsSettings settings)
+    public SegmentRequestFilter(VersionRegistry registry, ILibraryManager library, CurrentsItemLocator locator, SegmentGate gate, VersionSourceBuilder builder, RequestContext request, CompatState compat, ICurrentsSettings settings)
     {
         _registry = registry;
         _library = library;
@@ -33,6 +34,7 @@ public sealed class SegmentRequestFilter : IAsyncActionFilter
         _gate = gate;
         _builder = builder;
         _request = request;
+        _compat = compat;
         _settings = settings;
     }
 
@@ -72,5 +74,5 @@ public sealed class SegmentRequestFilter : IAsyncActionFilter
         return _gate.Allows(title, ranked.Count == 0 ? null : _builder.RealRunTimeTicks(ranked[0]));
     }
 
-    private bool VersionsActive() => _settings.Current.EnableVersions;
+    private bool VersionsActive() => _compat.Active && _settings.Current.EnableVersions;
 }

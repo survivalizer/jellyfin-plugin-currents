@@ -30,6 +30,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
     private readonly IInternalBaseUrl _internalUrl;
     private readonly SegmentGate _segmentGate;
     private readonly SegmentPresence _segmentPresence;
+    private readonly CompatState _compat;
     private readonly ICurrentsSettings _settings;
     private readonly ILogger<CurrentsMediaSourceManager> _logger;
 
@@ -44,6 +45,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         IInternalBaseUrl internalUrl,
         SegmentGate segmentGate,
         SegmentPresence segmentPresence,
+        CompatState compat,
         ICurrentsSettings settings,
         ILogger<CurrentsMediaSourceManager> logger)
     {
@@ -57,6 +59,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         _internalUrl = internalUrl;
         _segmentGate = segmentGate;
         _segmentPresence = segmentPresence;
+        _compat = compat;
         _settings = settings;
         _logger = logger;
     }
@@ -181,7 +184,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
     private bool TryGetTitle(BaseItem item, [NotNullWhen(true)] out CurrentsTitle? title)
     {
         title = null;
-        return _settings.Current.EnableVersions && _locator.TryGetTitle(item, out title);
+        return _compat.Active && _settings.Current.EnableVersions && _locator.TryGetTitle(item, out title);
     }
 
     // Background work (no request) gets the item's latest list; an anonymous HTTP caller only default-config versions.

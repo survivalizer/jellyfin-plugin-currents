@@ -21,9 +21,10 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
     private readonly VersionProber _prober;
     private readonly VersionSourceBuilder _builder;
     private readonly RequestContext _request;
+    private readonly CompatState _compat;
     private readonly ICurrentsSettings _settings;
 
-    public PlaybackInfoFilter(ILibraryManager library, CurrentsItemLocator locator, VersionCatalog catalog, VersionRegistry registry, VersionProber prober, VersionSourceBuilder builder, RequestContext request, ICurrentsSettings settings)
+    public PlaybackInfoFilter(ILibraryManager library, CurrentsItemLocator locator, VersionCatalog catalog, VersionRegistry registry, VersionProber prober, VersionSourceBuilder builder, RequestContext request, CompatState compat, ICurrentsSettings settings)
     {
         _library = library;
         _locator = locator;
@@ -32,12 +33,13 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
         _prober = prober;
         _builder = builder;
         _request = request;
+        _compat = compat;
         _settings = settings;
     }
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if (_settings.Current.EnableVersions
+        if (_compat.Active && _settings.Current.EnableVersions
             && context.ActionDescriptor is ControllerActionDescriptor { ControllerName: "MediaInfo", ActionName: "GetPostedPlaybackInfo" or "GetPlaybackInfo" }
             && context.ActionArguments.TryGetValue("itemId", out var raw) && raw is Guid itemId
             && _library.GetItemById(itemId) is { } item

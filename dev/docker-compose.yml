@@ -7,6 +7,8 @@ services:
       - "8097:8096"
     environment:
       JELLYFIN_PublishedServerUrl: "http://localhost:8097"
+      # Empty in normal use. Set to e.g. 13.0.0 to check the compat guard (Task 16).
+      CURRENTS_COMPAT_TEST_VERSION: "${CURRENTS_COMPAT_TEST_VERSION:-}"
     volumes:
       - ./data/config:/config
       - ./data/cache:/cache

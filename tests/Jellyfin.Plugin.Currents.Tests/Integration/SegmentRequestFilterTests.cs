@@ -1,5 +1,6 @@
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
+using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Segments;
@@ -23,6 +24,7 @@ public sealed class SegmentRequestFilterTests : IDisposable
     private static readonly Guid Alice = Guid.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     private static readonly CurrentsTitle Title = new("movie", "tt1");
     private readonly FakeSettings _settings = new();
+    private CompatState _compat;
     private readonly FakeAioStreamsClient _client = new();
     private readonly ManualTimeProvider _time = new(new DateTimeOffset(2026, 10, 3, 0, 0, 0, TimeSpan.Zero));
     private readonly (ILibraryManager Instance, InterfaceFake Fake) _library = InterfaceFake.Create<ILibraryManager>();
@@ -34,6 +36,7 @@ public sealed class SegmentRequestFilterTests : IDisposable
 
     public SegmentRequestFilterTests()
     {
+        _compat = new CompatState(new Version(12, 1, 0), _settings);
         _settings.Current.LibraryRoot = Path.Combine(_settings.DataFolderPath, "library");
         var strm = Path.Combine(_settings.Current.LibraryRoot, "Movies", "M", "M.strm");
         Directory.CreateDirectory(Path.GetDirectoryName(strm)!);
@@ -76,6 +79,7 @@ public sealed class SegmentRequestFilterTests : IDisposable
         new SegmentGate(_store, _settings),
         _builder,
         RequestContextTests.Create(RequestContextTests.Http(Alice, action: ("MediaSegments", "GetItemSegments"))),
+        _compat,
         _settings);
 
     private static ActionExecutingContext Segments(Guid id) =>
@@ -158,5 +162,17 @@ public sealed class SegmentRequestFilterTests : IDisposable
 
         Assert.Null(other.Result);
         Assert.Null(item.Result);
+    }
+
+    [Fact]
+    public async Task An_untested_server_is_treated_as_degraded()
+    {
+        var versions = await AliceVersions();
+        _compat = new CompatState(new Version(13, 0, 0), _settings);
+        var context = Segments(Guid.Parse(versions[1].VersionId));
+
+        await SyntheticVersionIdFilterTests.Run(Create(), context);
+
+        Assert.True(Blocked(context));
     }
 }

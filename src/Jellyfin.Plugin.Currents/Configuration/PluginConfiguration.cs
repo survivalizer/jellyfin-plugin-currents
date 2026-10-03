@@ -30,6 +30,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets a value indicating whether titles show per-user versions. Off is degraded mode: every title plays the default config's best stream.</summary>
     public bool EnableVersions { get; set; } = true;
 
+    /// <summary>Gets or sets a value indicating whether Currents' Jellyfin integration runs on a Jellyfin version outside the tested range.</summary>
+    public bool ForceEnableOnUntestedServer { get; set; }
+
     /// <summary>Gets or sets a value indicating whether users may set their own AIOStreams config and preferences on the Currents user page.</summary>
     public bool AllowSelfService { get; set; } = true;
 

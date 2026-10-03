@@ -1,5 +1,6 @@
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
+using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Streams;
@@ -20,6 +21,7 @@ public sealed class PlaybackInfoFilterTests : IDisposable
     private static readonly Guid Alice = Guid.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     private static readonly Guid Bob = Guid.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     private readonly FakeSettings _settings = new();
+    private CompatState _compat;
     private readonly FakeAioStreamsClient _client = new();
     private readonly ManualTimeProvider _time = new(DateTimeOffset.Parse("2026-10-01T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
     private readonly (ILibraryManager Instance, InterfaceFake Fake) _library = InterfaceFake.Create<ILibraryManager>();
@@ -30,6 +32,7 @@ public sealed class PlaybackInfoFilterTests : IDisposable
 
     public PlaybackInfoFilterTests()
     {
+        _compat = new CompatState(new Version(12, 1, 0), _settings);
         _settings.Current.LibraryRoot = Path.Combine(_settings.DataFolderPath, "library");
         var strm = Path.Combine(_settings.Current.LibraryRoot, "Movies", "M", "M.strm");
         Directory.CreateDirectory(Path.GetDirectoryName(strm)!);
@@ -67,7 +70,7 @@ public sealed class PlaybackInfoFilterTests : IDisposable
         var builder = new VersionSourceBuilder(_settings, _time, probes, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
         var prober = new VersionProber(_media.Instance, _library.Instance, probes, builder, new FixedUrl("http://127.0.0.1:8096"), _time, NullLogger<VersionProber>.Instance);
         var request = RequestContextTests.Create(RequestContextTests.Http(user, action: ("MediaInfo", "GetPostedPlaybackInfo")));
-        return new PlaybackInfoFilter(_library.Instance, new CurrentsItemLocator(_settings, _time), _catalog, _registry, prober, builder, request, _settings);
+        return new PlaybackInfoFilter(_library.Instance, new CurrentsItemLocator(_settings, _time), _catalog, _registry, prober, builder, request, _compat, _settings);
     }
 
     private static Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext PlaybackInfo(Guid itemId, string? mediaSourceId, FakePlaybackInfoDto? dto = null) =>
@@ -318,5 +321,18 @@ public sealed class PlaybackInfoFilterTests : IDisposable
     private sealed class FixedUrl(string value) : IInternalBaseUrl
     {
         public string Value => value;
+    }
+
+    [Fact]
+    public async Task An_untested_server_leaves_the_request_alone()
+    {
+        _compat = new CompatState(new Version(13, 0, 0), _settings);
+        var dto = new FakePlaybackInfoDto { MediaSourceId = _movie.Id.ToString("N") };
+        var context = PlaybackInfo(_movie.Id, null, dto);
+
+        await SyntheticVersionIdFilterTests.Run(Create(Alice), context);
+
+        Assert.Equal(_movie.Id.ToString("N"), dto.MediaSourceId);
+        Assert.Equal(0, _client.Calls);
     }
 }

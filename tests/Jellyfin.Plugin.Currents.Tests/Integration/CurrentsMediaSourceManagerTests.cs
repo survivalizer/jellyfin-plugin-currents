@@ -1,6 +1,7 @@
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 using Jellyfin.Plugin.Currents.Clients.RemuxDb;
+using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Segments;
@@ -32,6 +33,7 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
     private static readonly (string, string) ListView = ("Items", "GetItems");
     private static readonly (string, string) Stream = ("DynamicHls", "GetMasterHlsVideoPlaylist");
     private readonly FakeSettings _settings = new();
+    private CompatState _compat;
     private readonly FakeAioStreamsClient _client = new();
     private readonly ManualTimeProvider _time = new(DateTimeOffset.Parse("2026-10-01T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
     private readonly (IDisposableMediaSourceManager Instance, InterfaceFake Fake) _inner = InterfaceFake.Create<IDisposableMediaSourceManager>();
@@ -50,6 +52,7 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
 
     public CurrentsMediaSourceManagerTests()
     {
+        _compat = new CompatState(new Version(12, 1, 0), _settings);
         _settings.Current.LibraryRoot = Path.Combine(_settings.DataFolderPath, "library");
         var strm = Path.Combine(_settings.Current.LibraryRoot, "Movies", "M (2020)", "M (2020).strm");
         Directory.CreateDirectory(Path.GetDirectoryName(strm)!);
@@ -87,7 +90,7 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
     }
 
     private CurrentsMediaSourceManager Create(HttpContext? http) =>
-        new(_inner.Instance, _locator, _catalog, _registry, _builder, new TrackLocalizer(InterfaceFake.Create<ILocalizationManager>().Instance), RequestContextTests.Create(http), new FixedInternalBaseUrl(Internal), new SegmentGate(_segmentStore, _settings), new SegmentPresence(_segmentServices), _settings, _logger);
+        new(_inner.Instance, _locator, _catalog, _registry, _builder, new TrackLocalizer(InterfaceFake.Create<ILocalizationManager>().Instance), RequestContextTests.Create(http), new FixedInternalBaseUrl(Internal), new SegmentGate(_segmentStore, _settings), new SegmentPresence(_segmentServices), _compat, _settings, _logger);
 
     private static HttpContext Request(Guid? user, (string, string) action) => RequestContextTests.Http(user, action: action);
 
@@ -113,6 +116,19 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
         var other = new Movie { Path = Path.Combine(_settings.DataFolderPath, "elsewhere.mkv") };
 
         Assert.Same(_innerSources, Create(Request(Alice, ItemPage)).GetStaticMediaSources(other, true));
+    }
+
+    [Fact]
+    public async Task An_untested_server_passes_currents_items_through_until_forced()
+    {
+        _compat = new CompatState(new Version(13, 0, 0), _settings);
+        var manager = Create(Request(Alice, ItemPage));
+
+        Assert.Same(_innerSources, manager.GetStaticMediaSources(_movie, true));
+        Assert.Same(_innerSources, await manager.GetPlaybackMediaSources(_movie, null!, true, true, CancellationToken.None));
+
+        _settings.Current.ForceEnableOnUntestedServer = true;
+        Assert.Equal(2, manager.GetStaticMediaSources(_movie, true).Count);
     }
 
     [Fact]

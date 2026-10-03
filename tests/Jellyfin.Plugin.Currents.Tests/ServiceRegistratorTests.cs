@@ -11,6 +11,7 @@ using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaSegments;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Activity;
 using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.IO;
 using Microsoft.AspNetCore.Mvc;
@@ -41,9 +42,34 @@ public class ServiceRegistratorTests
         services.AddSingleton(InterfaceFake.Create<ILocalizationManager>().Instance);
         services.AddSingleton(InterfaceFake.Create<ICollectionManager>().Instance);
         services.AddSingleton(InterfaceFake.Create<IMediaSegmentManager>().Instance);
+        services.AddSingleton(InterfaceFake.Create<IActivityManager>().Instance);
         new ServiceRegistrator().RegisterServices(services, null!);
         services.AddSingleton<ICurrentsSettings>(new FakeSettings());
         return services;
+    }
+
+    [Fact]
+    public async Task The_guard_reads_the_server_version_at_registration()
+    {
+        var (host, fake) = InterfaceFake.Create<IServerApplicationHost>();
+        fake.On("get_ApplicationVersion", _ => new Version(13, 0, 0));
+        var services = Register();
+        new ServiceRegistrator().RegisterServices(services, host);
+        services.AddSingleton<ICurrentsSettings>(new FakeSettings());
+        await using var provider = services.BuildServiceProvider();
+
+        var compat = provider.GetRequiredService<CompatState>();
+
+        Assert.False(compat.InTestedRange);
+        Assert.False(compat.Active);
+    }
+
+    [Fact]
+    public async Task Without_a_host_the_guard_stays_active()
+    {
+        await using var provider = Register().BuildServiceProvider();
+
+        Assert.True(provider.GetRequiredService<CompatState>().Active);
     }
 
     [Theory]

@@ -31,6 +31,11 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.TryAddSingleton(TimeProvider.System);
+
+        // Never throws: an exception here would disable the plugin. The test variable lets the dev stack pretend to be another Jellyfin.
+        var server = CompatState.Detect(applicationHost?.ApplicationVersion, Environment.GetEnvironmentVariable(CompatState.TestVersionVariable));
+        serviceCollection.AddSingleton(sp => new CompatState(server, sp.GetRequiredService<ICurrentsSettings>()));
+        serviceCollection.AddHostedService<CompatWarning>();
         serviceCollection.AddSingleton<ICurrentsSettings, PluginSettings>();
         serviceCollection.AddSingleton<OutboundPolicies>();
         serviceCollection.AddSingleton(sp => new LocalCallerPolicy(() => ServerAddresses.Of(sp.GetRequiredService<INetworkManager>())));
