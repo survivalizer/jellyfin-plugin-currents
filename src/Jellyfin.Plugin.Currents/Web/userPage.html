@@ -94,12 +94,26 @@
           ...init,
           headers: { 'Authorization': `MediaBrowser Token="${server.AccessToken}"`, 'Content-Type': 'application/json' }
         });
+        if (response.status === 401) { location.href = `${base}/web/#/login`; throw new Error('Your session has expired. Sign in again.'); }
         const body = response.headers.get('content-type')?.includes('json') ? await response.json() : null;
         if (!response.ok) { throw new Error((body && (body.Message || body.message)) || `Request failed (${response.status})`); }
         return body;
       };
 
       const sourceText = { None: 'No streams are configured for you yet.', Default: "You're using the server's AIOStreams config.", Admin: 'Your admin assigned an AIOStreams config to you.', Self: "You're using your own AIOStreams config." };
+
+      const readPreferences = () => ({
+        ResolutionOrder: list($('resolutionOrder').value),
+        Hdr: $('hdr').value,
+        AudioLanguages: list($('audioLanguages').value),
+        SubtitleLanguages: list($('subtitleLanguages').value),
+        MaxSizeGb: parseFloat($('maxSizeGb').value) || 0,
+        ExcludedResolutions: list($('excludedResolutions').value),
+        ExcludedVisualTags: list($('excludedVisualTags').value),
+        CachedOnly: $('cachedOnly').checked
+      });
+      let loadedPreferences = null;
+      let loadedAutoSelect = null;
 
       const fill = (s) => {
         $('summary').textContent = s.StreamsDisabled ? 'Your admin has turned streams off for your account.' : sourceText[s.Source] || '';
@@ -122,6 +136,8 @@
         $('excludedResolutions').value = join(p.ExcludedResolutions);
         $('excludedVisualTags').value = join(p.ExcludedVisualTags);
         $('cachedOnly').checked = !!p.CachedOnly;
+        loadedPreferences = JSON.stringify(readPreferences());
+        loadedAutoSelect = $('autoSelect').checked;
       };
 
       const save = async (update, done) => {
@@ -133,20 +149,14 @@
       $('form').addEventListener('submit', (e) => {
         e.preventDefault();
         const url = $('manifestUrl').value.trim();
+        const preferences = readPreferences();
+        const preferencesChanged = JSON.stringify(preferences) !== loadedPreferences;
+        const autoSelectChanged = $('autoSelect').checked !== loadedAutoSelect;
         save({
           AioStreamsManifestUrl: url || null,
-          AutoSelect: $('autoSelect').checked,
+          AutoSelect: autoSelectChanged ? $('autoSelect').checked : null,
           SearchAutoAdd: (!$('searchSection').hidden && !$('searchAutoAdd').disabled && $('searchAutoAdd').checked !== searchShown) ? $('searchAutoAdd').checked : null,
-          Preferences: {
-            ResolutionOrder: list($('resolutionOrder').value),
-            Hdr: $('hdr').value,
-            AudioLanguages: list($('audioLanguages').value),
-            SubtitleLanguages: list($('subtitleLanguages').value),
-            MaxSizeGb: parseFloat($('maxSizeGb').value) || 0,
-            ExcludedResolutions: list($('excludedResolutions').value),
-            ExcludedVisualTags: list($('excludedVisualTags').value),
-            CachedOnly: $('cachedOnly').checked
-          }
+          Preferences: preferencesChanged ? preferences : null
         }, 'Saved. Reopen a title to see your versions.');
       });
       $('removeConfig').addEventListener('click', () => save({ AioStreamsManifestUrl: '' }, 'Removed your config.'));

@@ -150,4 +150,23 @@ public sealed class PagesTests : IDisposable
         Assert.Contains("type=\"password\" id=\"TheIntroDbApiKey\"", html, StringComparison.Ordinal);
         Assert.Contains("type=\"password\" id=\"PublicMetaDbApiKey\"", html, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void User_page_sends_only_changed_preferences_and_redirects_on_401()
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Web.userPage.html");
+
+        Assert.Contains("response.status === 401", html, StringComparison.Ordinal);
+        Assert.Contains("Preferences: preferencesChanged ? preferences : null", html, StringComparison.Ordinal);
+        Assert.Contains("AutoSelect: autoSelectChanged ? $('autoSelect').checked : null", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Admin_users_table_rerenders_only_the_saved_row()
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
+
+        Assert.Contains("function refreshUserRow(", html, StringComparison.Ordinal);
+        Assert.Contains("row.replaceWith(userRow(", html, StringComparison.Ordinal);
+    }
 }
