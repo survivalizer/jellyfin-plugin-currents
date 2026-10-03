@@ -18,8 +18,8 @@ public class TrackMatcherTests
         MediaStream[] display = [Audio(501, "eng"), Audio(502, "fre")];
         MediaStream[] probed = [Audio(1, "fra"), Audio(2, "eng")];
 
-        Assert.Equal(1, TrackMatcher.Map(display, probed, 502));
-        Assert.Equal(2, TrackMatcher.Map(display, probed, 501));
+        Assert.Equal(1, TrackMatcher.Map(display, probed, 502, MediaStreamType.Audio));
+        Assert.Equal(2, TrackMatcher.Map(display, probed, 501, MediaStreamType.Audio));
     }
 
     [Fact]
@@ -28,7 +28,7 @@ public class TrackMatcherTests
         MediaStream[] display = [Audio(501, "eng"), Audio(502, "eng")];
         MediaStream[] probed = [Audio(1, "eng"), Audio(2, "eng")];
 
-        Assert.Equal(2, TrackMatcher.Map(display, probed, 502));
+        Assert.Equal(2, TrackMatcher.Map(display, probed, 502, MediaStreamType.Audio));
     }
 
     [Fact]
@@ -37,8 +37,8 @@ public class TrackMatcherTests
         MediaStream[] display = [Sub(503, "eng", forced: true), Sub(504, "eng")];
         MediaStream[] probed = [Sub(3, "eng"), Sub(4, "eng", forced: true)];
 
-        Assert.Equal(4, TrackMatcher.Map(display, probed, 503));
-        Assert.Equal(3, TrackMatcher.Map(display, probed, 504));
+        Assert.Equal(4, TrackMatcher.Map(display, probed, 503, MediaStreamType.Subtitle));
+        Assert.Equal(3, TrackMatcher.Map(display, probed, 504, MediaStreamType.Subtitle));
     }
 
     [Fact]
@@ -46,8 +46,8 @@ public class TrackMatcherTests
     {
         MediaStream[] display = [Audio(501, null), Audio(502, null)];
 
-        Assert.Equal(2, TrackMatcher.Map(display, [Audio(1, null), Audio(2, null)], 502));
-        Assert.Null(TrackMatcher.Map(display, [Audio(1, null)], 502));
+        Assert.Equal(2, TrackMatcher.Map(display, [Audio(1, null), Audio(2, null)], 502, MediaStreamType.Audio));
+        Assert.Null(TrackMatcher.Map(display, [Audio(1, null)], 502, MediaStreamType.Audio));
     }
 
     [Fact]
@@ -56,7 +56,17 @@ public class TrackMatcherTests
         MediaStream[] display = [Audio(501, "eng"), Audio(502, "ger")];
         MediaStream[] probed = [Audio(1, "eng")];
 
-        Assert.Null(TrackMatcher.Map(display, probed, 502));
-        Assert.Null(TrackMatcher.Map(display, probed, 777));
+        Assert.Null(TrackMatcher.Map(display, probed, 502, MediaStreamType.Audio));
+        Assert.Null(TrackMatcher.Map(display, probed, 777, MediaStreamType.Audio));
+    }
+
+    [Fact]
+    public void A_choice_of_the_wrong_type_maps_to_nothing()
+    {
+        MediaStream[] display = [Audio(501, "eng"), Sub(503, "eng")];
+        MediaStream[] probed = [Audio(1, "eng"), Sub(3, "eng")];
+
+        Assert.Null(TrackMatcher.Map(display, probed, 503, MediaStreamType.Audio));
+        Assert.Null(TrackMatcher.Map(display, probed, 501, MediaStreamType.Subtitle));
     }
 }

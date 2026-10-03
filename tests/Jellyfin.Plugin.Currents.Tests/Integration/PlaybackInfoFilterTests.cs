@@ -200,6 +200,40 @@ public sealed class PlaybackInfoFilterTests : IDisposable
     }
 
     [Fact]
+    public async Task A_stale_page_choice_still_maps_after_the_version_has_been_probed()
+    {
+        _client.Outcome = new SearchOutcome([Bilingual()], []);
+        ProbeFindsFrenchFirst();
+        var version = (await AliceVersions())[0];
+        var filter = Create(Alice);
+        var first = WithTracks(_movie.Id, version.VersionId, 502, null, new FakePlaybackInfoDto { AudioStreamIndex = 502 });
+        var second = WithTracks(_movie.Id, version.VersionId, 502, null, new FakePlaybackInfoDto { AudioStreamIndex = 502 });
+
+        await SyntheticVersionIdFilterTests.Run(filter, first);
+        await SyntheticVersionIdFilterTests.Run(filter, second);
+
+        Assert.Equal(1, first.ActionArguments["audioStreamIndex"]);
+        Assert.Equal(1, second.ActionArguments["audioStreamIndex"]);
+    }
+
+    [Fact]
+    public async Task A_synthetic_subtitle_choice_maps_to_the_probed_subtitle()
+    {
+        var release = Bilingual();
+        release.ParsedFile!.Subtitles = ["English"];
+        _client.Outcome = new SearchOutcome([release], []);
+        ProbeFindsFrenchFirst();
+        var version = (await AliceVersions())[0];
+        var dto = new FakePlaybackInfoDto { SubtitleStreamIndex = 503 };
+        var context = WithTracks(_movie.Id, version.VersionId, null, 503, dto);
+
+        await SyntheticVersionIdFilterTests.Run(Create(Alice), context);
+
+        Assert.Equal(3, context.ActionArguments["subtitleStreamIndex"]);
+        Assert.Equal(3, dto.SubtitleStreamIndex);
+    }
+
+    [Fact]
     public async Task The_default_synthetic_audio_needs_no_probe()
     {
         _client.Outcome = new SearchOutcome([new StreamResult { Url = "https://aio.example.com/play/one", Filename = "one.mkv", Size = 4_000_000_000, Duration = 7_200_000, ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC", AudioTags = ["AAC"], AudioChannels = ["2.0"], Languages = ["English"] } }], []);

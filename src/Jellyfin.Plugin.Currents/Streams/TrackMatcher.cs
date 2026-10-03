@@ -12,11 +12,12 @@ public static class TrackMatcher
     /// <param name="display">The display streams the client chose from.</param>
     /// <param name="probed">The probed streams.</param>
     /// <param name="index">The chosen display index.</param>
+    /// <param name="expected">The type the request asked for (audio for an audio index, subtitle for a subtitle index).</param>
     /// <returns>The probed index, or null when nothing fits.</returns>
-    public static int? Map(IReadOnlyList<MediaStream> display, IReadOnlyList<MediaStream> probed, int index)
+    public static int? Map(IReadOnlyList<MediaStream> display, IReadOnlyList<MediaStream> probed, int index, MediaStreamType expected)
     {
         var chosen = display.FirstOrDefault(s => s.Index == index);
-        if (chosen is null)
+        if (chosen is null || chosen.Type != expected)
         {
             return null;
         }

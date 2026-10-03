@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Jellyfin.Plugin.Currents.Integration;
 
-/// <summary>On PlaybackInfo for a Currents item: maps the requested MediaSourceId to one of the user's versions and probes that version if needed, before Jellyfin builds the playback answer.</summary>
+/// <summary>On PlaybackInfo for a Currents item: maps the requested MediaSourceId to one of the user's versions, probes that version if needed and maps synthetic track indexes (against the pre-probe display) to real ones, before Jellyfin builds the playback answer; afterwards scrubs loopback URLs from the response.</summary>
 public sealed class PlaybackInfoFilter : IAsyncActionFilter
 {
     private static readonly TimeSpan SearchWait = TimeSpan.FromSeconds(10);
@@ -83,7 +83,7 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
         }
 
         // The details page offers synthetic indexes for unprobed versions. Map a choice to the real track, or clear it so ffmpeg picks its default.
-        var display = _builder.Tracks(chosen, item.RunTimeTicks).Display;
+        var display = _builder.DisplayBeforeProbe(chosen, item.RunTimeTicks);
         var audio = ReadIndex(context, dto, "audioStreamIndex", "AudioStreamIndex");
         var subtitle = ReadIndex(context, dto, "subtitleStreamIndex", "SubtitleStreamIndex");
         var probe = (TrackIndexes.IsSynthetic(audio) && audio != DefaultAudio(display)) || TrackIndexes.IsSynthetic(subtitle);
@@ -91,12 +91,12 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
         var real = probed?.Streams();
         if (TrackIndexes.IsSynthetic(audio))
         {
-            WriteIndex(context, dto, "audioStreamIndex", "AudioStreamIndex", real is null ? null : TrackMatcher.Map(display, real, audio!.Value));
+            WriteIndex(context, dto, "audioStreamIndex", "AudioStreamIndex", real is null ? null : TrackMatcher.Map(display, real, audio!.Value, MediaStreamType.Audio));
         }
 
         if (TrackIndexes.IsSynthetic(subtitle))
         {
-            WriteIndex(context, dto, "subtitleStreamIndex", "SubtitleStreamIndex", real is null ? null : TrackMatcher.Map(display, real, subtitle!.Value));
+            WriteIndex(context, dto, "subtitleStreamIndex", "SubtitleStreamIndex", real is null ? null : TrackMatcher.Map(display, real, subtitle!.Value, MediaStreamType.Subtitle));
         }
     }
 

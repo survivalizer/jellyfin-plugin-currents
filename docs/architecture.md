@@ -228,7 +228,7 @@ Sources of track data, in order of trust:
 - `Streams/ProbeCache`: memory plus disk (`{plugin data}/probes/{key}.json`, atomic tmp + move), kept 30 days, at most
   5000 files, a disk miss remembered 10 min.
 - `Streams/RemuxDbCache` + `RemuxDbIndex`: per-title lookups. `GET {RemuxDbUrl}/api/media/{tt...|tmdb:...}[:S:E]/versions`
-  with the header `x-client-id: currents-` + 32 hex (HMAC of the install secret), 5 s timeout, 8 MB body cap. Cache 6 h for a
+  with the header `x-client-id: currents-` + 32 hex (HMAC of the install secret), 5 s total budget for the whole lookup (headers and body), 8 MB body cap. Cache 6 h for a
   hit, 30 min for a miss, 60 s after any error. Any failure is fail-soft: the release-name tracks show. Matching is local:
   same info hash (case-insensitive), then the same file index or file name; candidates that name a different file never
   match; the size (1 %) fallback applies only with a single remaining candidate. RemuxDB only sees ids and the client id.
@@ -236,8 +236,10 @@ Sources of track data, in order of trust:
 - `Streams/TrackComposer` merges these into the display tracks; `VersionTracks` carries `Display`, `Playback`,
   `NeedsProbe`, `Container` and `RunTimeTicks`. For AIOStreams-listed tracks the release-name reasons to probe (Dolby
   Vision tags, missing width, a guessed channel layout) still apply.
-- `Streams/TrackMatcher` maps a synthetic choice in a PlaybackInfo request to the probed track (same type and language, forced flag
-  preferred, then position among that language's tracks). If the probe failed, the choice is cleared and ffmpeg uses its default tracks.
+- `Streams/TrackMatcher` maps a synthetic choice in a PlaybackInfo request to the probed track (same type as the request's index kind,
+  same language, forced flag preferred, then position among that language's tracks). `PlaybackInfoFilter` looks the synthetic index up
+  in `VersionSourceBuilder.DisplayBeforeProbe` (the display without the probe), so a choice made on a page loaded before the version
+  was probed, by this or another user, still maps. If the probe failed, the choice is cleared and ffmpeg uses its default tracks.
 
 ### Subtitles
 - **Stream-attached.** AIOStreams stream `subtitles` become external tracks 1000+. Clients see a placeholder path; the
@@ -269,7 +271,8 @@ answer is a 502) and relays `Range` and the 206 answer and only content headers.
    AIOStreams media info when matched, else the release name.
 2. **Pick a French track** in the Audio select and press Play.
 3. **PlaybackInfo**: `VersionProber` probes the version (a few seconds, cached on disk), `TrackMatcher` maps the synthetic
-   audio index to the probed one; a failed probe (502) clears the choice to the default track (index 1).
+   audio index to the probed one (the index is looked up in the pre-probe display, so a page loaded before the probe still
+   maps afterwards); if the probe fails, the choice is cleared and ffmpeg plays the file's default tracks.
 4. **Stream**: ffmpeg opens the loopback URL with `-map 0:1` (the real index of the chosen stream).
 5. **Subtitle fetch**: `/Videos/{id}/{versionId}/Subtitles/1000/0/Stream.vtt`; the decorator maps the index to the
    stream subtitle and the server fetches the loopback SRT, which Jellyfin converts to VTT.

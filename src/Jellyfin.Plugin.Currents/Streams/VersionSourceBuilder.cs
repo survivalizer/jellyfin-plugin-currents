@@ -43,6 +43,13 @@ public sealed class VersionSourceBuilder
         return TrackComposer.Compose(entry.Stream.Result, itemRunTimeTicks, probed, remux);
     }
 
+    /// <summary>The display tracks a details page showed before the version was probed: the same inputs as <see cref="Tracks"/> minus the probe. Synthetic indexes in a request refer to these.</summary>
+    /// <param name="entry">The version.</param>
+    /// <param name="itemRunTimeTicks">The item's runtime.</param>
+    /// <returns>The display streams.</returns>
+    public IReadOnlyList<MediaStream> DisplayBeforeProbe(VersionEntry entry, long? itemRunTimeTicks) =>
+        TrackComposer.Compose(entry.Stream.Result, itemRunTimeTicks, null, _remux.Match(entry.Title, entry.Stream.Result)).Display;
+
     public MediaSourceInfo Build(VersionEntry entry, VersionContext context)
     {
         var tracks = Tracks(entry, context.ItemRunTimeTicks);
