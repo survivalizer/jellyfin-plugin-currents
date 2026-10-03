@@ -65,6 +65,8 @@ public static partial class MetaMapper
         {
             item.SetProviderId(MetadataProvider.Imdb, imdb);
         }
+
+        item.RemoteTrailers = Trailers(meta);
     }
 
     public static IEnumerable<RemoteImageInfo> Images(StremioMeta meta, string providerName)
@@ -84,6 +86,17 @@ public static partial class MetaMapper
             yield return new RemoteImageInfo { ProviderName = providerName, Url = meta.Logo, Type = ImageType.Logo };
         }
     }
+
+    /// <summary>YouTube trailers as jellyfin-web's YouTube player expects them (https://www.youtube.com/watch?v=ID): valid ids only, deduplicated, at most five.</summary>
+    public static MediaUrl[] Trailers(StremioMeta meta) =>
+        (meta.Trailers ?? [])
+            .Where(t => t is not null)
+            .Select(t => (Id: (t.YtId ?? t.Source)?.Trim(), t.Name))
+            .Where(t => t.Id is not null && YouTubeId().IsMatch(t.Id))
+            .DistinctBy(t => t.Id, StringComparer.Ordinal)
+            .Take(5)
+            .Select(t => new MediaUrl { Url = "https://www.youtube.com/watch?v=" + t.Id, Name = string.IsNullOrWhiteSpace(t.Name) ? "Trailer" : t.Name.Trim() })
+            .ToArray();
 
     public static StremioVideo? FindEpisode(StremioMeta meta, int? season, int? episode) =>
         season is null || episode is null
@@ -124,4 +137,7 @@ public static partial class MetaMapper
 
     [GeneratedRegex(@"(?<![0-9])([0-9]{1,5})\s*m", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex Minutes();
+
+    [GeneratedRegex("^[A-Za-z0-9_-]{11}$", RegexOptions.CultureInvariant)]
+    private static partial Regex YouTubeId();
 }

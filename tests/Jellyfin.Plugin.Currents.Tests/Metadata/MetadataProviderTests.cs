@@ -15,7 +15,7 @@ public class MetadataProviderTests
     public MetadataProviderTests()
     {
         _settings.Current.AioMetadataManifestUrl = "https://meta.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/manifest.json";
-        _client.Metas["movie/tt1"] = new StremioMeta { Id = "tt1", Name = "Movie One", Year = "2001" };
+        _client.Metas["movie/tt1"] = new StremioMeta { Id = "tt1", Name = "Movie One", Year = "2001", Trailers = [new StremioTrailer { Source = "vKQi3bBA1y8" }] };
         _client.Metas["series/tt2"] = new StremioMeta
         {
             Id = "tt2",
@@ -37,6 +37,7 @@ public class MetadataProviderTests
 
         Assert.True(result.HasMetadata);
         Assert.Equal("Movie One", result.Item.Name);
+        Assert.Equal("https://www.youtube.com/watch?v=vKQi3bBA1y8", Assert.Single(result.Item.RemoteTrailers).Url);
     }
 
     [Fact]

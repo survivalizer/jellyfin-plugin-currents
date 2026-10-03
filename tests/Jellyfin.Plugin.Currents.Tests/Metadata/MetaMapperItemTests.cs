@@ -81,4 +81,41 @@ public class MetaMapperItemTests
         Assert.Null(MetaMapper.FindEpisode(Meta, 1, 3));
         Assert.Null(MetaMapper.FindEpisode(Meta, null, 2));
     }
+
+    [Fact]
+    public void Youtube_trailers_become_remote_trailers()
+    {
+        var meta = new StremioMeta
+        {
+            Name = "M",
+            Trailers =
+            [
+                new StremioTrailer { Source = "vKQi3bBA1y8", Type = "Trailer", Name = "Official Trailer" },
+                new StremioTrailer { Source = "vKQi3bBA1y8", Type = "Trailer" },
+                new StremioTrailer { Source = "https://evil.example.com/x", Type = "Trailer" },
+                new StremioTrailer { YtId = "abcdefghijk", Source = "not-an-id" },
+                null!,
+            ],
+        };
+        var movie = new Movie();
+
+        MetaMapper.Apply(meta, movie);
+
+        Assert.Equal(new[] { "https://www.youtube.com/watch?v=vKQi3bBA1y8", "https://www.youtube.com/watch?v=abcdefghijk" }, movie.RemoteTrailers.Select(t => t.Url));
+        Assert.Equal(new[] { "Official Trailer", "Trailer" }, movie.RemoteTrailers.Select(t => t.Name));
+    }
+
+    [Fact]
+    public void At_most_five_trailers_are_kept_and_none_means_empty()
+    {
+        var many = new StremioMeta { Name = "M", Trailers = Enumerable.Range(0, 7).Select(i => new StremioTrailer { Source = $"abcdefghij{i}" }).ToList() };
+        var movie = new Movie();
+        var none = new Movie();
+
+        MetaMapper.Apply(many, movie);
+        MetaMapper.Apply(new StremioMeta { Name = "N" }, none);
+
+        Assert.Equal(5, movie.RemoteTrailers.Count);
+        Assert.Empty(none.RemoteTrailers);
+    }
 }
