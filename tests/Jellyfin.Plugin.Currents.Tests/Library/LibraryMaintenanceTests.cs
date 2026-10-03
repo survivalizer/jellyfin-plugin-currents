@@ -18,6 +18,7 @@ public sealed class LibraryMaintenanceTests : IDisposable
     private readonly FakeSettings _settings;
     private readonly FakeAioMetadataClient _client = new();
     private readonly FakeLibraryRefresher _refresher = new();
+    private readonly FakeLibraryItems _items = new();
     private readonly FakeDirectory _directory = new();
     private readonly CountingStreams _streams = new();
     private readonly TitleLibrary _titles;
@@ -47,6 +48,7 @@ public sealed class LibraryMaintenanceTests : IDisposable
         _client,
         _titles,
         _refresher,
+        _items,
         _users,
         _directory,
         _streams,
@@ -160,6 +162,10 @@ public sealed class LibraryMaintenanceTests : IDisposable
         var userFile = Path.Combine(Folder(alpha), "notes.txt");
         File.WriteAllText(userFile, "mine");
         var beta = AddMovie("tt2", "Beta");
+        var alphaItem = Guid.NewGuid();
+        var betaItem = Guid.NewGuid();
+        _items.Titles[alpha.StateId] = alphaItem;
+        _items.Titles[beta.StateId] = betaItem;
         var probes = Path.Combine(_settings.DataFolderPath, "probes");
         Directory.CreateDirectory(probes);
         File.WriteAllText(Path.Combine(probes, "x.json"), "{}");
@@ -176,6 +182,22 @@ public sealed class LibraryMaintenanceTests : IDisposable
         Assert.Equal(0, new SegmentStore(_settings, Time).Count);
         Assert.Equal(1, _streams.Clears);
         Assert.Single(_refresher.Refreshed);
+        Assert.Equal(new[] { alphaItem, betaItem }.Order(), _items.Removed.Order());
+    }
+
+    [Fact]
+    public async Task Purge_skips_titles_jellyfin_has_no_item_for()
+    {
+        var alpha = AddMovie("tt1", "Alpha");
+        var beta = AddMovie("tt2", "Beta");
+        var betaItem = Guid.NewGuid();
+        _items.Titles[beta.StateId] = betaItem;
+
+        var removed = await Create().PurgeAsync(new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal(2, removed);
+        Assert.Equal(new[] { betaItem }, _items.Removed);
+        Assert.False(Directory.Exists(Folder(alpha)));
     }
 
     [Fact]

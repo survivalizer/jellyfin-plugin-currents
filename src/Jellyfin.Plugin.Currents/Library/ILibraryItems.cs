@@ -32,6 +32,10 @@ public interface ILibraryItems
     /// <returns>A handle; dispose it to resume monitoring.</returns>
     IDisposable PauseMonitoring(MediaKind kind);
 
+    /// <summary>Removes Jellyfin's items for these ids from the library database without touching files (used by Purge, because Jellyfin skips an empty library folder and would keep listing them).</summary>
+    /// <param name="itemIds">The Jellyfin item ids.</param>
+    void RemoveItems(IReadOnlyCollection<Guid> itemIds);
+
     /// <summary>Gets the kinds whose Currents folder is a location of the library (collection folder) with this id.</summary>
     /// <param name="libraryId">The library id.</param>
     /// <returns>The kinds held.</returns>

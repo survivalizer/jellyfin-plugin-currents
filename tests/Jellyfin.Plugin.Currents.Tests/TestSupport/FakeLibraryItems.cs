@@ -25,6 +25,11 @@ internal sealed class FakeLibraryItems : ILibraryItems
 
     public TaskCompletionSource? AddGate { get; set; }
 
+    /// <summary>Gets the item ids passed to RemoveItems.</summary>
+    public List<Guid> Removed { get; } = [];
+
+    public void RemoveItems(IReadOnlyCollection<Guid> itemIds) => Removed.AddRange(itemIds);
+
     public Guid? FindTitle(TitleState title) => Titles.TryGetValue(title.StateId, out var id) ? id : null;
 
     public IReadOnlyDictionary<string, Guid> FindExisting(Guid userId, IReadOnlyCollection<TitleKey> keys) =>

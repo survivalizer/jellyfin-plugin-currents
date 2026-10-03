@@ -15,6 +15,7 @@ public sealed class LibraryMaintenance
     private readonly IAioMetadataClient _client;
     private readonly TitleLibrary _titles;
     private readonly ILibraryRefresher _refresher;
+    private readonly ILibraryItems _items;
     private readonly UserStore _users;
     private readonly IUserDirectory _directory;
     private readonly IStreamService _streams;
@@ -28,6 +29,7 @@ public sealed class LibraryMaintenance
         IAioMetadataClient client,
         TitleLibrary titles,
         ILibraryRefresher refresher,
+        ILibraryItems items,
         UserStore users,
         IUserDirectory directory,
         IStreamService streams,
@@ -40,6 +42,7 @@ public sealed class LibraryMaintenance
         _client = client;
         _titles = titles;
         _refresher = refresher;
+        _items = items;
         _users = users;
         _directory = directory;
         _streams = streams;
@@ -130,6 +133,7 @@ public sealed class LibraryMaintenance
     {
         using var job = await _jobs.EnterAsync(cancellationToken).ConfigureAwait(false);
         var writer = _titles.CreateWriter();
+        var itemIds = new List<Guid>();
         var removed = _titles.Use(state =>
         {
             var count = 0;
@@ -137,7 +141,13 @@ public sealed class LibraryMaintenance
             {
                 try
                 {
+                    var itemId = _items.FindTitle(title);
                     writer.Delete(title.Folder);
+                    if (itemId is { } id)
+                    {
+                        itemIds.Add(id);
+                    }
+
                     state.Remove(title.StateId);
                     count++;
                 }
@@ -155,6 +165,12 @@ public sealed class LibraryMaintenance
         _streams.Clear();
         _probes.Clear();
         _segments.Clear();
+        if (itemIds.Count > 0)
+        {
+            // Jellyfin skips an empty library folder, so a refresh alone would keep listing the purged titles.
+            _items.RemoveItems(itemIds);
+        }
+
         var paths = LibraryPaths.FromSettings(_settings);
         await _refresher.RefreshAsync([paths.Movies, paths.Shows], cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("Purged {Count} Currents titles and cleared the Currents caches", removed);

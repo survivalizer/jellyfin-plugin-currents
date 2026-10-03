@@ -68,6 +68,21 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
         refresh ?? TimeSpan.FromSeconds(15),
         refresh ?? TimeSpan.FromSeconds(60));
 
+    [Fact]
+    public void Remove_items_deletes_found_items_from_the_database_only_and_skips_missing_ids()
+    {
+        var found = Guid.NewGuid();
+        var missing = Guid.NewGuid();
+        _created.Add(found);
+
+        Create().RemoveItems([missing, found]);
+
+        var call = Assert.Single(_library.Fake.Calls(nameof(ILibraryManager.DeleteItem)));
+        Assert.Equal(found, ((BaseItem)call[0]!).Id);
+        Assert.False(((DeleteOptions)call[1]!).DeleteFileLocation);
+        Assert.Equal(true, call[2]);
+    }
+
     private string Root => LibraryPaths.FromSettings(_settings).Root;
 
     [Fact]

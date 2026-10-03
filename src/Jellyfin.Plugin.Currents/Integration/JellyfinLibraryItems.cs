@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Jellyfin.Data;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities;
@@ -147,6 +148,25 @@ public sealed class JellyfinLibraryItems : ILibraryItems
         }
 
         return item.Id;
+    }
+
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "One item Jellyfin cannot delete must not stop the others; it is logged and Purge continues.")]
+    public void RemoveItems(IReadOnlyCollection<Guid> itemIds)
+    {
+        foreach (var id in itemIds)
+        {
+            try
+            {
+                if (_library.GetItemById(id) is { } item)
+                {
+                    _library.DeleteItem(item, new DeleteOptions { DeleteFileLocation = false }, notifyParentItem: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Could not remove library item {Id}: {Reason}", id, SecretMasker.Mask(ex.Message));
+            }
+        }
     }
 
     public IDisposable PauseMonitoring(MediaKind kind)
