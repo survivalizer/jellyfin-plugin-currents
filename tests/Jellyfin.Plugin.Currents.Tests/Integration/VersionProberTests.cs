@@ -7,6 +7,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Integration;
@@ -33,7 +34,7 @@ public sealed class VersionProberTests : IDisposable
     }
 
     private VersionProber Create() =>
-        new(_media.Instance, _library.Instance, _probes, new VersionSourceBuilder(_settings, _time, _probes), new FixedUrl("http://127.0.0.1:8096"), _time, _logger);
+        new(_media.Instance, _library.Instance, _probes, new VersionSourceBuilder(_settings, _time, _probes, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance)), new FixedUrl("http://127.0.0.1:8096"), _time, _logger);
 
     private static VersionEntry Entry(StreamResult result) =>
         new(StreamIdentity.VersionId(Item, Alice, "k", FakeSettings.Secret), Item, Alice, new CurrentsTitle("movie", "tt1"), new RankedStream("k", result));
@@ -140,7 +141,7 @@ public sealed class VersionProberTests : IDisposable
             Url = "https://aio.example.com/play/1",
             Size = 4_000_000_000,
             Duration = 7_200_000,
-            ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC", AudioTags = ["AAC"] },
+            ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC", AudioTags = ["AAC"], AudioChannels = ["2.0"] },
         };
         var movie = new Movie { Id = Item };
 

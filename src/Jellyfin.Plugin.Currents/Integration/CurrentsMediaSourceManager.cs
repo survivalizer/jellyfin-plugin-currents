@@ -24,6 +24,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
     private readonly VersionCatalog _catalog;
     private readonly VersionRegistry _registry;
     private readonly VersionSourceBuilder _builder;
+    private readonly TrackLocalizer _localizer;
     private readonly RequestContext _request;
     private readonly IInternalBaseUrl _internalUrl;
     private readonly ICurrentsSettings _settings;
@@ -35,6 +36,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         VersionCatalog catalog,
         VersionRegistry registry,
         VersionSourceBuilder builder,
+        TrackLocalizer localizer,
         RequestContext request,
         IInternalBaseUrl internalUrl,
         ICurrentsSettings settings,
@@ -45,6 +47,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         _catalog = catalog;
         _registry = registry;
         _builder = builder;
+        _localizer = localizer;
         _request = request;
         _internalUrl = internalUrl;
         _settings = settings;
@@ -64,7 +67,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         var list = _request.IsSingleItemRequest
             ? _catalog.GetAsync(item.Id, title, userId, SearchWait, CancellationToken.None).GetAwaiter().GetResult()
             : _catalog.Peek(item.Id, title, userId);
-        return Sources(item, list, enablePathSubstitution, user);
+        return Sources(item, list, enablePathSubstitution, user, forPlayback: false);
     }
 
     public async Task<IReadOnlyList<MediaSourceInfo>> GetPlaybackMediaSources(BaseItem item, User? user, bool allowMediaProbe, bool enablePathSubstitution, CancellationToken cancellationToken)
@@ -86,7 +89,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
             list = new VersionList(registered, null);
         }
 
-        return Sources(item, list, enablePathSubstitution, user);
+        return Sources(item, list, enablePathSubstitution, user, forPlayback: true);
     }
 
     public async Task<MediaSourceInfo?> GetMediaSource(BaseItem item, string mediaSourceId, string liveStreamId, bool enablePathSubstitution, CancellationToken cancellationToken)
@@ -104,9 +107,14 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
             var allowed = requester == Guid.Empty
                 ? !_request.IsAnonymousRequest || entry.UserId == Guid.Empty
                 : requester == entry.UserId;
-            return allowed
-                ? _builder.Build(entry, Context(item, enablePathSubstitution, requester == Guid.Empty ? null : _request.User))
-                : null;
+            if (!allowed)
+            {
+                return null;
+            }
+
+            var source = _builder.Build(entry, Context(item, enablePathSubstitution, requester == Guid.Empty ? null : _request.User, forPlayback: true));
+            _localizer.Apply(source);
+            return source;
         }
 
         var sources = await GetPlaybackMediaSources(item, null!, false, enablePathSubstitution, cancellationToken).ConfigureAwait(false);
@@ -171,12 +179,13 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         return entries.Count == 0 ? null : new VersionList(entries, null);
     }
 
-    private VersionContext Context(BaseItem item, bool redact, User? user) => new(
+    private VersionContext Context(BaseItem item, bool redact, User? user, bool forPlayback) => new(
         redact ? string.Empty : _internalUrl.Value,
         redact,
         item.RunTimeTicks,
         user?.HasPermission(PermissionKind.EnablePlaybackRemuxing) ?? true,
-        user?.HasPermission(PermissionKind.EnableVideoPlaybackTranscoding) ?? true);
+        user?.HasPermission(PermissionKind.EnableVideoPlaybackTranscoding) ?? true,
+        forPlayback);
 
     [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "One malformed stream must not take down the whole version list; it is skipped and logged.")]
     private MediaSourceInfo? TryBuild(VersionEntry version, VersionContext context)
@@ -192,7 +201,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         }
     }
 
-    private List<MediaSourceInfo> Sources(BaseItem item, VersionList? list, bool redact, User? user)
+    private List<MediaSourceInfo> Sources(BaseItem item, VersionList? list, bool redact, User? user, bool forPlayback)
     {
         if (list is null)
         {
@@ -204,12 +213,13 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
             return [VersionSourceBuilder.Notice(item.Id, list.Notice ?? "No streams found for this title.")];
         }
 
-        var context = Context(item, redact, user);
+        var context = Context(item, redact, user, forPlayback);
         var sources = new List<MediaSourceInfo>(list.Versions.Count);
         foreach (var version in list.Versions)
         {
             if (TryBuild(version, context) is { } source)
             {
+                _localizer.Apply(source);
                 sources.Add(source);
             }
         }

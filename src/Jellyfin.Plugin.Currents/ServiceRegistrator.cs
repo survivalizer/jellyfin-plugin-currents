@@ -72,6 +72,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<VersionCatalog>();
         serviceCollection.AddSingleton<ProbeCache>();
         serviceCollection.AddSingleton<VersionSourceBuilder>();
+        serviceCollection.AddSingleton<TrackLocalizer>();
         serviceCollection.AddHttpContextAccessor();
         serviceCollection.AddSingleton<RequestContext>();
         serviceCollection.AddSingleton<IInternalBaseUrl, InternalBaseUrl>();

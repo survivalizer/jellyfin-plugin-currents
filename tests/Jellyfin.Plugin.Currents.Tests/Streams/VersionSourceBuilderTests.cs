@@ -1,9 +1,11 @@
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
+using Jellyfin.Plugin.Currents.Clients.RemuxDb;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.MediaInfo;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Streams;
@@ -43,10 +45,36 @@ public sealed class VersionSourceBuilderTests : IDisposable
         return new VersionEntry(StreamIdentity.VersionId(Item, Alice, key, FakeSettings.Secret), Item, Alice, new CurrentsTitle("movie", "tt1"), new RankedStream(key, result));
     }
 
-    private VersionSourceBuilder Create() => new(_settings, _time, _probes);
+    private VersionSourceBuilder Create() => new(_settings, _time, _probes, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
 
     private static VersionContext Context(bool redact = false, bool remux = true, bool transcode = true, long? itemRuntime = null) =>
         new(Internal, redact, itemRuntime, remux, transcode);
+
+    [Fact]
+    public void Display_view_has_synthetic_indexes_and_playback_view_has_stubs()
+    {
+        var result = Entry().Stream.Result;
+        result.ParsedFile!.Languages = ["English", "Japanese"];
+        var entry = Entry(result);
+
+        var display = Create().Build(entry, Context(redact: true));
+        var playback = Create().Build(entry, Context() with { ForPlayback = true });
+
+        Assert.Equal(new[] { 500, 501, 502 }, display.MediaStreams.Select(s => s.Index));
+        Assert.Equal(new[] { -1, -1 }, playback.MediaStreams.Select(s => s.Index));
+    }
+
+    [Fact]
+    public void Client_sources_never_carry_request_headers()
+    {
+        var result = Entry().Stream.Result;
+        result.RequestHeaders = new Dictionary<string, string> { ["Authorization"] = "Basic SECRETHEADER" };
+
+        var source = Create().Build(Entry(result), Context(redact: true));
+
+        Assert.Empty(source.RequiredHttpHeaders);
+        Assert.DoesNotContain("SECRETHEADER", System.Text.Json.JsonSerializer.Serialize(source), StringComparison.Ordinal);
+    }
 
     [Fact]
     public void Builds_a_streamed_never_direct_played_http_source()

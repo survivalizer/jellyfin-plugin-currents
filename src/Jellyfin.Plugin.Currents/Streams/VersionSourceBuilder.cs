@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.Currents.Clients.RemuxDb;
 using Jellyfin.Plugin.Currents.Common;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
@@ -12,11 +13,14 @@ public sealed class VersionSourceBuilder
     private readonly TimeProvider _time;
     private readonly ProbeCache _probes;
 
-    public VersionSourceBuilder(ICurrentsSettings settings, TimeProvider time, ProbeCache probes)
+    private readonly RemuxDbCache _remux;
+
+    public VersionSourceBuilder(ICurrentsSettings settings, TimeProvider time, ProbeCache probes, RemuxDbCache remux)
     {
         _settings = settings;
         _time = time;
         _probes = probes;
+        _remux = remux;
     }
 
     public static MediaSourceInfo Notice(Guid itemId, string message) => Unplayable(itemId, message, "currents://notice");
@@ -30,27 +34,32 @@ public sealed class VersionSourceBuilder
         return $"{internalBaseUrl.TrimEnd('/')}/{VersionTokenSigner.PathFor(token)}";
     }
 
+    /// <summary>The version's tracks from the best source available right now (no network calls).</summary>
+    public VersionTracks Tracks(VersionEntry entry, long? itemRunTimeTicks)
+    {
+        _probes.TryGet(entry.Stream.Key, out var probed);
+        var remux = probed is null ? _remux.Match(entry.Title, entry.Stream.Result) : null;
+        return TrackComposer.Compose(entry.Stream.Result, itemRunTimeTicks, probed, remux);
+    }
+
     public MediaSourceInfo Build(VersionEntry entry, VersionContext context)
     {
-        var result = entry.Stream.Result;
-        var prefill = MediaStreamMapper.Prefill(result, context.ItemRunTimeTicks);
-        _probes.TryGet(entry.Stream.Key, out var probed);
-        var probedStreams = probed?.Streams();
-        var streams = probedStreams is { Count: > 0 } ? probedStreams : prefill.Streams;
+        var tracks = Tracks(entry, context.ItemRunTimeTicks);
+        var streams = (context.ForPlayback ? tracks.Playback : tracks.Display).ToList();
 
         return new MediaSourceInfo
         {
             Id = entry.VersionId,
-            Name = StreamLabel.For(result),
+            Name = StreamLabel.For(entry.Stream.Result),
             Path = context.RedactPath ? $"currents://version/{entry.VersionId}" : PlaybackUrl(entry, context.InternalBaseUrl),
             Protocol = MediaProtocol.Http,
             IsRemote = true,
             Type = MediaSourceType.Default,
             VideoType = VideoType.VideoFile,
-            Container = probed?.Container ?? prefill.Container,
-            Size = probed?.Size ?? result.Size,
-            RunTimeTicks = probed?.RunTimeTicks ?? prefill.RunTimeTicks,
-            Bitrate = probed?.Bitrate ?? prefill.Bitrate,
+            Container = tracks.Container,
+            Size = tracks.Size,
+            RunTimeTicks = tracks.RunTimeTicks,
+            Bitrate = tracks.Bitrate,
             SupportsDirectPlay = false,
             SupportsDirectStream = context.AllowRemux,
             SupportsTranscoding = context.AllowTranscode,
@@ -58,7 +67,7 @@ public sealed class VersionSourceBuilder
             RequiresOpening = false,
             RequiresClosing = false,
             IsInfiniteStream = false,
-            MediaStreams = streams.ToList(),
+            MediaStreams = streams,
             MediaAttachments = [],
             RequiredHttpHeaders = [],
             Formats = [],

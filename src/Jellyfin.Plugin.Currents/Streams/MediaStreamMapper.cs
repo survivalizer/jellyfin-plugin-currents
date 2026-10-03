@@ -68,9 +68,16 @@ public static class MediaStreamMapper
 
         var needsProbe = video.Codec is null || video.Width is null || audio.Codec is null
             || runtime is null || total is null
-            || tags.Any(IsDolbyVision) || languages.Count > 1;
+            || tags.Any(IsDolbyVision) || languages.Count > 1
+            || (audio.Codec is not null && !NonBlank(parsed?.AudioChannels).Any(ChannelLayouts.ContainsKey));
         return new PrefilledMedia([video, audio], Container(result), runtime, total, needsProbe);
     }
+
+    /// <summary>The release's audio languages as ISO 639-2/B codes, in order, without "Multi", "Dual Audio" and the like.</summary>
+    public static IReadOnlyList<string> AudioLanguages(ParsedFile? parsed) => Codes(parsed?.Languages);
+
+    /// <summary>The release's subtitle languages as ISO 639-2/B codes, in order.</summary>
+    public static IReadOnlyList<string> SubtitleLanguages(ParsedFile? parsed) => Codes(parsed?.Subtitles);
 
     public static string Container(StreamResult result)
     {
@@ -85,9 +92,9 @@ public static class MediaStreamMapper
         foreach (var candidate in candidates)
         {
             var name = candidate?.Trim().TrimStart('.');
-            if (!string.IsNullOrEmpty(name))
+            if (!string.IsNullOrEmpty(name) && Containers.TryGetValue(name, out var known))
             {
-                return Containers.TryGetValue(name, out var known) ? known : "mkv";
+                return known;
             }
         }
 
@@ -116,9 +123,12 @@ public static class MediaStreamMapper
     }
 
     private static bool IsDolbyVision(string tag) =>
-        tag.Equals("DV", StringComparison.OrdinalIgnoreCase)
-        || tag.Equals("DV Only", StringComparison.OrdinalIgnoreCase)
-        || tag.Equals("HDR+DV", StringComparison.OrdinalIgnoreCase);
+        tag.Contains("DV", StringComparison.OrdinalIgnoreCase)
+        || tag.Contains("DoVi", StringComparison.OrdinalIgnoreCase)
+        || tag.Contains("Dolby Vision", StringComparison.OrdinalIgnoreCase);
+
+    private static List<string> Codes(List<string>? names) =>
+        NonBlank(names).Where(n => !NotLanguages.Contains(n)).Select(LanguageCodes.ToIso6392).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
 
     // AIOStreams lists can hold null or blank entries; they carry no information.
     private static List<string> NonBlank(List<string>? values) =>
@@ -130,9 +140,9 @@ public static class MediaStreamMapper
     {
         var codec = parsed?.Encode is { } encode && VideoCodecs.TryGetValue(encode, out var c) ? c : null;
         var dolbyVision = tags.Any(IsDolbyVision);
-        var hlg = Has(tags, "HLG");
-        var hdr10Plus = Has(tags, "HDR10+");
-        var hdr10 = hdr10Plus || Has(tags, "HDR10") || Has(tags, "HDR") || Has(tags, "HDR Only") || Has(tags, "HDR+DV");
+        var hlg = tags.Any(t => t.Contains("HLG", StringComparison.OrdinalIgnoreCase));
+        var hdr10Plus = tags.Any(t => t.Contains("HDR10+", StringComparison.OrdinalIgnoreCase));
+        var hdr10 = tags.Any(t => t.Contains("HDR", StringComparison.OrdinalIgnoreCase));
         var tenBit = dolbyVision || hlg || hdr10 || Has(tags, "10bit");
 
         var video = new MediaStream

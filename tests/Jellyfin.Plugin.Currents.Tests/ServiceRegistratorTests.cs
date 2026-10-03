@@ -9,6 +9,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.IO;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,6 +36,7 @@ public class ServiceRegistratorTests
         services.AddSingleton(InterfaceFake.Create<IProviderManager>().Instance);
         services.AddSingleton(InterfaceFake.Create<ILibraryMonitor>().Instance);
         services.AddSingleton(InterfaceFake.Create<IFileSystem>().Instance);
+        services.AddSingleton(InterfaceFake.Create<ILocalizationManager>().Instance);
         new ServiceRegistrator().RegisterServices(services, null!);
         services.AddSingleton<ICurrentsSettings>(new FakeSettings());
         return services;

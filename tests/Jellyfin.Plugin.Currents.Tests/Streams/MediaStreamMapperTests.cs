@@ -190,4 +190,50 @@ public class MediaStreamMapperTests
         Assert.Equal(8, audio.Channels);
         Assert.Equal("eng", audio.Language);
     }
+
+    [Theory]
+    [InlineData(new[] { "DV+HDR10" }, VideoRangeType.DOVIWithHDR10)]
+    [InlineData(new[] { "HDR DV" }, VideoRangeType.DOVIWithHDR10)]
+    [InlineData(new[] { "HDR10 Plus" }, VideoRangeType.HDR10)]
+    [InlineData(new[] { "SDR" }, VideoRangeType.SDR)]
+    public void Hdr_detection_agrees_with_the_ranker(string[] tags, VideoRangeType expected)
+    {
+        var parsed = new ParsedFile { Resolution = "2160p", Encode = "HEVC", VisualTags = tags.ToList() };
+
+        var video = MediaStreamMapper.Prefill(Parsed(parsed), null).Streams[0];
+
+        Assert.Equal(expected, video.VideoRangeType);
+        Assert.Equal(expected != VideoRangeType.SDR, StreamRanker.IsHdr(new StreamResult { ParsedFile = parsed }));
+    }
+
+    [Fact]
+    public void A_guessed_channel_layout_asks_for_a_probe()
+    {
+        var media = MediaStreamMapper.Prefill(
+            Parsed(new ParsedFile { Resolution = "1080p", Encode = "AVC", AudioTags = ["DD+"], Languages = ["English"] }, size: 4_000_000_000, durationMs: 7_200_000),
+            itemRunTimeTicks: null);
+
+        Assert.Equal(6, media.Streams[1].Channels);
+        Assert.True(media.NeedsProbe);
+    }
+
+    [Theory]
+    [InlineData("Unknown", "mp4", null, "mp4")]
+    [InlineData(null, "x265", "Movie.avi", "avi")]
+    [InlineData("WEB", null, null, "mkv")]
+    public void Container_falls_through_unknown_candidates(string? container, string? extension, string? filename, string expected)
+    {
+        var result = new StreamResult { Url = "https://aio.example.com/play/file", Filename = filename, ParsedFile = new ParsedFile { Container = container, Extension = extension } };
+
+        Assert.Equal(expected, MediaStreamMapper.Container(result));
+    }
+
+    [Fact]
+    public void Language_lists_become_distinct_iso_codes()
+    {
+        var parsed = new ParsedFile { Languages = ["English", "Multi", "english", "French"], Subtitles = ["German", "Dual Audio"] };
+
+        Assert.Equal(new[] { "eng", "fre" }, MediaStreamMapper.AudioLanguages(parsed));
+        Assert.Equal(new[] { "ger" }, MediaStreamMapper.SubtitleLanguages(parsed));
+    }
 }

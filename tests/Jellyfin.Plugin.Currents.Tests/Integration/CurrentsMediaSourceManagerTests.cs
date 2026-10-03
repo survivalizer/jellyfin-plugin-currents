@@ -1,5 +1,6 @@
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
+using Jellyfin.Plugin.Currents.Clients.RemuxDb;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Streams;
@@ -8,6 +9,7 @@ using Jellyfin.Plugin.Currents.Users;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -56,7 +58,7 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
         _registry = new VersionRegistry(_settings, _time);
         _catalog = new VersionCatalog(new StreamService(_client, _settings, _time, NullLogger<StreamService>.Instance), new StreamProfileResolver(users, _settings), _registry, _settings, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
         _probes = new ProbeCache(_settings, _time);
-        _builder = new VersionSourceBuilder(_settings, _time, _probes);
+        _builder = new VersionSourceBuilder(_settings, _time, _probes, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
         _locator = new CurrentsItemLocator(_settings, _time);
         _inner.Fake.On(nameof(IMediaSourceManager.GetStaticMediaSources), _ => _innerSources);
         _inner.Fake.On(nameof(IMediaSourceManager.GetPlaybackMediaSources), _ => Task.FromResult<IReadOnlyList<MediaSourceInfo>>(_innerSources));
@@ -71,9 +73,25 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
     }
 
     private CurrentsMediaSourceManager Create(HttpContext? http) =>
-        new(_inner.Instance, _locator, _catalog, _registry, _builder, RequestContextTests.Create(http), new FixedInternalBaseUrl(Internal), _settings, _logger);
+        new(_inner.Instance, _locator, _catalog, _registry, _builder, new TrackLocalizer(InterfaceFake.Create<ILocalizationManager>().Instance), RequestContextTests.Create(http), new FixedInternalBaseUrl(Internal), _settings, _logger);
 
     private static HttpContext Request(Guid? user, (string, string) action) => RequestContextTests.Http(user, action: action);
+
+    [Fact]
+    public async Task Item_pages_get_display_tracks_and_playback_gets_stubs()
+    {
+        _client.Outcome = new SearchOutcome(
+            [new StreamResult { Url = "https://aio.example.com/play/1", Filename = "a.mkv", ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC", Languages = ["English", "French"] } }],
+            []);
+
+        var page = Create(Request(Alice, ItemPage)).GetStaticMediaSources(_movie, true);
+        var playback = await Create(Request(Alice, PlaybackInfo)).GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None);
+        var byId = await Create(null).GetMediaSource(_movie, playback[0].Id, null!, false, CancellationToken.None);
+
+        Assert.Equal(new[] { 500, 501, 502 }, page[0].MediaStreams.Select(s => s.Index));
+        Assert.All(playback[0].MediaStreams, s => Assert.Equal(-1, s.Index));
+        Assert.All(byId!.MediaStreams, s => Assert.Equal(-1, s.Index));
+    }
 
     [Fact]
     public void Other_items_pass_through()
