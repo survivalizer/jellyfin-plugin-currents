@@ -43,7 +43,7 @@ public sealed class AniSkipSourceTests : IDisposable
     private static SegmentRequest Anime(string provider, string id, int episode) => new(MediaKind.Series, provider, id, null, episode);
 
     [Fact]
-    public async Task Mal_ids_query_aniskip_directly_and_x()
+    public async Task Mal_ids_query_aniskip_directly_and_prefer_plain_types_near_the_target()
     {
         _respond = _ => StubHttpHandler.Json(Mal21Answer);
 
