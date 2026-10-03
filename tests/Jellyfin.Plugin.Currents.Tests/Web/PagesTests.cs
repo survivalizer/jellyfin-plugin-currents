@@ -124,4 +124,30 @@ public sealed class PagesTests : IDisposable
         Assert.Contains("<th>Collection</th>", html, StringComparison.Ordinal);
         Assert.Contains("MakeCollection:", html, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("id=\"EnableSegments\"")]
+    [InlineData("id=\"SegmentTolerancePercent\"")]
+    [InlineData("id=\"SegmentsWhenRuntimeUnknown\"")]
+    [InlineData("id=\"TheIntroDbApiKey\"")]
+    [InlineData("id=\"PublicMetaDbApiKey\"")]
+    [InlineData("id=\"ForceEnableOnUntestedServer\"")]
+    [InlineData("id=\"CompatBanner\"")]
+    [InlineData("id=\"RunConnectionTests\"")]
+    [InlineData("Currents/admin/diagnostics/test")]
+    public void Admin_page_has_the_m5_settings_and_diagnostics(string fragment)
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
+
+        Assert.Contains(fragment, html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Admin_page_api_keys_are_password_inputs()
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
+
+        Assert.Contains("type=\"password\" id=\"TheIntroDbApiKey\"", html, StringComparison.Ordinal);
+        Assert.Contains("type=\"password\" id=\"PublicMetaDbApiKey\"", html, StringComparison.Ordinal);
+    }
 }

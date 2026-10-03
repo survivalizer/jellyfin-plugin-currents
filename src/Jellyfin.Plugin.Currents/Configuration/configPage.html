@@ -14,6 +14,8 @@
             <p>AIOStreams &amp; AIOMetadata for Jellyfin.</p>
           </div>
 
+          <div id="CompatBanner" class="fieldDescription" hidden style="padding:.8em;margin:1em 0;border-left:4px solid #e0a000;background:rgba(224,160,0,.12)"></div>
+
           <h3>Catalogs (AIOMetadata)</h3>
           <div class="inputContainer">
             <input is="emby-input" type="url" id="AioMetadataManifestUrl" label="AIOMetadata manifest URL" />
@@ -63,9 +65,35 @@
             <input is="emby-input" type="url" id="RemuxDbUrl" label="RemuxDB server" />
           </div>
 
+          <h3>Skip markers</h3>
+          <div class="checkboxContainer">
+            <label><input is="emby-checkbox" type="checkbox" id="EnableSegments" /><span>Fetch skip-intro and credits markers from TheIntroDB and AniSkip (and PublicMetaDB with a key)</span></label>
+            <div class="fieldDescription">Markers are fetched by Jellyfin's "Extract media segments" task and by "Fetch skip markers" after each sync that adds titles. A version only gets them when its length matches the length the markers were made for.</div>
+          </div>
+          <div class="inputContainer">
+            <input is="emby-input" type="number" min="1" max="10" step="0.5" id="SegmentTolerancePercent" label="Allowed length difference (%)" />
+            <div class="fieldDescription">Default 2. A longer or shorter cut (extended, theatrical, a different release) would put the markers in the wrong place.</div>
+          </div>
+          <div class="checkboxContainer">
+            <label><input is="emby-checkbox" type="checkbox" id="SegmentsWhenRuntimeUnknown" /><span>Also offer markers when a version's length is unknown</span></label>
+            <div class="fieldDescription">Applies to versions that have not been probed and that AIOStreams and RemuxDB give no length for, and to degraded mode.</div>
+          </div>
+          <div class="inputContainer">
+            <input is="emby-input" type="password" id="TheIntroDbApiKey" label="TheIntroDB API key (optional)" autocomplete="off" />
+            <div class="fieldDescription">Without a key TheIntroDB allows 500 lookups a day; with one, 1000.</div>
+          </div>
+          <div class="inputContainer">
+            <input is="emby-input" type="password" id="PublicMetaDbApiKey" label="PublicMetaDB API key (optional)" autocomplete="off" />
+            <div class="fieldDescription">Used for titles with a TMDB id. Leave empty to skip PublicMetaDB.</div>
+          </div>
+
           <h3>Versions</h3>
           <div class="checkboxContainer">
             <label><input is="emby-checkbox" type="checkbox" id="EnableVersions" /><span>Show each stream as a version (off: every title plays the default config's best stream)</span></label>
+          </div>
+          <div class="checkboxContainer">
+            <label><input is="emby-checkbox" type="checkbox" id="ForceEnableOnUntestedServer" /><span>Run on this untested Jellyfin version</span></label>
+            <div class="fieldDescription">Currents is tested with Jellyfin 12. On a newer Jellyfin it turns per-user versions off until you tick this.</div>
           </div>
           <div class="checkboxContainer">
             <label><input is="emby-checkbox" type="checkbox" id="AllowSelfService" /><span>Let users set their own AIOStreams config and preferences</span></label>
@@ -119,6 +147,19 @@
           <div class="inputContainer">
             <input is="emby-input" type="number" min="1" max="10" id="FailoverAttempts" label="Streams to try before giving up" />
           </div>
+
+          <h3>Diagnostics</h3>
+          <div id="DiagnosticsState" class="fieldDescription"></div>
+          <div id="DiagnosticsCaches" class="fieldDescription"></div>
+          <h4>Recent problems</h4>
+          <ul id="RecentProblems" class="fieldDescription"></ul>
+          <button is="emby-button" type="button" id="RefreshDiagnostics" class="raised button-alt"><span>Refresh</span></button>
+          <button is="emby-button" type="button" id="RunConnectionTests" class="raised button-alt"><span>Run connection tests</span></button>
+          <div id="ConnectionTestStatus" class="fieldDescription"></div>
+          <table id="ConnectionTests" class="detailTable" style="width:100%;margin:1em 0">
+            <thead><tr><th>Service</th><th>Status</th><th>Details</th><th>Time</th></tr></thead>
+            <tbody></tbody>
+          </table>
 
           <button is="emby-button" type="submit" id="SaveButton" class="raised button-submit block"><span>Save</span></button>
           <button is="emby-button" type="button" id="SyncNow" class="raised block"><span>Sync now</span></button>
@@ -308,6 +349,34 @@
           ApiClient.getJSON(ApiClient.getUrl('Currents/admin/users')).then(renderUsers);
         }
 
+        function cacheText(c) {
+          return c.Entries + ' cached, ' + (c.HitRate === null ? 'no lookups yet' : Math.round(c.HitRate * 100) + '% from cache');
+        }
+
+        function loadDiagnostics() {
+          ApiClient.getJSON(ApiClient.getUrl('Currents/admin/diagnostics')).then((d) => {
+            const banner = $('#CompatBanner');
+            banner.hidden = d.Compat.InTestedRange;
+            banner.textContent = 'This Jellyfin (' + d.Compat.Server + ') is outside the range Currents was tested with (' + d.Compat.TestedRange + '). '
+              + (d.Compat.Active
+                ? 'Currents runs anyway because "Run on this untested Jellyfin version" is ticked.'
+                : 'Per-user versions, track mapping and the skip-marker gate are off; titles play their default stream. Tick "Run on this untested Jellyfin version" under Versions to turn them on.');
+            setText('#DiagnosticsState', 'Versions: ' + (d.VersionsEnabled && d.Compat.Active ? 'active' : 'degraded')
+              + ' · Skip markers: ' + (d.SegmentsEnabled ? 'on' : 'off')
+              + ' · TheIntroDB key: ' + (d.TheIntroDbKeySet ? 'set' : 'none')
+              + ' · PublicMetaDB key: ' + (d.PublicMetaDbKeySet ? 'set' : 'none'));
+            setText('#DiagnosticsCaches', 'Stream lists: ' + cacheText(d.StreamCache) + ' · Skip markers: ' + cacheText(d.SkipMarkers) + ' · Probed files: ' + d.ProbesStored);
+            const list = $('#RecentProblems');
+            list.replaceChildren();
+            const entries = d.RecentProblems.length ? d.RecentProblems : [null];
+            for (const p of entries) {
+              const li = document.createElement('li');
+              li.textContent = p ? new Date(p.At).toLocaleString() + ' · ' + p.Area + ' · ' + p.Message : 'No problems recorded since Jellyfin started.';
+              list.appendChild(li);
+            }
+          });
+        }
+
         function loadPaths() {
           ApiClient.getJSON(ApiClient.getUrl('Currents/admin/paths')).then((paths) => {
             setText('#LibraryPaths', 'Add these folders to Jellyfin libraries — Movies: ' + paths.Movies + ' · Shows: ' + paths.Shows);
@@ -417,6 +486,12 @@
             $('#MaxVersions').value = c.MaxVersions || 20;
             $('#StreamCacheMinutes').value = c.StreamCacheMinutes || 60;
             fillDefaultPreferences(c.DefaultPreferences);
+            $('#EnableSegments').checked = c.EnableSegments !== false;
+            $('#SegmentTolerancePercent').value = c.SegmentTolerancePercent || 2;
+            $('#SegmentsWhenRuntimeUnknown').checked = !!c.SegmentsWhenRuntimeUnknown;
+            $('#TheIntroDbApiKey').value = c.TheIntroDbApiKey || '';
+            $('#PublicMetaDbApiKey').value = c.PublicMetaDbApiKey || '';
+            $('#ForceEnableOnUntestedServer').checked = !!c.ForceEnableOnUntestedServer;
             $('#EnableSearch').checked = c.EnableSearch !== false;
             $('#DefaultSearchAutoAdd').checked = c.DefaultSearchAutoAdd !== false;
             $('#EnableSubtitles').checked = c.EnableSubtitles !== false;
@@ -427,6 +502,7 @@
             loadUsers();
             renderCatalogs([]);
             loadPaths();
+            loadDiagnostics();
             if (c.AioMetadataManifestUrl) { loadCatalogs(); loadSearchCatalogs(); }
             $('#SaveButton').disabled = false;
             Dashboard.hideLoadingMsg();
@@ -450,6 +526,24 @@
           })
             .then((result) => setText('#TestStreamsResult', result.Message))
             .catch((err) => errorText(err, 'Connection failed.').then((msg) => setText('#TestStreamsResult', msg)));
+        });
+
+        $('#RefreshDiagnostics').addEventListener('click', loadDiagnostics);
+
+        $('#RunConnectionTests').addEventListener('click', () => {
+          setText('#ConnectionTestStatus', 'Testing…');
+          ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('Currents/admin/diagnostics/test'), dataType: 'json' })
+            .then((tests) => {
+              const body = $('#ConnectionTests tbody');
+              body.replaceChildren();
+              for (const t of tests) {
+                const row = document.createElement('tr');
+                row.append(cell(t.Name), cell(t.Status), cell(t.Message), cell(t.Milliseconds + ' ms'));
+                body.appendChild(row);
+              }
+              setText('#ConnectionTestStatus', '');
+            })
+            .catch((err) => errorText(err, 'Could not run the connection tests.').then((msg) => setText('#ConnectionTestStatus', msg)));
         });
 
         $('#SyncNow').addEventListener('click', () => {
@@ -479,10 +573,17 @@
           config.EnableSubtitles = $('#EnableSubtitles').checked;
           config.EnableRemuxDb = $('#EnableRemuxDb').checked;
           config.RemuxDbUrl = $('#RemuxDbUrl').value.trim() || 'https://remuxdb.1632022.xyz';
+          config.EnableSegments = $('#EnableSegments').checked;
+          config.SegmentTolerancePercent = Math.min(10, Math.max(1, parseFloat($('#SegmentTolerancePercent').value) || 2));
+          config.SegmentsWhenRuntimeUnknown = $('#SegmentsWhenRuntimeUnknown').checked;
+          config.TheIntroDbApiKey = $('#TheIntroDbApiKey').value.trim();
+          config.PublicMetaDbApiKey = $('#PublicMetaDbApiKey').value.trim();
+          config.ForceEnableOnUntestedServer = $('#ForceEnableOnUntestedServer').checked;
           config.SearchCatalogs = selectedSearchCatalogs();
           ApiClient.updatePluginConfiguration(pluginId, config).then((result) => {
             Dashboard.processPluginConfigurationUpdateResult(result);
             loadPaths();
+            loadDiagnostics();
           });
           return false;
         });
