@@ -290,7 +290,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 
 > **M5 amendment (2026-10-03).** The exit criterion is checked at unit level and on the dev stack (`docs/spikes/2026-10-m5-e2e.md`): the five Currents tasks run, skip markers appear only on versions of the right length, a collection follows its catalog, and the compat guard stands down on a fake Jellyfin 13.0 (`CURRENTS_COMPAT_TEST_VERSION`) and comes back when forced on, with no restart. Two gaps from that run were fixed afterwards (32e37e8, e5956a2, d679af6; unit-tested and verified on the dev stack, `docs/spikes/2026-10-m5-e2e.md` "Re-check after the post-run fixes"): Purge now also removes the purged titles' Jellyfin entries (Jellyfin skips an empty library folder, so a refresh alone left them listed), and Currents restores `DisplayOrder` "Default" on its collections (the first collection once came out in premiere-date order).
 
-> **M6 amendment (2026-10-03).** Exit criterion checked after the release by installing 1.0.0 from the repository URL on a fresh Jellyfin 12.1 container; result recorded in docs/spikes/2026-10-m6-e2e.md.
+> **M6 amendment (2026-10-03).** Exit criterion met: 1.0.0 was installed from the repository URL on a fresh Jellyfin 12.1 container and loaded as Active (docs/spikes/2026-10-m6-e2e.md, "Install from the repository URL").
 
 ## 11. Risks
 
