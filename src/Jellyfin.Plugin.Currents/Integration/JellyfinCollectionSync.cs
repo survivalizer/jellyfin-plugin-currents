@@ -59,6 +59,14 @@ public sealed class JellyfinCollectionSync : ICollectionSync
                 continue;
             }
 
+            // Jellyfin's own refresh after creation can overwrite the catalog order saved by CreateAsync.
+            if (!string.Equals(boxSet.DisplayOrder, "Default", StringComparison.Ordinal))
+            {
+                boxSet.DisplayOrder = "Default";
+                await _library.UpdateItemAsync(boxSet, boxSet.GetParent(), ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("Collection {Name}: restored catalog order", boxSet.Name);
+            }
+
             var linked = boxSet.LinkedChildren.Select(c => c.ItemId).OfType<Guid>().ToHashSet();
             var keep = wanted.ToHashSet();
             var add = wanted.Where(id => !linked.Contains(id)).ToList();

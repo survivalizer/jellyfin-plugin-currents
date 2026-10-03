@@ -62,12 +62,15 @@ public sealed class JellyfinCollectionSyncTests : IDisposable
     private static TitleState Title(string stateId) =>
         new() { StateId = stateId, Kind = MediaKind.Movie, StremioId = stateId.Split('/')[1], Folder = "Movies/" + stateId.Replace('/', '_') };
 
-    private BoxSet ExistingCollection(params Guid[] linked)
+    private BoxSet ExistingCollection(params Guid[] linked) => ExistingCollection("Default", linked);
+
+    private BoxSet ExistingCollection(string displayOrder, params Guid[] linked)
     {
         var boxSet = new BoxSet
         {
             Id = Guid.NewGuid(),
             Name = "Popular",
+            DisplayOrder = displayOrder,
             ProviderIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [CurrentsProviderIds.Catalog] = CatalogKey },
             LinkedChildren = linked.Select(id => new LinkedChild { ItemId = id }).ToArray(),
         };
@@ -128,6 +131,20 @@ public sealed class JellyfinCollectionSyncTests : IDisposable
 
         Assert.Empty(_collections.Fake.Calls(nameof(ICollectionManager.AddToCollectionAsync)));
         Assert.Empty(_collections.Fake.Calls(nameof(ICollectionManager.RemoveFromCollectionAsync)));
+        Assert.Empty(_library.Fake.Calls(nameof(ILibraryManager.UpdateItemAsync)));
+    }
+
+    [Fact]
+    public async Task An_existing_collection_that_lost_catalog_order_gets_it_back()
+    {
+        var kept = CurrentsItem("movie/tt1");
+        var boxSet = ExistingCollection("PremiereDate", kept);
+
+        await Create().SyncAsync([new CollectionPlan(CatalogKey, "Popular", [Title("movie/tt1")])], CancellationToken.None);
+
+        var saved = (BoxSet)Assert.Single(_library.Fake.Calls(nameof(ILibraryManager.UpdateItemAsync)))[0]!;
+        Assert.Same(boxSet, saved);
+        Assert.Equal("Default", saved.DisplayOrder);
     }
 
     [Fact]
