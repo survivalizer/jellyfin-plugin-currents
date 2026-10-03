@@ -18,7 +18,7 @@ public sealed class PublicOnlyConnectorTests : IDisposable
 
     public void Dispose() => _listener.Stop();
 
-    private static HttpClient Client(params string[] trusted) =>
+    private static HttpClient Client(params (string Host, int Port)[] trusted) =>
         new(new SocketsHttpHandler { UseProxy = false, ConnectCallback = PublicOnlyConnector.Create(() => trusted) }) { Timeout = TimeSpan.FromSeconds(5) };
 
     // Answers one request with 200 "ok", or redirects it.
@@ -57,7 +57,7 @@ public sealed class PublicOnlyConnectorTests : IDisposable
     [Fact]
     public async Task Admin_hosts_may_be_private()
     {
-        using var client = Client("127.0.0.1");
+        using var client = Client(("127.0.0.1", Port));
         var server = ServeAsync();
 
         using var response = await client.GetAsync(new Uri($"http://127.0.0.1:{Port}/sub.srt"));
@@ -67,10 +67,22 @@ public sealed class PublicOnlyConnectorTests : IDisposable
     }
 
     [Fact]
+    public async Task An_admin_host_is_trusted_only_on_its_own_port()
+    {
+        using var client = Client(("127.0.0.1", Port + 1));
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync(new Uri($"http://127.0.0.1:{Port}/p.jpg")));
+
+        var guard = error.InnerException as HttpRequestException ?? error;
+        Assert.Equal("Refused to connect to a non-public address.", guard.Message);
+        Assert.False(_listener.Pending());
+    }
+
+    [Fact]
     public async Task A_redirect_to_a_private_address_is_refused()
     {
         // localhost is trusted as the first hop only to stand in for a public host; the redirect target 127.0.0.1 is not.
-        using var client = Client("localhost");
+        using var client = Client(("localhost", Port));
         var server = ServeAsync(redirectTo: $"http://127.0.0.1:{Port}/meta-data");
 
         await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync(new Uri($"http://localhost:{Port}/p.jpg")));
@@ -80,12 +92,13 @@ public sealed class PublicOnlyConnectorTests : IDisposable
     }
 
     [Theory]
-    [InlineData("https://aio.lan:3000/stremio/u/p/manifest.json", "https://meta.example.com/stremio/u/manifest.json", "aio.lan,meta.example.com")]
+    [InlineData("https://aio.lan:3000/stremio/u/p/manifest.json", "https://meta.example.com/stremio/u/manifest.json", "aio.lan:3000,meta.example.com:443")]
+    [InlineData("http://[fd00::1]:3000/stremio/u/p/manifest.json", "http://meta.lan/x", "fd00::1:3000,meta.lan:80")]
     [InlineData("", "not a url", "")]
-    public void Admin_hosts_come_from_the_manifest_urls(string streams, string metadata, string expected)
+    public void Admin_endpoints_come_from_the_manifest_urls(string streams, string metadata, string expected)
     {
         var config = new PluginConfiguration { AioStreamsManifestUrl = streams, AioMetadataManifestUrl = metadata };
 
-        Assert.Equal(expected, string.Join(",", PublicOnlyConnector.AdminHosts(config)));
+        Assert.Equal(expected, string.Join(",", PublicOnlyConnector.AdminEndpoints(config).Select(e => $"{e.Host}:{e.Port}")));
     }
 }

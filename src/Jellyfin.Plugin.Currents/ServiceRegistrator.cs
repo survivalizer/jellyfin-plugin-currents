@@ -50,7 +50,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
             {
                 MaxAutomaticRedirections = 5,
-                ConnectCallback = PublicOnlyConnector.Create(() => PublicOnlyConnector.AdminHosts(sp.GetRequiredService<ICurrentsSettings>().Current)),
+                ConnectCallback = PublicOnlyConnector.Create(() => PublicOnlyConnector.AdminEndpoints(sp.GetRequiredService<ICurrentsSettings>().Current)),
             })
             .RemoveAllLoggers();
         serviceCollection.AddHttpClient(HttpClientNames.RemuxDb, client =>
@@ -72,7 +72,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             {
                 MaxAutomaticRedirections = 5,
                 AutomaticDecompression = System.Net.DecompressionMethods.All,
-                ConnectCallback = PublicOnlyConnector.Create(() => PublicOnlyConnector.AdminHosts(sp.GetRequiredService<ICurrentsSettings>().Current)),
+                ConnectCallback = PublicOnlyConnector.Create(() => PublicOnlyConnector.AdminEndpoints(sp.GetRequiredService<ICurrentsSettings>().Current)),
             })
             .RemoveAllLoggers();
         serviceCollection.AddSingleton<SubtitleDownloader>();
