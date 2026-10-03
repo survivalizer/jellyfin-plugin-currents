@@ -8,6 +8,14 @@
         "category": "General",
         "versions": [
             {
+                "version": "1.0.0.0",
+                "changelog": "1.0: requires Jellyfin 12.1. Poster and subtitle downloads reach only public addresses (plus your AIOStreams/AIOMetadata host and port); stream redirects to another site carry only harmless headers; built-in text subtitles are hidden on files over 15 GB (configurable) so playback never waits for Jellyfin to read the whole file; /Search/Hints lists AIOMetadata results; anonymous subtitle requests get 404 instead of 500; new configuration, self-service and troubleshooting guides.",
+                "targetAbi": "12.1.0.0",
+                "sourceUrl": "https://github.com/survivalizer/jellyfin-plugin-currents/releases/download/v1.0.0/currents_1.0.0.0.zip",
+                "checksum": "595e0ee9217de39e4d7c3e90ec37077d",
+                "timestamp": "2026-10-03T23:28:56Z"
+            },
+            {
                 "version": "0.5.0.0",
                 "changelog": "Extras: skip-intro and credits markers (TheIntroDB, AniSkip, PublicMetaDB) offered only on versions of the right length; optional Jellyfin collections per catalog; Verify library, Purge Currents content and Clear stream cache tasks; a guard for untested Jellyfin versions; a diagnostics panel with connection tests.",
                 "targetAbi": "12.0.0.0",
