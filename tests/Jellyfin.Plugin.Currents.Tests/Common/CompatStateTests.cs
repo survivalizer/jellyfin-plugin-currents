@@ -9,7 +9,8 @@ public class CompatStateTests
     private readonly FakeSettings _settings = new();
 
     [Theory]
-    [InlineData("12.0.0", true)]
+    [InlineData("12.0.0", false)]
+    [InlineData("12.0.9", false)]
     [InlineData("12.1.0", true)]
     [InlineData("12.9.9.9", true)]
     [InlineData("13.0.0", false)]

@@ -9,9 +9,10 @@ are registered, so a registration-time guard cannot read an admin's "force enabl
 
 ## Decision
 Always register the decorator and the filters. They act only while `CompatState.Active` is true: the server version
-is inside the tested range `[12.0, 13.0)`, or the admin ticked "Run on this untested Jellyfin version". The force-enable
+is inside the tested range `[12.1, 13.0)`, or the admin ticked "Run on this untested Jellyfin version". The force-enable
 setting is read on every call. Outside the range Currents titles play through their `.strm` files (degraded mode),
 a warning goes to the log and Jellyfin's activity log, and the admin page shows a banner. Search keeps its own switch.
+Since 1.0.0 the range starts at 12.1, matching build.yaml's targetAbi 12.1.0.0, so a 12.0 server never installs this version.
 
 ## Consequences
 - Forcing the plugin on or off needs no restart.

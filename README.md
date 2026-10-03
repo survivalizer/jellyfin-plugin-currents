@@ -6,7 +6,7 @@ into your library as real titles and plays them through [AIOStreams](https://git
 > Status: early development. See `docs/superpowers/specs/2026-10-01-currents-design.md` for the design.
 
 ## Requirements
-- Jellyfin 12.0 or newer (built and tested against 12.1; 12.0 is untested)
+- Jellyfin 12.1 (Jellyfin 12.0 cannot install this version)
 - A self-hosted (or hosted) AIOStreams instance with a debrid service configured
 - An AIOMetadata instance and a saved configuration
 
@@ -147,7 +147,7 @@ Currents only manages title folders that carry its `.currents` marker file:
   - *Purge Currents content*: removes every Currents title (files and their Jellyfin entries), the sync state, and
     the probe and skip-marker caches.
     The next sync writes the enabled catalogs again. Use it to start over.
-- **Untested Jellyfin versions.** Currents was tested on Jellyfin 12.x. On another version it stands down: titles play
+- **Untested Jellyfin versions.** Currents is tested on Jellyfin 12.1 up to (not including) 13.0. On another version it stands down: titles play
   through their `.strm` files, a warning appears in the Dashboard activity log and a banner on the plugin page. Tick
   **Run on this untested Jellyfin version** to turn Currents on anyway; no restart is needed.
 - **Diagnostics.** On the plugin page, **Run connection tests** checks AIOStreams, AIOMetadata, RemuxDB

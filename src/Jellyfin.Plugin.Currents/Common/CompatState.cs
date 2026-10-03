@@ -17,7 +17,7 @@ public sealed class CompatState
         InTestedRange = server is null || (server >= TestedFrom && server < TestedBefore);
     }
 
-    public static Version TestedFrom { get; } = new(12, 0);
+    public static Version TestedFrom { get; } = new(12, 1);
 
     public static Version TestedBefore { get; } = new(13, 0);
 

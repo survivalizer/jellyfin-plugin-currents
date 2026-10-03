@@ -394,7 +394,7 @@ that URL itself, and falls back to a full server transcode only if that fails. C
 With versions on, the `IMediaSourceManager` decorator forces streaming through Jellyfin (`SupportsDirectPlay=false`)
 and ffmpeg uses the internal loopback URL instead.
 
-Degraded mode also applies on a Jellyfin version outside the tested range `[12.0, 13.0)`, unless the admin ticks "Run on
+Degraded mode also applies on a Jellyfin version outside the tested range `[12.1, 13.0)`, unless the admin ticks "Run on
 this untested Jellyfin version" (see "Extras (M5)"). Skip markers then show only when "markers when the runtime is
 unknown" is on, because Currents cannot tell which file plays.
 

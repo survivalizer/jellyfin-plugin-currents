@@ -1,6 +1,6 @@
 # Currents — agent guide
 
-Jellyfin 12 plugin (C#, net10.0) bringing AIOMetadata catalogs and AIOStreams playback into a real Jellyfin library.
+Jellyfin 12.1 plugin (C#, net10.0) bringing AIOMetadata catalogs and AIOStreams playback into a real Jellyfin library.
 
 ## Commands
 - Build: `dotnet build -c Release` (warnings are errors)
