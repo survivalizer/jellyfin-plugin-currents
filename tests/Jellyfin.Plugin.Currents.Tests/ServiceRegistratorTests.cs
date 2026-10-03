@@ -95,6 +95,8 @@ public class ServiceRegistratorTests
         Assert.NotNull(provider.GetRequiredService<PlaybackInfoFilter>());
         Assert.Equal(typeof(SearchItemFilter), filters.Single(f => f.Order == -1001).ServiceType);
         Assert.Equal(typeof(SearchResultsFilter), filters.Single(f => f.Order == -998).ServiceType);
+        Assert.Equal(typeof(SegmentRequestFilter), filters.Single(f => f.Order == -1002).ServiceType);
+        Assert.NotNull(provider.GetRequiredService<SegmentRequestFilter>());
         Assert.NotNull(provider.GetRequiredService<SearchItemFilter>());
         Assert.NotNull(provider.GetRequiredService<SearchResultsFilter>());
         Assert.IsType<JellyfinLibraryItems>(provider.GetRequiredService<Jellyfin.Plugin.Currents.Library.ILibraryItems>());

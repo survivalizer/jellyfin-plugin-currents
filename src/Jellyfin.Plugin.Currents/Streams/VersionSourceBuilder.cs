@@ -43,6 +43,11 @@ public sealed class VersionSourceBuilder
         return TrackComposer.Compose(entry.Stream.Result, itemRunTimeTicks, probed, remux);
     }
 
+    /// <summary>The version's own runtime from a probe, RemuxDB or AIOStreams; null when none knows it (never the item's runtime).</summary>
+    /// <param name="entry">The version.</param>
+    /// <returns>The runtime in ticks, or null.</returns>
+    public long? RealRunTimeTicks(VersionEntry entry) => Tracks(entry, null).RunTimeTicks;
+
     /// <summary>The display tracks a details page showed before the version was probed: the same inputs as <see cref="Tracks"/> minus the probe. Synthetic indexes in a request refer to these.</summary>
     /// <param name="entry">The version.</param>
     /// <param name="itemRunTimeTicks">The item's runtime.</param>

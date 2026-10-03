@@ -3,6 +3,7 @@ using Jellyfin.Data;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Plugin.Currents.Common;
+using Jellyfin.Plugin.Currents.Segments;
 using Jellyfin.Plugin.Currents.Streams;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -27,6 +28,8 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
     private readonly TrackLocalizer _localizer;
     private readonly RequestContext _request;
     private readonly IInternalBaseUrl _internalUrl;
+    private readonly SegmentGate _segmentGate;
+    private readonly SegmentPresence _segmentPresence;
     private readonly ICurrentsSettings _settings;
     private readonly ILogger<CurrentsMediaSourceManager> _logger;
 
@@ -39,6 +42,8 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         TrackLocalizer localizer,
         RequestContext request,
         IInternalBaseUrl internalUrl,
+        SegmentGate segmentGate,
+        SegmentPresence segmentPresence,
         ICurrentsSettings settings,
         ILogger<CurrentsMediaSourceManager> logger)
     {
@@ -50,6 +55,8 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         _localizer = localizer;
         _request = request;
         _internalUrl = internalUrl;
+        _segmentGate = segmentGate;
+        _segmentPresence = segmentPresence;
         _settings = settings;
         _logger = logger;
     }
@@ -113,6 +120,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
             }
 
             var source = _builder.Build(entry, Context(item, enablePathSubstitution, requester == Guid.Empty ? null : _request.User, forPlayback: true));
+            source.HasSegments = _segmentPresence.HasSegments(item.Id) && SegmentsApply(entry);
             AddDownloaded(source, DownloadedSubtitles(item));
             _localizer.Apply(source);
             return source;
@@ -166,6 +174,9 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
 
     public Task AddMediaInfoWithProbe(MediaSourceInfo mediaSource, bool isAudio, string cacheKey, bool addProbeDelay, bool isLiveStream, CancellationToken cancellationToken) =>
         _inner.AddMediaInfoWithProbe(mediaSource, isAudio, cacheKey, addProbeDelay, isLiveStream, cancellationToken);
+
+    // jellyfin-web fetches markers only when the playing source has HasSegments; the gate keeps them off versions of another length.
+    private bool SegmentsApply(VersionEntry version) => _segmentGate.Allows(version.Title, _builder.RealRunTimeTicks(version));
 
     private bool TryGetTitle(BaseItem item, [NotNullWhen(true)] out CurrentsTitle? title)
     {
@@ -242,11 +253,13 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
 
         var context = Context(item, redact, user, forPlayback);
         var downloaded = DownloadedSubtitles(item);
+        var stored = _settings.Current.EnableSegments && _segmentPresence.HasSegments(item.Id);
         var sources = new List<MediaSourceInfo>(list.Versions.Count);
         foreach (var version in list.Versions)
         {
             if (TryBuild(version, context) is { } source)
             {
+                source.HasSegments = stored && SegmentsApply(version);
                 AddDownloaded(source, downloaded);
                 _localizer.Apply(source);
                 sources.Add(source);

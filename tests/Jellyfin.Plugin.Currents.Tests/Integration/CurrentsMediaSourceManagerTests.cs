@@ -3,16 +3,19 @@ using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 using Jellyfin.Plugin.Currents.Clients.RemuxDb;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
+using Jellyfin.Plugin.Currents.Segments;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using Jellyfin.Plugin.Currents.Users;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.MediaSegments;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Globalization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -40,6 +43,10 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
     private readonly ListLogger<CurrentsMediaSourceManager> _logger = new();
     private readonly CurrentsItemLocator _locator;
     private readonly Movie _movie;
+    private readonly SegmentStore _segmentStore;
+    private readonly (IMediaSegmentManager Instance, InterfaceFake Fake) _segmentManager = InterfaceFake.Create<IMediaSegmentManager>();
+    private readonly ServiceProvider _segmentServices;
+    private bool _storedSegments = true;
 
     public CurrentsMediaSourceManagerTests()
     {
@@ -65,10 +72,14 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
         _inner.Fake.On(nameof(IMediaSourceManager.GetStaticMediaSources), _ => _innerSources);
         _inner.Fake.On(nameof(IMediaSourceManager.GetPlaybackMediaSources), _ => Task.FromResult<IReadOnlyList<MediaSourceInfo>>(_innerSources));
         _inner.Fake.On(nameof(IMediaSourceManager.GetMediaStreams), _ => (IReadOnlyList<MediaStream>)[]);
+        _segmentStore = new SegmentStore(_settings, _time);
+        _segmentManager.Fake.On(nameof(IMediaSegmentManager.HasSegments), _ => _storedSegments);
+        _segmentServices = new ServiceCollection().AddSingleton(_segmentManager.Instance).BuildServiceProvider();
     }
 
     public void Dispose()
     {
+        _segmentServices.Dispose();
         if (Directory.Exists(_settings.DataFolderPath))
         {
             Directory.Delete(_settings.DataFolderPath, recursive: true);
@@ -76,7 +87,7 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
     }
 
     private CurrentsMediaSourceManager Create(HttpContext? http) =>
-        new(_inner.Instance, _locator, _catalog, _registry, _builder, new TrackLocalizer(InterfaceFake.Create<ILocalizationManager>().Instance), RequestContextTests.Create(http), new FixedInternalBaseUrl(Internal), _settings, _logger);
+        new(_inner.Instance, _locator, _catalog, _registry, _builder, new TrackLocalizer(InterfaceFake.Create<ILocalizationManager>().Instance), RequestContextTests.Create(http), new FixedInternalBaseUrl(Internal), new SegmentGate(_segmentStore, _settings), new SegmentPresence(_segmentServices), _settings, _logger);
 
     private static HttpContext Request(Guid? user, (string, string) action) => RequestContextTests.Http(user, action: action);
 
@@ -319,6 +330,57 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
         Assert.All(page.Concat(playback), source => Assert.Single(source.MediaStreams, s => s.Index == 2000 && s.IsExternal && s.SupportsExternalStream && s.Language == "eng"));
         Assert.All(page.Concat(playback), source => Assert.DoesNotContain(source.MediaStreams, s => s.Index == 2001));
         Assert.NotSame(page[0].MediaStreams.Single(s => s.Index == 2000), page[1].MediaStreams.Single(s => s.Index == 2000));
+    }
+
+    private void StoreMarkers(double referenceMinutes) =>
+        _segmentStore.Set(new CurrentsTitle("movie", "tt1"), new SegmentLookup([new SkipMarker(MarkerKind.Intro, 0, 5_000)], (long)(referenceMinutes * TimeSpan.TicksPerMinute)));
+
+    [Fact]
+    public async Task Only_versions_within_the_tolerance_have_segments()
+    {
+        _client.Outcome = new SearchOutcome(
+            [
+                new StreamResult { Url = "https://aio.example.com/play/1", Filename = "a.mkv", Duration = 7_250_000, ParsedFile = new ParsedFile { Resolution = "2160p", Encode = "HEVC" } },
+                new StreamResult { Url = "https://aio.example.com/play/2", Filename = "b.mkv", Duration = 6_000_000, ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC" } },
+            ],
+            []);
+        StoreMarkers(120);
+
+        var playback = await Create(Request(Alice, PlaybackInfo)).GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None);
+        var byId = await Create(Request(Alice, PlaybackInfo)).GetMediaSource(_movie, playback[1].Id, null!, false, CancellationToken.None);
+
+        Assert.Equal(new[] { true, false }, playback.Select(s => s.HasSegments));
+        Assert.False(byId!.HasSegments);
+    }
+
+    [Fact]
+    public async Task Version_without_a_real_runtime_gets_no_markers_by_default()
+    {
+        _movie.RunTimeTicks = TimeSpan.FromMinutes(120).Ticks;
+        _client.Outcome = new SearchOutcome([new StreamResult { Url = "https://aio.example.com/play/1", Filename = "a.mkv", ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC" } }], []);
+        StoreMarkers(120);
+        var manager = Create(Request(Alice, PlaybackInfo));
+
+        Assert.False((await manager.GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None))[0].HasSegments);
+
+        _settings.Current.SegmentsWhenRuntimeUnknown = true;
+        Assert.True((await manager.GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None))[0].HasSegments);
+    }
+
+    [Fact]
+    public async Task Markers_off_or_none_stored_means_no_segments()
+    {
+        _client.Outcome = new SearchOutcome([new StreamResult { Url = "https://aio.example.com/play/1", Filename = "a.mkv", Duration = 7_200_000, ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC" } }], []);
+        StoreMarkers(120);
+        var manager = Create(Request(Alice, PlaybackInfo));
+        Assert.True((await manager.GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None))[0].HasSegments);
+
+        _settings.Current.EnableSegments = false;
+        Assert.False((await manager.GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None))[0].HasSegments);
+
+        _settings.Current.EnableSegments = true;
+        _storedSegments = false;
+        Assert.False((await manager.GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None))[0].HasSegments);
     }
 
     private sealed class FixedInternalBaseUrl(string value) : IInternalBaseUrl

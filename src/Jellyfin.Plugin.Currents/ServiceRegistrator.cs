@@ -76,6 +76,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<DiagnosticsLog>();
         serviceCollection.AddSingleton<SegmentStore>();
         serviceCollection.AddSingleton<SegmentService>();
+        serviceCollection.AddSingleton<SegmentGate>();
+        serviceCollection.AddSingleton<SegmentPresence>();
+        serviceCollection.AddSingleton<SegmentRequestFilter>();
 
         // Jellyfin finds segment providers only through DI (MediaSegmentManager takes IEnumerable<IMediaSegmentProvider>).
         serviceCollection.AddSingleton<IMediaSegmentProvider, CurrentsSegmentProvider>();
@@ -135,6 +138,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         // MVC is configured after plugins register, hence PostConfigure. The id filter must run before PlaybackInfoFilter.
         serviceCollection.PostConfigure<MvcOptions>(options =>
         {
+            // Segment requests carry the version id; the gate must see it before SyntheticVersionIdFilter rewrites it.
+            options.Filters.AddService<SegmentRequestFilter>(order: -1002);
+
             // Search ids become real items before the version-id filter and PlaybackInfo see them.
             options.Filters.AddService<SearchItemFilter>(order: -1001);
             options.Filters.AddService<SyntheticVersionIdFilter>(order: -1000);
