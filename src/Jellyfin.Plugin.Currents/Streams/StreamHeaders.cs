@@ -1,6 +1,6 @@
 namespace Jellyfin.Plugin.Currents.Streams;
 
-/// <summary>Request headers a stream needs (AIOStreams requestHeaders): cleaned, and stripped of credentials when a request leaves the stream's origin. Values are credentials: never logged.</summary>
+/// <summary>Request headers a stream needs (AIOStreams requestHeaders): cleaned, and reduced to a harmless few when a request leaves the stream's origin. Values are credentials: never logged.</summary>
 public static class StreamHeaders
 {
     // Set by the HTTP stack or by the proxy itself, never taken from upstream data.
@@ -9,7 +9,8 @@ public static class StreamHeaders
         "Host", "Content-Length", "Transfer-Encoding", "Connection", "Keep-Alive", "Upgrade", "TE", "Trailer", "Proxy-Connection", "Range", "If-Range", "Expect", "Accept-Encoding",
     };
 
-    private static readonly HashSet<string> Credentials = new(StringComparer.OrdinalIgnoreCase) { "Authorization", "Cookie", "Proxy-Authorization" };
+    // The only headers that follow a redirect to another origin. Anything else (Authorization, Cookie, X-Api-Key, custom tokens…) may be a credential.
+    private static readonly HashSet<string> CrossOrigin = new(StringComparer.OrdinalIgnoreCase) { "User-Agent", "Referer", "Origin", "Accept", "Accept-Language" };
 
     private static readonly IReadOnlyDictionary<string, string> None = new Dictionary<string, string>();
 
@@ -30,11 +31,11 @@ public static class StreamHeaders
         return clean;
     }
 
-    /// <summary>The headers to send to <paramref name="target"/> for a stream that started at <paramref name="origin"/>: credentials only on the same scheme, host and port.</summary>
+    /// <summary>The headers to send to <paramref name="target"/> for a stream that started at <paramref name="origin"/>: all of them on the same scheme, host and port; otherwise only harmless ones.</summary>
     public static IReadOnlyDictionary<string, string> For(IReadOnlyDictionary<string, string> headers, Uri origin, Uri target) =>
         SameOrigin(origin, target)
             ? headers
-            : headers.Where(h => !Credentials.Contains(h.Key)).ToDictionary(h => h.Key, h => h.Value, StringComparer.OrdinalIgnoreCase);
+            : headers.Where(h => CrossOrigin.Contains(h.Key)).ToDictionary(h => h.Key, h => h.Value, StringComparer.OrdinalIgnoreCase);
 
     public static void Apply(HttpRequestMessage request, IReadOnlyDictionary<string, string> headers)
     {

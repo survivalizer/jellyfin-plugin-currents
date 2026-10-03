@@ -184,6 +184,23 @@ public sealed class StreamResolverTests : IDisposable
     }
 
     [Fact]
+    public async Task Custom_auth_headers_are_dropped_on_cross_origin_redirects()
+    {
+        const string url = "https://dav.example.com/files/movie.mkv";
+        _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream(url, new() { ["X-Api-Key"] = "SECRET", ["User-Agent"] = "Kodi" })], []);
+        _routes[url] = () => StubHttpHandler.Redirect("https://cdn.example.net/signed/movie.mkv");
+        _routes["https://cdn.example.net/signed/movie.mkv"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+
+        var result = await Create().ResolveAsync(Ticket(url), CancellationToken.None);
+
+        Assert.Equal("SECRET", _http.Sent.Single(s => s.Uri.Host == "dav.example.com").Headers["X-Api-Key"]);
+        var cdn = _http.Sent.Single(s => s.Uri.Host == "cdn.example.net");
+        Assert.False(cdn.Headers.ContainsKey("X-Api-Key"));
+        Assert.Equal("Kodi", cdn.Headers["User-Agent"]);
+        Assert.Equal(new[] { "User-Agent" }, result.Headers!.Keys);
+    }
+
+    [Fact]
     public async Task Streams_without_headers_resolve_without_headers()
     {
         const string url = "https://ok.example.com/b.mkv";

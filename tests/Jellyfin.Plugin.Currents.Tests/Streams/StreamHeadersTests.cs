@@ -30,13 +30,28 @@ public class StreamHeadersTests
     [InlineData("https://dav.example.com/a", "https://cdn.example.net/b", false)]
     [InlineData("https://dav.example.com/a", "http://dav.example.com/b", false)]
     [InlineData("https://dav.example.com/a", "https://dav.example.com:8443/b", false)]
-    public void Credentials_follow_only_to_the_same_origin(string origin, string target, bool kept)
+    public void Only_harmless_headers_leave_the_origin(string origin, string target, bool sameOrigin)
     {
-        var headers = StreamHeaders.Sanitize(new Dictionary<string, string> { ["Authorization"] = "x", ["Cookie"] = "y", ["Proxy-Authorization"] = "z", ["Referer"] = "r" });
+        var headers = StreamHeaders.Sanitize(new Dictionary<string, string>
+        {
+            ["Authorization"] = "x",
+            ["Cookie"] = "y",
+            ["Proxy-Authorization"] = "z",
+            ["X-Api-Key"] = "k",
+            ["X-Auth-Token"] = "t",
+            ["Referer"] = "r",
+            ["User-Agent"] = "ua",
+            ["Origin"] = "o",
+            ["Accept"] = "*/*",
+            ["Accept-Language"] = "en",
+        });
 
         var sent = StreamHeaders.For(headers, new Uri(origin), new Uri(target));
 
-        Assert.Equal(kept ? 4 : 1, sent.Count);
+        var expected = sameOrigin
+            ? headers.Keys
+            : new[] { "Accept", "Accept-Language", "Origin", "Referer", "User-Agent" };
+        Assert.Equal(expected.Order(StringComparer.Ordinal), sent.Keys.Order(StringComparer.Ordinal));
         Assert.Equal("r", sent["Referer"]);
     }
 }
