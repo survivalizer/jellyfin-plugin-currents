@@ -31,4 +31,12 @@ public class JellyfinClaimsTests
         Assert.False(JellyfinClaims.IsApiKey(Principal(new Claim(JellyfinClaims.IsApiKeyClaim, "False"))));
         Assert.False(JellyfinClaims.IsApiKey(null));
     }
+
+    [Fact]
+    public void Reads_the_access_token()
+    {
+        Assert.Equal("abc123", JellyfinClaims.GetToken(Principal(new Claim(JellyfinClaims.TokenClaim, "abc123"))));
+        Assert.Null(JellyfinClaims.GetToken(new ClaimsPrincipal()));
+        Assert.Null(JellyfinClaims.GetToken(null));
+    }
 }

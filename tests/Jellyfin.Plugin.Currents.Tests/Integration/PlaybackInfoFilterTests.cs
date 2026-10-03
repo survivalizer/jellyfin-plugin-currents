@@ -285,6 +285,7 @@ public sealed class PlaybackInfoFilterTests : IDisposable
     {
         var version = (await AliceVersions())[0];
         var context = WithTracks(_movie.Id, version.VersionId, null, null, new FakePlaybackInfoDto());
+        context.HttpContext.User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new[] { new System.Security.Claims.Claim(JellyfinClaims.TokenClaim, "tok/en") }, "Custom"));
         var subtitle = new MediaStream
         {
             Type = MediaStreamType.Subtitle,
@@ -303,10 +304,27 @@ public sealed class PlaybackInfoFilterTests : IDisposable
 
         await Create(Alice).OnActionExecutionAsync(context, () => Task.FromResult(executed));
 
-        Assert.Equal($"/Videos/{_movie.Id:N}/{version.VersionId}/Subtitles/1000/0/Stream.srt", subtitle.DeliveryUrl);
+        Assert.Equal($"/Videos/{_movie.Id:N}/{version.VersionId}/Subtitles/1000/0/Stream.srt?ApiKey=tok%2Fen", subtitle.DeliveryUrl);
         Assert.False(subtitle.IsExternalUrl);
         Assert.DoesNotContain("/Currents/", subtitle.Path ?? string.Empty, StringComparison.Ordinal);
         Assert.Equal($"currents://version/{version.VersionId}", source.Path);
+    }
+
+    [Fact]
+    public async Task Scrubbed_subtitle_urls_have_no_api_key_without_a_token()
+    {
+        var version = (await AliceVersions())[0];
+        var context = WithTracks(_movie.Id, version.VersionId, null, null, new FakePlaybackInfoDto());
+        var subtitle = new MediaStream { Type = MediaStreamType.Subtitle, Index = 1000, Codec = "srt", IsExternal = true, DeliveryUrl = "http://127.0.0.1:8096/Currents/subtitles/TOKEN.srt", IsExternalUrl = true };
+        var source = new MediaSourceInfo { Id = version.VersionId, MediaStreams = [subtitle] };
+        var executed = new Microsoft.AspNetCore.Mvc.Filters.ActionExecutedContext(context, [], new object())
+        {
+            Result = new Microsoft.AspNetCore.Mvc.ObjectResult(new MediaBrowser.Model.MediaInfo.PlaybackInfoResponse { MediaSources = [source] }),
+        };
+
+        await Create(Alice).OnActionExecutionAsync(context, () => Task.FromResult(executed));
+
+        Assert.Equal($"/Videos/{_movie.Id:N}/{version.VersionId}/Subtitles/1000/0/Stream.srt", subtitle.DeliveryUrl);
     }
 
     public sealed class FakePlaybackInfoDto

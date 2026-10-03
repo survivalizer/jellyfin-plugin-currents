@@ -49,7 +49,7 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
             var executed = await next().ConfigureAwait(false);
             if (executed.Result is ObjectResult { Value: PlaybackInfoResponse response })
             {
-                Scrub(item.Id, response);
+                Scrub(item.Id, response, JellyfinClaims.GetToken(context.HttpContext.User));
             }
 
             return;
@@ -123,8 +123,10 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
         display.Where(s => s.Type == MediaStreamType.Audio).OrderByDescending(s => s.IsDefault).Select(s => (int?)s.Index).FirstOrDefault();
 
     // Defense in depth: no loopback URL may reach a client, even if Jellyfin hands an external track's Path out as its delivery URL.
-    private static void Scrub(Guid itemId, PlaybackInfoResponse response)
+    // The replacement is the URL Jellyfin builds itself, signed with the caller's token as Jellyfin does (StreamInfo: "?ApiKey=").
+    private static void Scrub(Guid itemId, PlaybackInfoResponse response, string? token)
     {
+        var apiKey = token is null ? string.Empty : "?ApiKey=" + Uri.EscapeDataString(token);
         foreach (var source in response.MediaSources ?? [])
         {
             if (IsLoopback(source.Path))
@@ -136,7 +138,7 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
             {
                 if (IsLoopback(stream.DeliveryUrl))
                 {
-                    stream.DeliveryUrl = $"/Videos/{itemId:N}/{source.Id}/Subtitles/{stream.Index}/0/Stream.srt";
+                    stream.DeliveryUrl = $"/Videos/{itemId:N}/{source.Id}/Subtitles/{stream.Index}/0/Stream.srt{apiKey}";
                     stream.IsExternalUrl = false;
                 }
 
