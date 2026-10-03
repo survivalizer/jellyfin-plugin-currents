@@ -2,6 +2,7 @@ using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Streams;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Currents.Web;
 
@@ -16,13 +17,18 @@ public sealed class ProxyStreamResult : IActionResult
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly Uri _url;
     private readonly IReadOnlyDictionary<string, string> _headers;
+    private readonly ILogger _logger;
 
-    public ProxyStreamResult(IHttpClientFactory httpClientFactory, Uri url, IReadOnlyDictionary<string, string> headers)
+    public ProxyStreamResult(IHttpClientFactory httpClientFactory, Uri url, IReadOnlyDictionary<string, string> headers, ILogger logger)
     {
+        _logger = logger;
         _httpClientFactory = httpClientFactory;
         _url = url;
         _headers = headers;
     }
+
+    // Scheme and host only: the path and query may carry credentials.
+    private string Origin => $"{_url.Scheme}://{_url.Host}";
 
     public async Task ExecuteResultAsync(ActionContext context)
     {
@@ -49,6 +55,7 @@ public sealed class ProxyStreamResult : IActionResult
             }
             catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !aborted.IsCancellationRequested))
             {
+                _logger.LogWarning("Stream proxy to {Origin} failed: {Reason}", Origin, ex.GetType().Name);
                 http.Response.StatusCode = StatusCodes.Status502BadGateway;
                 return;
             }
@@ -59,6 +66,7 @@ public sealed class ProxyStreamResult : IActionResult
             var status = (int)response.StatusCode;
             if (status is >= 300 and < 400 or >= 500)
             {
+                _logger.LogWarning("Stream proxy to {Origin} answered {Status}", Origin, status);
                 http.Response.StatusCode = StatusCodes.Status502BadGateway;
                 return;
             }
@@ -87,6 +95,7 @@ public sealed class ProxyStreamResult : IActionResult
                 catch (Exception ex) when (ex is IOException or HttpRequestException or OperationCanceledException)
                 {
                     // Mid-body failure: abort, so ffmpeg sees a broken transfer rather than a clean (truncated) end.
+                    _logger.LogInformation("Stream proxy to {Origin} ended early: {Reason}", Origin, ex.GetType().Name);
                     http.Abort();
                 }
             }

@@ -4,6 +4,8 @@ using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using Jellyfin.Plugin.Currents.Web;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Web;
@@ -26,8 +28,8 @@ public class ProxyStreamResultTests
         return http;
     }
 
-    private static Task Run(StubHttpHandler stub, HttpContext http) =>
-        new ProxyStreamResult(new FakeHttpClientFactory(stub), Url, Headers).ExecuteResultAsync(new ActionContext { HttpContext = http });
+    private static Task Run(StubHttpHandler stub, HttpContext http, ILogger? logger = null) =>
+        new ProxyStreamResult(new FakeHttpClientFactory(stub), Url, Headers, logger ?? NullLogger.Instance).ExecuteResultAsync(new ActionContext { HttpContext = http });
 
     [Fact]
     public async Task Range_requests_are_relayed_with_206()
@@ -79,5 +81,33 @@ public class ProxyStreamResultTests
         await Run(new StubHttpHandler(_ => throw new HttpRequestException("refused")), http);
 
         Assert.Equal(502, http.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_bad_gateway_is_logged_with_the_host_only()
+    {
+        var logger = new ListLogger<ProxyStreamResult>();
+
+        await Run(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)), Http(), logger);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Contains("https://dav.example.com", entry.Message, StringComparison.Ordinal);
+        Assert.Contains("502", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("real.mkv", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET", entry.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_connection_failure_is_logged_with_the_host_and_exception_type_only()
+    {
+        var logger = new ListLogger<ProxyStreamResult>();
+
+        await Run(new StubHttpHandler(_ => throw new HttpRequestException("refused https://dav.example.com/real.mkv Basic SECRET")), Http(), logger);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Contains("https://dav.example.com", entry.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(HttpRequestException), entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("real.mkv", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET", entry.Message, StringComparison.Ordinal);
     }
 }

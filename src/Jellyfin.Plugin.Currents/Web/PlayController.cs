@@ -4,6 +4,7 @@ using Jellyfin.Plugin.Currents.Streams;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Currents.Web;
 
@@ -17,6 +18,7 @@ public sealed class PlayController : ControllerBase
     private readonly TimeProvider _time;
     private readonly LocalCallerPolicy _localCallers;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<PlayController> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="PlayController"/> class.</summary>
     /// <param name="resolver">The stream resolver.</param>
@@ -24,8 +26,10 @@ public sealed class PlayController : ControllerBase
     /// <param name="time">The time provider.</param>
     /// <param name="localCallers">The policy deciding which callers are the server itself.</param>
     /// <param name="httpClientFactory">The HTTP client factory used to proxy header-bound streams.</param>
-    public PlayController(IStreamResolver resolver, ICurrentsSettings settings, TimeProvider time, LocalCallerPolicy localCallers, IHttpClientFactory httpClientFactory)
+    /// <param name="logger">The logger.</param>
+    public PlayController(IStreamResolver resolver, ICurrentsSettings settings, TimeProvider time, LocalCallerPolicy localCallers, IHttpClientFactory httpClientFactory, ILogger<PlayController> logger)
     {
+        _logger = logger;
         _resolver = resolver;
         _settings = settings;
         _time = time;
@@ -88,7 +92,7 @@ public sealed class PlayController : ControllerBase
 
         // Header-bound streams are proxied: a redirect would lose the headers, and they must never reach a client.
         return result.Headers is { Count: > 0 } headers
-            ? new ProxyStreamResult(_httpClientFactory, url, headers)
+            ? new ProxyStreamResult(_httpClientFactory, url, headers, _logger)
             : Redirect(url.AbsoluteUri);
     }
 }

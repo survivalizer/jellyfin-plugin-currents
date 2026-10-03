@@ -27,7 +27,7 @@ public class PlayControllerTests
             http.Request.Headers[header] = "203.0.113.9";
         }
 
-        return new(_resolver, _settings, _time, new LocalCallerPolicy(() => []), new FakeHttpClientFactory(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)))) { ControllerContext = new ControllerContext { HttpContext = http } };
+        return new(_resolver, _settings, _time, new LocalCallerPolicy(() => []), new FakeHttpClientFactory(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK))), Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayController>.Instance) { ControllerContext = new ControllerContext { HttpContext = http } };
     }
 
     private string Token(VersionTicket ticket, TimeSpan? lifetime = null) =>
