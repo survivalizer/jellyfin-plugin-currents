@@ -56,6 +56,16 @@ public sealed class PagesTests : IDisposable
     }
 
     [Fact]
+    public void Admin_page_keeps_a_zero_subtitle_limit()
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
+
+        Assert.Contains("id=\"EmbeddedSubtitleMaxGb\"", html, StringComparison.Ordinal);
+        Assert.Contains("c.EmbeddedSubtitleMaxGb == null ? 15 : c.EmbeddedSubtitleMaxGb", html, StringComparison.Ordinal);
+        Assert.Contains("config.EmbeddedSubtitleMaxGb = isNaN(maxGb) ? 15 : Math.max(0, maxGb);", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Admin_page_has_the_versions_and_users_sections()
     {
         var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");

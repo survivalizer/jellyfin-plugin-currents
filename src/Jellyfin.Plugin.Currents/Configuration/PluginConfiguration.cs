@@ -76,6 +76,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets a value indicating whether stream-attached subtitles become tracks and the Jellyfin subtitle search queries AIOStreams.</summary>
     public bool EnableSubtitles { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets the file size in GB (1 GB = 10^9 bytes) above which a version's built-in text subtitles are hidden and refused.
+    /// Jellyfin reads the whole file before it can show one of them (about 20 minutes for 45 GB). 0 never hides them.
+    /// </summary>
+    public int EmbeddedSubtitleMaxGb { get; set; } = 15;
+
     /// <summary>Gets or sets a value indicating whether Currents fetches skip markers (intro, recap, credits, preview) for its titles.</summary>
     public bool EnableSegments { get; set; } = true;
 

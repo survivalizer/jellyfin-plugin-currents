@@ -9,6 +9,8 @@ namespace Jellyfin.Plugin.Currents.Streams;
 /// <summary>Builds the MediaSourceInfo Jellyfin sees for each version. Always streams through Jellyfin (never direct play), so clients never receive stream URLs.</summary>
 public sealed class VersionSourceBuilder
 {
+    private const long BytesPerGb = 1_000_000_000;
+
     private readonly ICurrentsSettings _settings;
     private readonly TimeProvider _time;
     private readonly ProbeCache _probes;
@@ -48,6 +50,11 @@ public sealed class VersionSourceBuilder
     /// <returns>The runtime in ticks, or null.</returns>
     public long? RealRunTimeTicks(VersionEntry entry) => Tracks(entry, null).RunTimeTicks;
 
+    /// <summary>Gets whether the version's built-in subtitles are hidden and refused: it is larger than the admin's limit, and Jellyfin would read the whole file to extract one.</summary>
+    /// <param name="entry">The version.</param>
+    /// <returns>True when over the limit.</returns>
+    public bool HidesBuiltInSubtitles(VersionEntry entry) => OverSubtitleLimit(Tracks(entry, null).Size);
+
     /// <summary>The display tracks a details page showed before the version was probed: the same inputs as <see cref="Tracks"/> minus the probe. Synthetic indexes in a request refer to these.</summary>
     /// <param name="entry">The version.</param>
     /// <param name="itemRunTimeTicks">The item's runtime.</param>
@@ -59,6 +66,11 @@ public sealed class VersionSourceBuilder
     {
         var tracks = Tracks(entry, context.ItemRunTimeTicks);
         var streams = (context.ForPlayback ? tracks.Playback : tracks.Display).ToList();
+        if (OverSubtitleLimit(tracks.Size))
+        {
+            HideBuiltInTextSubtitles(streams, context.ForPlayback);
+        }
+
         streams.AddRange(ExternalSubtitles(entry, context));
 
         return new MediaSourceInfo
@@ -122,6 +134,40 @@ public sealed class VersionSourceBuilder
             };
         }
     }
+
+    private bool OverSubtitleLimit(long? size) =>
+        _settings.Current.EmbeddedSubtitleMaxGb is var limit && limit > 0 && size > limit * BytesPerGb;
+
+    // Jellyfin extracts a built-in text subtitle by reading the whole remote file (SubtitleEncoder.ExtractAllExtractableSubtitles).
+    // Display drops them all, and ones of unknown codec too. Playback may only drop a trailing run: ffmpeg maps embedded streams
+    // by their position among streams sharing a Path (EncodingHelper.FindIndex), so removing one before an audio track would shift it.
+    // Graphical subtitles stay: burning them in reads them from the same input without extraction.
+    private static void HideBuiltInTextSubtitles(List<MediaStream> streams, bool forPlayback)
+    {
+        if (!forPlayback)
+        {
+            streams.RemoveAll(MayBeBuiltInText);
+            return;
+        }
+
+        for (var i = streams.Count - 1; i >= 0; i--)
+        {
+            if (streams[i].IsExternal)
+            {
+                continue;
+            }
+
+            if (!MayBeBuiltInText(streams[i]))
+            {
+                break;
+            }
+
+            streams.RemoveAt(i);
+        }
+    }
+
+    private static bool MayBeBuiltInText(MediaStream stream) =>
+        stream.Type == MediaStreamType.Subtitle && !stream.IsExternal && (string.IsNullOrEmpty(stream.Codec) || stream.IsTextSubtitleStream);
 
     // An unrecognised language label is shown as given, shortened.
     private static string? Label(string? value)

@@ -57,6 +57,10 @@
           <div class="checkboxContainer">
             <label><input is="emby-checkbox" type="checkbox" id="EnableSubtitles" /><span>Subtitles from AIOStreams: a stream's own subtitles become tracks, and Jellyfin's subtitle search also asks AIOStreams</span></label>
           </div>
+          <div class="inputContainer">
+            <input is="emby-input" type="number" min="0" step="1" id="EmbeddedSubtitleMaxGb" label="Hide built-in text subtitles on files larger than (GB, 0 = never hide)" />
+            <div class="fieldDescription">Before it can show a subtitle that is built into a file, Jellyfin reads the whole file: about 20 minutes for a 45 GB remux, while the player waits. Above this size Currents offers only AIOStreams and downloaded subtitles for that file. Picture-based subtitles (PGS) stay and are burned in.</div>
+          </div>
           <div class="checkboxContainer">
             <label><input is="emby-checkbox" type="checkbox" id="EnableRemuxDb" /><span>Show full track lists from RemuxDB before playback</span></label>
             <div class="fieldDescription">RemuxDB is a public, crowd-sourced database of probed files. Currents sends it only IMDb/TMDB ids. Its tracks are for display: playback still checks the file before using a track you picked.</div>
@@ -512,6 +516,7 @@
             $('#EnableSearch').checked = c.EnableSearch !== false;
             $('#DefaultSearchAutoAdd').checked = c.DefaultSearchAutoAdd !== false;
             $('#EnableSubtitles').checked = c.EnableSubtitles !== false;
+            $('#EmbeddedSubtitleMaxGb').value = c.EmbeddedSubtitleMaxGb == null ? 15 : c.EmbeddedSubtitleMaxGb;
             $('#EnableRemuxDb').checked = c.EnableRemuxDb !== false;
             $('#RemuxDbUrl').value = c.RemuxDbUrl || 'https://remuxdb.1632022.xyz';
             renderSearchCatalogs([]);
@@ -588,6 +593,8 @@
           config.EnableSearch = $('#EnableSearch').checked;
           config.DefaultSearchAutoAdd = $('#DefaultSearchAutoAdd').checked;
           config.EnableSubtitles = $('#EnableSubtitles').checked;
+          var maxGb = parseInt($('#EmbeddedSubtitleMaxGb').value, 10);
+          config.EmbeddedSubtitleMaxGb = isNaN(maxGb) ? 15 : Math.max(0, maxGb);
           config.EnableRemuxDb = $('#EnableRemuxDb').checked;
           config.RemuxDbUrl = $('#RemuxDbUrl').value.trim() || 'https://remuxdb.1632022.xyz';
           config.EnableSegments = $('#EnableSegments').checked;

@@ -261,4 +261,86 @@ public sealed class VersionSourceBuilderTests : IDisposable
 
         Assert.DoesNotContain(source.MediaStreams, s => s.IsExternal);
     }
+
+    private VersionEntry Probed(long? size, params MediaStream[] streams)
+    {
+        // The default entry's AIOStreams size (18.4 GB) would stand in for an unknown probe size, so clear it.
+        var result = Entry().Stream.Result;
+        result.Size = null;
+        var entry = Entry(result);
+        _probes.Set(entry.Stream.Key, ProbedMedia.From(new MediaSourceInfo { Container = "mkv", Size = size, MediaStreams = [.. streams] }));
+        return entry;
+    }
+
+    private static MediaStream Track(MediaStreamType type, int index, string? codec) => new() { Type = type, Index = index, Codec = codec };
+
+    [Fact]
+    public void Builtin_text_subtitles_are_hidden_over_the_limit()
+    {
+        var entry = Probed(
+            20_000_000_000,
+            Track(MediaStreamType.Video, 0, "hevc"),
+            Track(MediaStreamType.Audio, 1, "eac3"),
+            Track(MediaStreamType.Subtitle, 2, "PGSSUB"),
+            Track(MediaStreamType.Subtitle, 3, "subrip"),
+            Track(MediaStreamType.Subtitle, 4, "ass"));
+
+        var display = Create().Build(entry, Context(redact: true));
+        var playback = Create().Build(entry, Context() with { ForPlayback = true });
+
+        Assert.Equal(new[] { 0, 1, 2 }, display.MediaStreams.Select(s => s.Index));
+        Assert.Equal(new[] { 0, 1, 2 }, playback.MediaStreams.Select(s => s.Index));
+        Assert.True(Create().HidesBuiltInSubtitles(entry));
+    }
+
+    [Fact]
+    public void Only_trailing_builtin_text_subtitles_leave_the_playback_view()
+    {
+        // ffmpeg maps embedded streams by position (EncodingHelper.FindIndex): removing subtitle 1 would make audio 2 map as 0:1.
+        var entry = Probed(
+            20_000_000_000,
+            Track(MediaStreamType.Video, 0, "h264"),
+            Track(MediaStreamType.Subtitle, 1, "subrip"),
+            Track(MediaStreamType.Audio, 2, "aac"),
+            Track(MediaStreamType.Subtitle, 3, "subrip"),
+            Track(MediaStreamType.Subtitle, 4, "subrip"));
+
+        var display = Create().Build(entry, Context(redact: true));
+        var playback = Create().Build(entry, Context() with { ForPlayback = true });
+
+        Assert.Equal(new[] { 0, 2 }, display.MediaStreams.Select(s => s.Index));
+        Assert.Equal(new[] { 0, 1, 2 }, playback.MediaStreams.Select(s => s.Index));
+    }
+
+    [Theory]
+    [InlineData(0, 20_000_000_000L)]
+    [InlineData(15, 15_000_000_000L)]
+    [InlineData(15, 10_000_000_000L)]
+    [InlineData(15, null)]
+    [InlineData(-3, 20_000_000_000L)]
+    public void Zero_means_no_limit(int limitGb, long? size)
+    {
+        _settings.Current.EmbeddedSubtitleMaxGb = limitGb;
+        var entry = Probed(size, Track(MediaStreamType.Video, 0, "h264"), Track(MediaStreamType.Audio, 1, "aac"), Track(MediaStreamType.Subtitle, 2, "subrip"));
+
+        var playback = Create().Build(entry, Context() with { ForPlayback = true });
+
+        Assert.Equal(new[] { 0, 1, 2 }, playback.MediaStreams.Select(s => s.Index));
+        Assert.False(Create().HidesBuiltInSubtitles(entry));
+    }
+
+    [Fact]
+    public void Unprobed_display_hides_builtin_subtitles_of_unknown_codec_but_keeps_stream_subtitles()
+    {
+        var result = Entry().Stream.Result;
+        result.Size = 40_000_000_000;
+        result.ParsedFile!.SubtitleTracks = [new MediaTrack { Lang = "English" }, new MediaTrack { Codec = "subrip", Lang = "French" }];
+        result.Subtitles = [new StremioSubtitle { Url = "https://subs.example.com/en.srt", Lang = "eng" }];
+        var entry = Entry(result);
+
+        var display = Create().Build(entry, Context(redact: true));
+
+        Assert.DoesNotContain(display.MediaStreams, s => s.Type == MediaStreamType.Subtitle && !s.IsExternal);
+        Assert.Contains(display.MediaStreams, s => s.Index == TrackIndexes.StreamSubtitles);
+    }
 }
