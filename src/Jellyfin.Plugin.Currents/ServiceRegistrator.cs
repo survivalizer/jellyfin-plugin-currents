@@ -9,6 +9,7 @@ using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Metadata;
 using Jellyfin.Plugin.Currents.Search;
+using Jellyfin.Plugin.Currents.Segments;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Users;
 using MediaBrowser.Common.Net;
@@ -58,6 +59,16 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .RemoveAllLoggers();
         serviceCollection.AddSingleton<SubtitleDownloader>();
         serviceCollection.AddSingleton<ISubtitleProvider, CurrentsSubtitleProvider>();
+
+        // Skip-marker sources: short timeout, no redirects (an API key must never follow one), no URL logging.
+        serviceCollection.AddHttpClient(HttpClientNames.Segments, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(5);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
+        serviceCollection.AddSingleton<ISegmentSource, TheIntroDbSource>();
 
         // Long-lived byte streams to ffmpeg: no overall timeout, but connecting and the response headers are bounded (15 s).
         serviceCollection.AddHttpClient(HttpClientNames.Proxy, client =>

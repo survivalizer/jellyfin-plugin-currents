@@ -72,4 +72,19 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets a value indicating whether stream-attached subtitles become tracks and the Jellyfin subtitle search queries AIOStreams.</summary>
     public bool EnableSubtitles { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether Currents fetches skip markers (intro, recap, credits, preview) for its titles.</summary>
+    public bool EnableSegments { get; set; } = true;
+
+    /// <summary>Gets or sets how far, in percent, a version's runtime may differ from the runtime its markers were made for. Read through <c>SegmentGate</c>, which clamps it to 1–10.</summary>
+    public double SegmentTolerancePercent { get; set; } = 2;
+
+    /// <summary>Gets or sets a value indicating whether a version still gets markers when its runtime, or the markers' reference runtime, is unknown.</summary>
+    public bool SegmentsWhenRuntimeUnknown { get; set; }
+
+    /// <summary>Gets or sets the optional TheIntroDB API key (raises the daily limit from 500 to 1000 lookups). Sent only as a Bearer header.</summary>
+    public string TheIntroDbApiKey { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the PublicMetaDB API key. Empty turns PublicMetaDB off. Sent only as a Bearer header.</summary>
+    public string PublicMetaDbApiKey { get; set; } = string.Empty;
 }

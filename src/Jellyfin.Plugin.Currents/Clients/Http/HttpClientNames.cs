@@ -10,4 +10,5 @@ public static class HttpClientNames
     public const string RemuxDb = "Currents.RemuxDb";
     public const string Subtitles = "Currents.Subtitles";
     public const string Proxy = "Currents.Proxy";
+    public const string Segments = "Currents.Segments";
 }
