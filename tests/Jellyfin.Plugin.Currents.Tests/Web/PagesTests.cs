@@ -143,6 +143,16 @@ public sealed class PagesTests : IDisposable
     }
 
     [Fact]
+    public void Admin_page_cache_line_treats_a_missing_hit_rate_as_no_lookups()
+    {
+        // Jellyfin's JSON options drop null properties, so a cache with no lookups arrives without HitRate (undefined).
+        var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
+
+        Assert.Contains("c.HitRate == null ? 'no lookups yet'", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("c.HitRate === null", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Admin_page_api_keys_are_password_inputs()
     {
         var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");

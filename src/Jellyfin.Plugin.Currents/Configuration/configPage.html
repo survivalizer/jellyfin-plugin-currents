@@ -363,7 +363,7 @@
         }
 
         function cacheText(c) {
-          return c.Entries + ' cached, ' + (c.HitRate === null ? 'no lookups yet' : Math.round(c.HitRate * 100) + '% from cache');
+          return c.Entries + ' cached, ' + (c.HitRate == null ? 'no lookups yet' : Math.round(c.HitRate * 100) + '% from cache');
         }
 
         function loadDiagnostics() {
