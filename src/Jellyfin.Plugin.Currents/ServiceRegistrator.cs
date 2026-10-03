@@ -69,6 +69,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
         serviceCollection.AddSingleton<ISegmentSource, TheIntroDbSource>();
+        serviceCollection.AddSingleton<ISegmentSource, AniSkipSource>();
 
         // Long-lived byte streams to ffmpeg: no overall timeout, but connecting and the response headers are bounded (15 s).
         serviceCollection.AddHttpClient(HttpClientNames.Proxy, client =>
