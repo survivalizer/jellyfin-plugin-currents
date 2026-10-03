@@ -88,4 +88,14 @@ public class PluginConfigurationTests
 
         Assert.Equal("anime.series/search.anime_series", Assert.Single(loaded.SearchCatalogs).Key);
     }
+
+    [Fact]
+    public void M4_defaults_match_the_spec()
+    {
+        var config = new PluginConfiguration();
+
+        Assert.True(config.EnableRemuxDb);
+        Assert.Equal("https://remuxdb.1632022.xyz", config.RemuxDbUrl);
+        Assert.True(config.EnableSubtitles);
+    }
 }

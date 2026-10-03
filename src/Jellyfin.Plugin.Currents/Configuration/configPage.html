@@ -51,6 +51,18 @@
           <button is="emby-button" type="button" id="TestStreams" class="raised button-alt"><span>Test connection</span></button>
           <div id="TestStreamsResult" class="fieldDescription"></div>
 
+          <h3>Media</h3>
+          <div class="checkboxContainer">
+            <label><input is="emby-checkbox" type="checkbox" id="EnableSubtitles" /><span>Subtitles from AIOStreams: a stream's own subtitles become tracks, and Jellyfin's subtitle search also asks AIOStreams</span></label>
+          </div>
+          <div class="checkboxContainer">
+            <label><input is="emby-checkbox" type="checkbox" id="EnableRemuxDb" /><span>Show full track lists from RemuxDB before playback</span></label>
+            <div class="fieldDescription">RemuxDB is a public, crowd-sourced database of probed files. Currents sends it only IMDb/TMDB ids. Its tracks are for display: playback still checks the file before using a track you picked.</div>
+          </div>
+          <div class="inputContainer">
+            <input is="emby-input" type="url" id="RemuxDbUrl" label="RemuxDB server" />
+          </div>
+
           <h3>Versions</h3>
           <div class="checkboxContainer">
             <label><input is="emby-checkbox" type="checkbox" id="EnableVersions" /><span>Show each stream as a version (off: every title plays the default config's best stream)</span></label>
@@ -401,6 +413,9 @@
             fillDefaultPreferences(c.DefaultPreferences);
             $('#EnableSearch').checked = c.EnableSearch !== false;
             $('#DefaultSearchAutoAdd').checked = c.DefaultSearchAutoAdd !== false;
+            $('#EnableSubtitles').checked = c.EnableSubtitles !== false;
+            $('#EnableRemuxDb').checked = c.EnableRemuxDb !== false;
+            $('#RemuxDbUrl').value = c.RemuxDbUrl || 'https://remuxdb.1632022.xyz';
             renderSearchCatalogs([]);
             setText('#SelfServiceUrl', 'Users change their own settings at ' + ApiClient.getUrl('Currents/user') + ' — add it to Jellyfin\'s web config "menuLinks" to show it in the menu.');
             loadUsers();
@@ -455,6 +470,9 @@
           config.Catalogs = selectedCatalogs();
           config.EnableSearch = $('#EnableSearch').checked;
           config.DefaultSearchAutoAdd = $('#DefaultSearchAutoAdd').checked;
+          config.EnableSubtitles = $('#EnableSubtitles').checked;
+          config.EnableRemuxDb = $('#EnableRemuxDb').checked;
+          config.RemuxDbUrl = $('#RemuxDbUrl').value.trim() || 'https://remuxdb.1632022.xyz';
           config.SearchCatalogs = selectedSearchCatalogs();
           ApiClient.updatePluginConfiguration(pluginId, config).then((result) => {
             Dashboard.processPluginConfigurationUpdateResult(result);

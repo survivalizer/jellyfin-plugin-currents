@@ -103,4 +103,16 @@ public sealed class PagesTests : IDisposable
         Assert.Contains("!$('searchSection').hidden", html, StringComparison.Ordinal);
         Assert.Contains("$('searchAutoAdd').checked !== searchShown", html, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Admin_page_has_the_media_section()
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
+
+        foreach (var id in new[] { "EnableSubtitles", "EnableRemuxDb", "RemuxDbUrl" })
+        {
+            Assert.Contains($"id=\"{id}\"", html, StringComparison.Ordinal);
+            Assert.Contains($"config.{id} =", html, StringComparison.Ordinal);
+        }
+    }
 }
