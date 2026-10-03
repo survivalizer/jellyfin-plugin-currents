@@ -170,7 +170,7 @@ Map `parsedFile` → `MediaStream`s (video codec, resolution, HDR type, audio co
 
 > **M4 amendment (2026-10-02).**
 > - **Two track views per version.** Item DTOs (details page) list every known track with synthetic indexes 500-999 (display only). Sources for PlaybackInfo, streaming and ffmpeg carry either the probed tracks (real indexes) or the M2 `-1` stubs. PlaybackInfo probes and maps a synthetic choice to the probed track; if the probe fails, ffmpeg uses its default tracks. This replaces "pre-fill `MediaStreams`" for a version that has not been probed.
-> - **RemuxDB is looked up by title, not by info hash.** `GET {RemuxDbUrl}/api/media/{tt...|tmdb:...}[:S:E]/versions` with an `x-client-id` derived from the install secret (`currents-` + 32 hex); IMDb and TMDB ids only. Currents matches locally: same info hash (case-insensitive), then the same file index or file name; a candidate that names a different file never matches; the size fallback (within 1 %) applies only when a single candidate remains. RemuxDB data is display-only (crowd-sourced); playback still probes when a non-default track is chosen. The service receives only the ids and the client id. Timeout 5 s, body cap 8 MB, cache 6 h for a hit, 30 min for a miss, 60 s after any error; every failure is fail-soft (release-name tracks).
+> - **RemuxDB is looked up by title, not by info hash.** `GET {RemuxDbUrl}/api/media/{tt...|tmdb:...}[:S:E]/versions` with an `x-client-id` derived from the install secret (`currents-` + 32 hex); IMDb and TMDB ids only. Currents matches locally: same info hash (case-insensitive), then the same file index or file name; a candidate that names a different file never matches; the size fallback (within 1 %) applies only when a single candidate remains. RemuxDB data is display-only (crowd-sourced); playback still probes when a non-default track is chosen. The service receives only the ids and the client id. Total budget 5 s for the whole lookup (body read included), body cap 8 MB, cache 6 h for a hit, 30 min for a miss, 60 s after any error; every failure is fail-soft (release-name tracks).
 > - **Probe results persist** in `{plugin data}/probes/{key}.json` for 30 days (at most 5000 files), keyed by stream identity, so a file is probed once per install, not once per restart. For AIOStreams-listed tracks the release-name reasons to probe (Dolby Vision tags, missing width, guessed channel layout) still apply.
 
 ### 5.6 Collections
@@ -257,7 +257,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 | AIOStreams rate limits with many users | Global throttle, per-user cache, docs for self-hosted limit tuning |
 | Search auto-add clutter | `addedBySearch` tag, per-user toggle, purge-by-tag |
 | Search-added titles created outside a scan are removed by a concurrent folder scan | created directly (ResolvePath + CreateItem), re-added once if a scan removed them, and found again by path or `Currents` id |
-| RemuxDB (single-maintainer, crowd-sourced, undocumented API) changes or disappears | Display-only, fail-soft (5 s timeout, 60 s error cache), switchable, playback probes before using a chosen track |
+| RemuxDB (single-maintainer, crowd-sourced, undocumented API) changes or disappears | Display-only, fail-soft (5 s total budget, 60 s error cache), switchable, playback probes before using a chosen track |
 | Segment data unavailable | IntroDB/AniSkip (optional PublicMetaDB) queried directly (M0 S3); feature degrades to no markers when a title has none |
 
 ## 12. Out of scope (v1)

@@ -10,16 +10,29 @@ internal sealed class FakeRemuxDbClient : IRemuxDbClient
 
     public Exception? Exception { get; set; }
 
+    public bool Stall { get; set; }
+
     public int Calls => Volatile.Read(ref _calls);
 
     public Task<IReadOnlyList<RemuxDbVersion>> VersionsAsync(string externalId, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _calls);
+        if (Stall)
+        {
+            return StallAsync(cancellationToken);
+        }
+
         if (Exception is not null)
         {
             return Task.FromException<IReadOnlyList<RemuxDbVersion>>(Exception);
         }
 
         return Task.FromResult(Versions.TryGetValue(externalId, out var versions) ? versions : (IReadOnlyList<RemuxDbVersion>)[]);
+    }
+
+    private static async Task<IReadOnlyList<RemuxDbVersion>> StallAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+        return [];
     }
 }

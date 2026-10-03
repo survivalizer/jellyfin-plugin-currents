@@ -14,6 +14,8 @@ public sealed partial class RemuxDbCache
     private static readonly TimeSpan HitTtl = TimeSpan.FromHours(6);
     private static readonly TimeSpan MissTtl = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan ErrorTtl = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan LookupBudget = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _budget;
     private readonly IRemuxDbClient _client;
     private readonly ICurrentsSettings _settings;
     private readonly ILogger<RemuxDbCache> _logger;
@@ -21,7 +23,13 @@ public sealed partial class RemuxDbCache
     private readonly ConcurrentDictionary<string, Lazy<Task>> _inFlight = new(StringComparer.Ordinal);
 
     public RemuxDbCache(IRemuxDbClient client, ICurrentsSettings settings, TimeProvider time, ILogger<RemuxDbCache> logger)
+        : this(client, settings, time, logger, LookupBudget)
     {
+    }
+
+    internal RemuxDbCache(IRemuxDbClient client, ICurrentsSettings settings, TimeProvider time, ILogger<RemuxDbCache> logger, TimeSpan budget)
+    {
+        _budget = budget;
         _client = client;
         _settings = settings;
         _logger = logger;
@@ -64,12 +72,14 @@ public sealed partial class RemuxDbCache
     public RemuxDbVersion? Match(CurrentsTitle title, StreamResult result) =>
         _settings.Current.EnableRemuxDb && ExternalId(title) is { } id && _cache.TryGet(id, out var index) ? index.Match(result) : null;
 
-    // Shared by concurrent callers, so it never observes a caller's token; the RemuxDB HttpClient's 5 s timeout bounds it.
+    // Shared by concurrent callers, so it never observes a caller's token. The budget bounds the whole lookup, body read included
+    // (HttpClient.Timeout covers only the response headers).
     private async Task FetchAsync(string id)
     {
         try
         {
-            var versions = await _client.VersionsAsync(id, CancellationToken.None).ConfigureAwait(false);
+            using var budget = new CancellationTokenSource(_budget);
+            var versions = await _client.VersionsAsync(id, budget.Token).ConfigureAwait(false);
             _cache.Set(id, RemuxDbIndex.Create(versions), versions.Count > 0 ? HitTtl : MissTtl);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)

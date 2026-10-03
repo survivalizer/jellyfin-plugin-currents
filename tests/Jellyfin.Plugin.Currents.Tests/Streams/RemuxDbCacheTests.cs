@@ -19,6 +19,23 @@ public class RemuxDbCacheTests
 
     private RemuxDbCache Create() => new(_client, _settings, _time, NullLogger<RemuxDbCache>.Instance);
 
+    [Fact]
+    public async Task A_lookup_that_stalls_is_cut_off_by_the_total_budget_and_cached_as_an_error()
+    {
+        _client.Stall = true;
+        var cache = new RemuxDbCache(_client, _settings, _time, NullLogger<RemuxDbCache>.Instance, TimeSpan.FromMilliseconds(100));
+
+        await cache.WarmAsync(Episode, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        await cache.WarmAsync(Episode, CancellationToken.None);
+
+        Assert.Null(cache.Match(Episode, Stream()));
+        Assert.Equal(1, _client.Calls);
+
+        _time.Advance(TimeSpan.FromSeconds(61));
+        await cache.WarmAsync(Episode, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, _client.Calls);
+    }
+
     [Theory]
     [InlineData("movie", "tt0133093", "tt0133093")]
     [InlineData("movie", "tmdb:603", "tmdb:603")]
