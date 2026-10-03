@@ -35,16 +35,22 @@ public sealed class VersionProber
         _failures = new TtlCache<string, bool>(time);
     }
 
-    public async Task PrepareAsync(BaseItem item, VersionEntry entry, CancellationToken cancellationToken)
+    /// <summary>Probes the version when its tracks are not enough (or when <paramref name="probe"/> asks), and saves the item runtime.</summary>
+    /// <param name="item">The library item.</param>
+    /// <param name="entry">The version.</param>
+    /// <param name="probe">True to probe even when the tracks look complete.</param>
+    /// <param name="cancellationToken">The caller's token.</param>
+    /// <returns>The probe result, cached or new; null when there is none.</returns>
+    public async Task<ProbedMedia?> PrepareAsync(BaseItem item, VersionEntry entry, bool probe, CancellationToken cancellationToken)
     {
-        var result = entry.Stream.Result;
-        var prefill = MediaStreamMapper.Prefill(result, item.RunTimeTicks);
-        if (!_probes.TryGet(entry.Stream.Key, out var probed) && prefill.NeedsProbe && !_failures.TryGet(entry.Stream.Key, out _))
+        var tracks = _builder.Tracks(entry, item.RunTimeTicks);
+        var probed = _probes.TryGet(entry.Stream.Key, out var cached) ? cached : null;
+        if (probed is null && (probe || tracks.NeedsProbe) && !_failures.TryGet(entry.Stream.Key, out _))
         {
-            probed = await ProbeOnceAsync(entry, prefill.Container).WaitAsync(cancellationToken).ConfigureAwait(false);
+            probed = await ProbeOnceAsync(entry, tracks.Container).WaitAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        var runtime = probed?.RunTimeTicks ?? MediaStreamMapper.RunTimeTicks(result);
+        var runtime = probed?.RunTimeTicks ?? tracks.RunTimeTicks;
         if (item.RunTimeTicks is null or <= 0 && runtime is > 0)
         {
             item.RunTimeTicks = runtime;
@@ -58,6 +64,8 @@ public sealed class VersionProber
                 _logger.LogWarning("Could not save the runtime of {Id}: {Reason}", entry.Title.StremioId, SecretMasker.Mask(ex.Message));
             }
         }
+
+        return probed;
     }
 
     private Task<ProbedMedia?> ProbeOnceAsync(VersionEntry entry, string container)

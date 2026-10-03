@@ -7,6 +7,8 @@ using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using Jellyfin.Plugin.Currents.Users;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -62,9 +64,10 @@ public sealed class PlaybackInfoFilterTests : IDisposable
     private PlaybackInfoFilter Create(Guid user)
     {
         var probes = new ProbeCache(_settings, _time);
-        var prober = new VersionProber(_media.Instance, _library.Instance, probes, new VersionSourceBuilder(_settings, _time, probes, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance)), new FixedUrl("http://127.0.0.1:8096"), _time, NullLogger<VersionProber>.Instance);
+        var builder = new VersionSourceBuilder(_settings, _time, probes, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
+        var prober = new VersionProber(_media.Instance, _library.Instance, probes, builder, new FixedUrl("http://127.0.0.1:8096"), _time, NullLogger<VersionProber>.Instance);
         var request = RequestContextTests.Create(RequestContextTests.Http(user, action: ("MediaInfo", "GetPostedPlaybackInfo")));
-        return new PlaybackInfoFilter(_library.Instance, new CurrentsItemLocator(_settings, _time), _catalog, _registry, prober, request, _settings);
+        return new PlaybackInfoFilter(_library.Instance, new CurrentsItemLocator(_settings, _time), _catalog, _registry, prober, builder, request, _settings);
     }
 
     private static Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext PlaybackInfo(Guid itemId, string? mediaSourceId, FakePlaybackInfoDto? dto = null) =>
@@ -148,9 +151,134 @@ public sealed class PlaybackInfoFilterTests : IDisposable
         Assert.Empty(_library.Fake.Calls(nameof(ILibraryManager.GetItemById)));
     }
 
+    private static StreamResult Bilingual() => new()
+    {
+        Url = "https://aio.example.com/play/bi",
+        Filename = "bi.mkv",
+        Size = 4_000_000_000,
+        Duration = 7_200_000,
+        ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC", AudioTags = ["DD+"], AudioChannels = ["5.1"], Languages = ["English", "French"] },
+    };
+
+    private static Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext WithTracks(Guid itemId, string mediaSourceId, int? audio, int? subtitle, FakePlaybackInfoDto dto) =>
+        SyntheticVersionIdFilterTests.Context("POST", "MediaInfo", "GetPostedPlaybackInfo", new()
+        {
+            ["itemId"] = itemId,
+            ["mediaSourceId"] = mediaSourceId,
+            ["audioStreamIndex"] = audio,
+            ["subtitleStreamIndex"] = subtitle,
+            ["playbackInfoDto"] = dto,
+        });
+
+    private void ProbeFindsFrenchFirst() =>
+        _media.Fake.On(nameof(IMediaSourceManager.AddMediaInfoWithProbe), args =>
+        {
+            var source = (MediaSourceInfo)args[0]!;
+            source.MediaStreams =
+            [
+                new MediaStream { Type = MediaStreamType.Video, Index = 0, Codec = "h264" },
+                new MediaStream { Type = MediaStreamType.Audio, Index = 1, Codec = "ac3", Language = "fre" },
+                new MediaStream { Type = MediaStreamType.Audio, Index = 2, Codec = "eac3", Language = "eng" },
+                new MediaStream { Type = MediaStreamType.Subtitle, Index = 3, Codec = "subrip", Language = "eng" },
+            ];
+            return Task.CompletedTask;
+        });
+
+    [Fact]
+    public async Task Synthetic_choices_are_mapped_to_the_probed_tracks_in_query_and_body()
+    {
+        _client.Outcome = new SearchOutcome([Bilingual()], []);
+        ProbeFindsFrenchFirst();
+        var version = (await AliceVersions())[0];
+        var dto = new FakePlaybackInfoDto { AudioStreamIndex = 502 };
+        var context = WithTracks(_movie.Id, version.VersionId, 502, null, dto);
+
+        await SyntheticVersionIdFilterTests.Run(Create(Alice), context);
+
+        Assert.Equal(1, context.ActionArguments["audioStreamIndex"]);
+        Assert.Equal(1, dto.AudioStreamIndex);
+    }
+
+    [Fact]
+    public async Task The_default_synthetic_audio_needs_no_probe()
+    {
+        _client.Outcome = new SearchOutcome([new StreamResult { Url = "https://aio.example.com/play/one", Filename = "one.mkv", Size = 4_000_000_000, Duration = 7_200_000, ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC", AudioTags = ["AAC"], AudioChannels = ["2.0"], Languages = ["English"] } }], []);
+        var version = (await AliceVersions())[0];
+        var context = WithTracks(_movie.Id, version.VersionId, 501, null, new FakePlaybackInfoDto());
+
+        await SyntheticVersionIdFilterTests.Run(Create(Alice), context);
+
+        Assert.Null(context.ActionArguments["audioStreamIndex"]);
+        Assert.Empty(_media.Fake.Calls(nameof(IMediaSourceManager.AddMediaInfoWithProbe)));
+    }
+
+    [Fact]
+    public async Task Synthetic_choice_without_a_probe_is_cleared()
+    {
+        _client.Outcome = new SearchOutcome([Bilingual()], []);
+        _media.Fake.On(nameof(IMediaSourceManager.AddMediaInfoWithProbe), _ => Task.FromException(new InvalidOperationException("ffprobe failed")));
+        var version = (await AliceVersions())[0];
+        var dto = new FakePlaybackInfoDto { AudioStreamIndex = 502, SubtitleStreamIndex = 503 };
+        var context = WithTracks(_movie.Id, version.VersionId, null, null, dto);
+
+        await SyntheticVersionIdFilterTests.Run(Create(Alice), context);
+
+        Assert.Null(dto.AudioStreamIndex);
+        Assert.Null(dto.SubtitleStreamIndex);
+    }
+
+    [Fact]
+    public async Task Real_external_and_off_indexes_pass_through()
+    {
+        _client.Outcome = new SearchOutcome([Bilingual()], []);
+        ProbeFindsFrenchFirst();
+        var version = (await AliceVersions())[0];
+        var context = WithTracks(_movie.Id, version.VersionId, 2, 1000, new FakePlaybackInfoDto());
+        var off = WithTracks(_movie.Id, version.VersionId, 2, -1, new FakePlaybackInfoDto());
+
+        await SyntheticVersionIdFilterTests.Run(Create(Alice), context);
+        await SyntheticVersionIdFilterTests.Run(Create(Alice), off);
+
+        Assert.Equal((2, 1000), ((int)context.ActionArguments["audioStreamIndex"]!, (int)context.ActionArguments["subtitleStreamIndex"]!));
+        Assert.Equal(-1, off.ActionArguments["subtitleStreamIndex"]);
+    }
+
+    [Fact]
+    public async Task Loopback_subtitle_urls_in_playback_info_are_rewritten()
+    {
+        var version = (await AliceVersions())[0];
+        var context = WithTracks(_movie.Id, version.VersionId, null, null, new FakePlaybackInfoDto());
+        var subtitle = new MediaStream
+        {
+            Type = MediaStreamType.Subtitle,
+            Index = 1000,
+            Codec = "srt",
+            IsExternal = true,
+            Path = "http://127.0.0.1:8096/Currents/subtitles/TOKEN.srt",
+            DeliveryUrl = "http://127.0.0.1:8096/Currents/subtitles/TOKEN.srt",
+            IsExternalUrl = true,
+        };
+        var source = new MediaSourceInfo { Id = version.VersionId, Path = "http://127.0.0.1:8096/Currents/play/s/TOKEN", MediaStreams = [subtitle] };
+        var executed = new Microsoft.AspNetCore.Mvc.Filters.ActionExecutedContext(context, [], new object())
+        {
+            Result = new Microsoft.AspNetCore.Mvc.ObjectResult(new MediaBrowser.Model.MediaInfo.PlaybackInfoResponse { MediaSources = [source] }),
+        };
+
+        await Create(Alice).OnActionExecutionAsync(context, () => Task.FromResult(executed));
+
+        Assert.Equal($"/Videos/{_movie.Id:N}/{version.VersionId}/Subtitles/1000/0/Stream.srt", subtitle.DeliveryUrl);
+        Assert.False(subtitle.IsExternalUrl);
+        Assert.DoesNotContain("/Currents/", subtitle.Path ?? string.Empty, StringComparison.Ordinal);
+        Assert.Equal($"currents://version/{version.VersionId}", source.Path);
+    }
+
     public sealed class FakePlaybackInfoDto
     {
         public string? MediaSourceId { get; set; }
+
+        public int? AudioStreamIndex { get; set; }
+
+        public int? SubtitleStreamIndex { get; set; }
     }
 
     private sealed class FixedUrl(string value) : IInternalBaseUrl

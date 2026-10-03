@@ -2,6 +2,9 @@ using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Streams;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.MediaInfo;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 
@@ -16,16 +19,18 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
     private readonly VersionCatalog _catalog;
     private readonly VersionRegistry _registry;
     private readonly VersionProber _prober;
+    private readonly VersionSourceBuilder _builder;
     private readonly RequestContext _request;
     private readonly ICurrentsSettings _settings;
 
-    public PlaybackInfoFilter(ILibraryManager library, CurrentsItemLocator locator, VersionCatalog catalog, VersionRegistry registry, VersionProber prober, RequestContext request, ICurrentsSettings settings)
+    public PlaybackInfoFilter(ILibraryManager library, CurrentsItemLocator locator, VersionCatalog catalog, VersionRegistry registry, VersionProber prober, VersionSourceBuilder builder, RequestContext request, ICurrentsSettings settings)
     {
         _library = library;
         _locator = locator;
         _catalog = catalog;
         _registry = registry;
         _prober = prober;
+        _builder = builder;
         _request = request;
         _settings = settings;
     }
@@ -39,6 +44,13 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
             && _locator.TryGetTitle(item, out var title))
         {
             await PrepareAsync(context, item, title, context.HttpContext.RequestAborted).ConfigureAwait(false);
+            var executed = await next().ConfigureAwait(false);
+            if (executed.Result is ObjectResult { Value: PlaybackInfoResponse response })
+            {
+                Scrub(item.Id, response);
+            }
+
+            return;
         }
 
         await next().ConfigureAwait(false);
@@ -70,8 +82,73 @@ public sealed class PlaybackInfoFilter : IAsyncActionFilter
             dtoMediaSourceId?.SetValue(dto, chosen.VersionId);
         }
 
-        await _prober.PrepareAsync(item, chosen, cancellationToken).ConfigureAwait(false);
+        // The details page offers synthetic indexes for unprobed versions. Map a choice to the real track, or clear it so ffmpeg picks its default.
+        var display = _builder.Tracks(chosen, item.RunTimeTicks).Display;
+        var audio = ReadIndex(context, dto, "audioStreamIndex", "AudioStreamIndex");
+        var subtitle = ReadIndex(context, dto, "subtitleStreamIndex", "SubtitleStreamIndex");
+        var probe = (TrackIndexes.IsSynthetic(audio) && audio != DefaultAudio(display)) || TrackIndexes.IsSynthetic(subtitle);
+        var probed = await _prober.PrepareAsync(item, chosen, probe, cancellationToken).ConfigureAwait(false);
+        var real = probed?.Streams();
+        if (TrackIndexes.IsSynthetic(audio))
+        {
+            WriteIndex(context, dto, "audioStreamIndex", "AudioStreamIndex", real is null ? null : TrackMatcher.Map(display, real, audio!.Value));
+        }
+
+        if (TrackIndexes.IsSynthetic(subtitle))
+        {
+            WriteIndex(context, dto, "subtitleStreamIndex", "SubtitleStreamIndex", real is null ? null : TrackMatcher.Map(display, real, subtitle!.Value));
+        }
     }
+
+    // Query arguments win over the body in GetPostedPlaybackInfo, so both are read and both are written.
+    private static int? ReadIndex(ActionExecutingContext context, object? dto, string argument, string property) =>
+        context.ActionArguments.TryGetValue(argument, out var raw) && raw is int value
+            ? value
+            : dto?.GetType().GetProperty(property)?.GetValue(dto) as int?;
+
+    private static void WriteIndex(ActionExecutingContext context, object? dto, string argument, string property, int? value)
+    {
+        if (context.ActionArguments.ContainsKey(argument))
+        {
+            context.ActionArguments[argument] = value;
+        }
+
+        dto?.GetType().GetProperty(property)?.SetValue(dto, value);
+    }
+
+    // What ffmpeg plays when no audio index is given: the default audio track, else the first.
+    private static int? DefaultAudio(IReadOnlyList<MediaStream> display) =>
+        display.Where(s => s.Type == MediaStreamType.Audio).OrderByDescending(s => s.IsDefault).Select(s => (int?)s.Index).FirstOrDefault();
+
+    // Defense in depth: no loopback URL may reach a client, even if Jellyfin hands an external track's Path out as its delivery URL.
+    private static void Scrub(Guid itemId, PlaybackInfoResponse response)
+    {
+        foreach (var source in response.MediaSources ?? [])
+        {
+            if (IsLoopback(source.Path))
+            {
+                source.Path = $"currents://version/{source.Id}";
+            }
+
+            foreach (var stream in source.MediaStreams ?? [])
+            {
+                if (IsLoopback(stream.DeliveryUrl))
+                {
+                    stream.DeliveryUrl = $"/Videos/{itemId:N}/{source.Id}/Subtitles/{stream.Index}/0/Stream.srt";
+                    stream.IsExternalUrl = false;
+                }
+
+                if (IsLoopback(stream.Path))
+                {
+                    stream.Path = $"currents://subtitle/{source.Id}/{stream.Index}";
+                }
+            }
+        }
+    }
+
+    private static bool IsLoopback(string? url) =>
+        url is not null
+        && (url.Contains("/Currents/play/", StringComparison.OrdinalIgnoreCase) || url.Contains("/Currents/subtitles/", StringComparison.OrdinalIgnoreCase));
 
     private VersionEntry Choose(VersionList list, string requested)
     {

@@ -59,8 +59,8 @@ public sealed class VersionProberTests : IDisposable
         var prober = Create();
         var movie = new Movie { Id = Item, RunTimeTicks = TimeSpan.FromMinutes(90).Ticks };
 
-        await prober.PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None);
-        await prober.PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None);
+        await prober.PrepareAsync(movie, Entry(Unparsed()), probe: false, CancellationToken.None);
+        await prober.PrepareAsync(movie, Entry(Unparsed()), probe: false, CancellationToken.None);
 
         var call = Assert.Single(_media.Fake.Calls(nameof(IMediaSourceManager.AddMediaInfoWithProbe)));
         var probed = (MediaSourceInfo)call[0]!;
@@ -82,9 +82,29 @@ public sealed class VersionProberTests : IDisposable
             ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC", AudioTags = ["AAC"], AudioChannels = ["2.0"] },
         };
 
-        await Create().PrepareAsync(new Movie { Id = Item, RunTimeTicks = 1 }, Entry(described), CancellationToken.None);
+        await Create().PrepareAsync(new Movie { Id = Item, RunTimeTicks = 1 }, Entry(described), probe: false, CancellationToken.None);
 
         Assert.Empty(_media.Fake.Calls(nameof(IMediaSourceManager.AddMediaInfoWithProbe)));
+    }
+
+    [Fact]
+    public async Task A_requested_probe_runs_even_when_the_tracks_look_complete_and_its_result_is_returned()
+    {
+        ProbeFills(TimeSpan.FromMinutes(90).Ticks);
+        var described = new StreamResult
+        {
+            Url = "https://aio.example.com/play/1",
+            Size = 4_000_000_000,
+            Duration = 7_200_000,
+            ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC", AudioTags = ["AAC"], AudioChannels = ["2.0"] },
+        };
+
+        var probed = await Create().PrepareAsync(new Movie { Id = Item, RunTimeTicks = 1 }, Entry(described), probe: true, CancellationToken.None);
+        var again = await Create().PrepareAsync(new Movie { Id = Item, RunTimeTicks = 1 }, Entry(described), probe: true, CancellationToken.None);
+
+        Assert.Equal("h264", probed!.Streams()[0].Codec);
+        Assert.Equal(probed, again);
+        Assert.Single(_media.Fake.Calls(nameof(IMediaSourceManager.AddMediaInfoWithProbe)));
     }
 
     [Fact]
@@ -95,7 +115,7 @@ public sealed class VersionProberTests : IDisposable
         var prober = Create();
         var movie = new Movie { Id = Item, RunTimeTicks = 1 };
 
-        var pending = Enumerable.Range(0, 4).Select(_ => prober.PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None)).ToList();
+        var pending = Enumerable.Range(0, 4).Select(_ => prober.PrepareAsync(movie, Entry(Unparsed()), probe: false, CancellationToken.None)).ToList();
         gate.SetResult();
         await Task.WhenAll(pending);
 
@@ -110,10 +130,10 @@ public sealed class VersionProberTests : IDisposable
         var prober = Create();
         var movie = new Movie { Id = Item, RunTimeTicks = 1 };
 
-        await prober.PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None);
-        await prober.PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None);
+        await prober.PrepareAsync(movie, Entry(Unparsed()), probe: false, CancellationToken.None);
+        await prober.PrepareAsync(movie, Entry(Unparsed()), probe: false, CancellationToken.None);
         _time.Advance(TimeSpan.FromMinutes(11));
-        await prober.PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None);
+        await prober.PrepareAsync(movie, Entry(Unparsed()), probe: false, CancellationToken.None);
 
         Assert.Equal(2, _media.Fake.Calls(nameof(IMediaSourceManager.AddMediaInfoWithProbe)).Count);
         Assert.Contains(_logger.Entries, e => e.Level == LogLevel.Warning);
@@ -127,7 +147,7 @@ public sealed class VersionProberTests : IDisposable
         ProbeFills(TimeSpan.FromMinutes(95).Ticks);
         var movie = new Movie { Id = Item };
 
-        await Create().PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None);
+        await Create().PrepareAsync(movie, Entry(Unparsed()), probe: false, CancellationToken.None);
 
         Assert.Equal(TimeSpan.FromMinutes(95).Ticks, movie.RunTimeTicks);
         Assert.Single(_library.Fake.Calls(nameof(ILibraryManager.UpdateItemAsync)));
@@ -145,7 +165,7 @@ public sealed class VersionProberTests : IDisposable
         };
         var movie = new Movie { Id = Item };
 
-        await Create().PrepareAsync(movie, Entry(described), CancellationToken.None);
+        await Create().PrepareAsync(movie, Entry(described), probe: false, CancellationToken.None);
 
         Assert.Equal(TimeSpan.FromHours(2).Ticks, movie.RunTimeTicks);
         Assert.Empty(_media.Fake.Calls(nameof(IMediaSourceManager.AddMediaInfoWithProbe)));
@@ -158,7 +178,7 @@ public sealed class VersionProberTests : IDisposable
         _library.Fake.On(nameof(ILibraryManager.UpdateItemAsync), _ => Task.FromException(new InvalidOperationException("db locked")));
         var movie = new Movie { Id = Item };
 
-        await Create().PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None);
+        await Create().PrepareAsync(movie, Entry(Unparsed()), probe: false, CancellationToken.None);
 
         Assert.Equal(TimeSpan.FromMinutes(95).Ticks, movie.RunTimeTicks);
         Assert.Contains(_logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("runtime", StringComparison.Ordinal));
@@ -170,7 +190,7 @@ public sealed class VersionProberTests : IDisposable
         ProbeFills(TimeSpan.FromMinutes(95).Ticks);
         var movie = new Movie { Id = Item, RunTimeTicks = TimeSpan.FromMinutes(90).Ticks };
 
-        await Create().PrepareAsync(movie, Entry(Unparsed()), CancellationToken.None);
+        await Create().PrepareAsync(movie, Entry(Unparsed()), probe: false, CancellationToken.None);
 
         Assert.Equal(TimeSpan.FromMinutes(90).Ticks, movie.RunTimeTicks);
         Assert.Empty(_library.Fake.Calls(nameof(ILibraryManager.UpdateItemAsync)));
