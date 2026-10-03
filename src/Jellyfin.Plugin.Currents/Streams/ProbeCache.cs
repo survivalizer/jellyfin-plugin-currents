@@ -31,6 +31,9 @@ public sealed partial class ProbeCache
         _memory = new TtlCache<string, Entry>(time);
     }
 
+    /// <summary>Gets the number of probe results stored on disk.</summary>
+    public int Count => Directory.Exists(Folder) ? Directory.GetFiles(Folder, "*.json").Length : 0;
+
     private string Folder => Path.Combine(_settings.DataFolderPath, "probes");
 
     /// <summary>Forgets every probe result, in memory and on disk.</summary>
