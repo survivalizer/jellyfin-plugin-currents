@@ -6,7 +6,7 @@ public static class StreamHeaders
     // Set by the HTTP stack or by the proxy itself, never taken from upstream data.
     private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Host", "Content-Length", "Transfer-Encoding", "Connection", "Keep-Alive", "Upgrade", "TE", "Trailer", "Proxy-Connection", "Range", "If-Range", "Expect",
+        "Host", "Content-Length", "Transfer-Encoding", "Connection", "Keep-Alive", "Upgrade", "TE", "Trailer", "Proxy-Connection", "Range", "If-Range", "Expect", "Accept-Encoding",
     };
 
     private static readonly HashSet<string> Credentials = new(StringComparer.OrdinalIgnoreCase) { "Authorization", "Cookie", "Proxy-Authorization" };

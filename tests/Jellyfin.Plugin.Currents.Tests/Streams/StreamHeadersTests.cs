@@ -14,6 +14,7 @@ public class StreamHeadersTests
             ["X-Custom"] = " 1 ",
             ["Host"] = "evil.example.com",
             ["Range"] = "bytes=0-",
+            ["Accept-Encoding"] = "gzip",
             ["Content-Length"] = "5",
             ["Bad Name"] = "x",
             ["X-Injected"] = "a\r\nX-Other: b",
