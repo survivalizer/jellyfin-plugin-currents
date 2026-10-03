@@ -243,13 +243,13 @@ Sources of track data, in order of trust:
 - **Stream-attached.** AIOStreams stream `subtitles` become external tracks 1000+. Clients see a placeholder path; the
   server fetches `/Currents/subtitles/{token}.srt` (signed loopback token) through `SubtitleDownloader` (5 MB cap, 15 s for
   the whole download, gzip by magic bytes) and `SubtitleText` (converts to SRT, validates cue times, skips malformed
-  cues). An unreadable or non-subtitle upstream file gives 502.
+  cues). An unreadable or non-subtitle upstream file gives 502. At most 5 per language and 40 per version.
 - **Search provider.** `Features/Subtitles/CurrentsSubtitleProvider` (an `ISubtitleProvider`) asks AIOStreams'
-  subtitles route for the requesting user's config (default config without a user): at most 5 per language and 40 per
-  version; lists cached 1 h, failures 2 min. Results are named `AIOStreams n (lang)`, carry no URL, and download through
+  subtitles route for the requesting user's config (default config without a user): at most 25 results;
+  lists cached 1 h, failures 2 min. Results are named `AIOStreams n (lang)`, carry no URL, and download through
   the same `SubtitleDownloader`.
 - **Downloaded files.** Jellyfin saves a download next to the `.strm`; `GetMediaStreams` copies it into every version at
-  index 2000 + its own index. A companion subtitle `{strm name}.....{srt|vtt|ass|ssa|sub|idx|sup|smi}` counts as a
+  index 2000 + its own index. A companion subtitle `{strm name}.….{srt|vtt|ass|ssa|sub|idx|sup|smi}` counts as a
   plugin file for adoption and deletion.
 
 ### Trailers
@@ -260,9 +260,9 @@ They are not written into the NFO; a metadata refresh adds them to titles create
 `Streams/StreamHeaders` sanitises a stream's `requestHeaders`: it drops reserved headers (Host, Range, Content-Length,
 hop-by-hop) and values containing CR/LF. The resolver's `allowHeaders` flag decides whether a header-bound stream may be
 used: the loopback version route allows them, degraded `.strm` resolves skip them (their URL reaches clients).
-`Web/ProxyStreamResult` streams the upstream body: it never follows redirects (a 3xx or 5xx answer is a 502), relays
-`Range` and the 206 answer and only content headers, and the resolver drops `Authorization`, `Cookie` and
-`Proxy-Authorization` when a redirect crosses origins. Headers never appear in a client-facing field.
+The resolver follows redirects (up to 5 hops) and drops `Authorization`, `Cookie` and `Proxy-Authorization` when the
+origin changes. `Web/ProxyStreamResult` then streams the resolved URL without following any redirect (a 3xx or 5xx
+answer is a 502) and relays `Range` and the 206 answer and only content headers. Headers never appear in a client-facing field.
 
 ### Request walkthrough (web client)
 1. **Details page**: `GET /Users/{U}/Items/{id}` returns the display tracks (synthetic indexes 500+), from RemuxDB or
