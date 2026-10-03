@@ -57,3 +57,18 @@ shows an AIOMetadata card with a poster, and opening it adds the title and shows
 | Infuse | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
 | Streamyfin | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
 | External player (VLC/MX) | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
+
+## M5: skip markers and collections
+
+"Skip intro/credits prompt": the prompt appears on a version whose length fits the markers and not on one that does not.
+"Catalog collections": a catalog ticked for a collection shows as a collection in the client.
+
+| Client | Version | Skip intro/credits prompt | Catalog collections | Notes |
+|---|---|---|---|---|
+| Jellyfin Web | 12.1 (Chromium) | M6 | M6 | |
+| Android TV | | M6 | M6 | |
+| Swiftfin | | M6 | M6 | |
+| Findroid | | M6 | M6 | |
+| Infuse | | M6 | M6 | |
+| Streamyfin | | M6 | M6 | |
+| External player (VLC/MX) | | M6 | M6 | |

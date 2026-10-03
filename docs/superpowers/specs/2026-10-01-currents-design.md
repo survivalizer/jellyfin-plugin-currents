@@ -149,6 +149,13 @@ docs/                                  architecture, configuration, ADRs, client
 ### 5.2 Skip intro / credits
 `IMediaSegmentProvider` (incl. `CleanupExtractedData`) sourcing markers from IntroDB and AniSkip (and PublicMetaDB when a key is configured). Applied only when the playing version's runtime is within tolerance (default ±2%) of the reference runtime.
 
+> **M5 amendments (2026-10-03).**
+> - **"IntroDB" is TheIntroDB** (`api.theintrodb.org`): TMDB, IMDb and TVDB ids, movies and episodes, an optional key.
+> - **Reference runtime.** When an AniSkip marker is used, the reference is AniSkip's matched `episodeLength`. Otherwise it is AIOMetadata's runtime for the title (for an episode, the series runtime). A version's runtime comes only from the probe, RemuxDB or AIOStreams. When either runtime is unknown, the admin setting "markers when the runtime is unknown" decides (default: no markers). The tolerance is an admin setting, default ±2 %, clamped to 1-10 %.
+> - **When markers are fetched.** Jellyfin's "Extract media segments" task (every 12 h) fetches them, and so does a new manual task, "Fetch skip markers", which every sync that wrote titles queues. They are never fetched at play time. The gate applies at play time: `HasSegments` per version in PlaybackInfo, and a filter on `GET /MediaSegments/{id}`.
+> - **Degraded mode** (versions off, or the compat guard inactive). Currents cannot tell which file plays, so markers show only when "markers when the runtime is unknown" is on.
+> - **Source coverage.** PublicMetaDB is used only for TMDB-keyed titles, because its API takes TMDB ids. AniSkip is used only for anime-provider ids (mal, kitsu, anilist, anidb); IMDb-keyed anime use TheIntroDB.
+
 ### 5.3 Trailers
 AIOMetadata `trailers` → item `RemoteTrailers` via the metadata provider.
 
@@ -176,9 +183,20 @@ Map `parsedFile` → `MediaStream`s (video codec, resolution, HDR type, audio co
 ### 5.6 Collections
 Per catalog, optional Jellyfin BoxSet kept in sync with catalog membership each run.
 
+> **M5 amendment (2026-10-03).**
+> - Collections are opt-in per catalog, locked, and kept in catalog order (new titles are appended).
+> - The first collection creates Jellyfin's Collections library, which runs one full library scan.
+> - Currents removes only Currents titles from its collections; items an admin added by hand stay.
+> - Unticking a catalog leaves its collection in place.
+> - When a collection name is taken by a collection Currents does not own, Currents uses "{name} (Currents)". Two ticked catalogs with the same name are told apart as "{name} ({type})".
+
 ### 5.7 Upgrade safety
 - Tasks: **Verify library** (rebuild missing files from state), **Purge Currents content**, **Clear stream cache**.
 - **Compat guard** at startup: if the server version is outside the tested range (`[12.0, 13.0)` initially), the decorator is not registered (degraded mode) and an admin warning is shown; admin can force-enable.
+
+> **M5 amendments (2026-10-03).**
+> - **Compat guard as a runtime switch** (ADR 0006). The decorator and filters are always registered and stand down at runtime outside the tested range `[12.0, 13.0)`, unless the admin ticks "Run on this untested Jellyfin version". This replaces "decorator not registered"; force-enable needs no restart. Search stays governed by its own switch. A Jellyfin whose interfaces changed fails to load the plugin before any guard runs.
+> - **Purge and Verify.** "Purge Currents content" removes every Currents title, the sync state, and the probe and skip-marker caches, then refreshes the library; the next sync writes the enabled catalogs again. "Verify library" rewrites titles whose files are missing and drops `users.json` records of deleted Jellyfin users. Jellyfin's own subtitle-extraction cache is left to Jellyfin's cache cleanup.
 
 ## 6. Multi-user (D5)
 
@@ -217,6 +235,8 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 - **Security**: secret-masking log enricher (UUIDs, passwords, tokens, debrid keys); assert no internal/debrid URLs in DTO/PlaybackInfo responses; self-service endpoints scoped to caller.
 - **Diagnostics panel**: connection tests, cache hit rate, recent errors, decorator active/degraded.
 
+> **M5 amendment (2026-10-03).** "Recent errors" is an in-memory list of the last 50 problems recorded by sync, stream search and skip-marker lookups; it is not a log reader. "Cache hit rate" covers stream lists and skip-marker lookups.
+
 > **M2 amendment (2026-10-01).** Streams that require request headers (`requestHeaders`) are skipped. M4 proxies them (see the M4 amendment in section 4.3); degraded `.strm` playback still skips them.
 
 ## 8. Testing
@@ -246,6 +266,8 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 | **M4 Media** | Pre-fill/RemuxDB/probing, subtitles, trailers | Tracks shown before playback; subtitles searchable |
 | **M5 Extras** | Segments, collections, maintenance tasks, compat guard, diagnostics | Tasks run; guard verified on fake version |
 | **M6 Release** | Release pipeline, manifest, docs, client matrix pass | v1.0.0 installable from repo URL |
+
+> **M5 amendment (2026-10-03).** The exit criterion is checked at unit level and on the dev stack (`docs/spikes/2026-10-m5-e2e.md`): the five Currents tasks run, skip markers appear only on versions of the right length, a collection follows its catalog, and the compat guard stands down on a fake Jellyfin 13.0 (`CURRENTS_COMPAT_TEST_VERSION`) and comes back when forced on, with no restart.
 
 ## 11. Risks
 

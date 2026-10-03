@@ -289,12 +289,92 @@ answer is a 502) and relays `Range` and the 206 answer and only content headers.
 - The companion-subtitle rule also matches a user's own `{strm name}.srt` in a Currents folder; it is then treated as a
   plugin file and removed with the title.
 
+## Extras (M5)
+
+### Modules
+- `Segments/*`: skip markers. `TheIntroDbSource`, `AniSkipSource` and `PublicMetaDbSource` (all `ISegmentSource`, each
+  with its own `SourcePacer` rate limit) feed `SegmentService`, which asks the sources that apply in parallel, keeps for
+  each marker kind the markers of the highest-priority source that has it, sanitises them against the reference runtime
+  (drops markers under 1 s, clamps to the runtime) and hands the result to `SegmentStore` (memory plus
+  `{plugin data}/segments/{key}.json`, fresh 7 days when found, 1 day when not). `SegmentGate` decides whether a title's
+  markers fit one version's runtime.
+- `Features/Segments/CurrentsSegmentProvider`: the `IMediaSegmentProvider` (name `Currents`, which keys the stored
+  segments). Jellyfin builds it before the plugin is initialised, so it reads no settings in its constructor and resolves
+  Jellyfin services lazily.
+- `Integration/RefreshSkipMarkersTask`: "Fetch skip markers", a manual task that runs the segment providers for every
+  Currents movie and episode. `Library/SkipMarkerQueue` queues it after a sync that wrote titles.
+- `Integration/SegmentPresence`: asks Jellyfin whether an item has stored segments (resolved lazily).
+- `Integration/SegmentRequestFilter`: answers `GET /MediaSegments/{id}` with an empty list when the markers do not fit.
+- `Integration/JellyfinCollectionSync` (an `ICollectionSync`, planned by `Library/CollectionPlan`): one locked BoxSet per
+  ticked catalog.
+- `Integration/CompatWarning`: logs a warning and adds a Dashboard activity entry on an untested Jellyfin version.
+- `Library/LibraryMaintenance` with `VerifyLibraryTask` and `PurgeContentTask`; `Library/LibraryJobGate` makes sync,
+  verify and purge run one at a time. `Streams/ClearStreamCacheTask` clears the stream lists.
+- `Web/DiagnosticsController`: the diagnostics endpoint and the connection tests.
+- `Common/CompatState` (the compat decision, see ADR 0006), `Common/DiagnosticsLog` (the last 50 problems, in memory),
+  `Common/TaskKeys` (the task keys).
+
+### Tasks
+Under "Currents" in Dashboard -> Scheduled Tasks: Sync AIOMetadata catalogs, Fetch skip markers (manual), Clear stream
+cache, Verify library, Purge Currents content. Their class names and namespaces are stable once released.
+
+### Request walkthrough: skip markers, from fetch to the skip button
+1. **Fetch**: "Fetch skip markers" (or Jellyfin's "Extract media segments") calls `CurrentsSegmentProvider` for an item.
+2. **Lookup**: the provider calls `SegmentService`, which asks the sources that apply to the title's ids (TheIntroDB for
+   TMDB/IMDb/TVDB ids, AniSkip for anime-provider ids, PublicMetaDB for TMDB ids with a key), merges, sanitises and
+   stores the lookup. Jellyfin saves the markers in its database.
+3. **PlaybackInfo**: for each version `SegmentPresence` says whether Jellyfin has segments, and `SegmentGate` compares the
+   version's real runtime with the reference runtime; `HasSegments` is true only when both hold.
+4. **Skip button**: jellyfin-web calls `GET /MediaSegments/{versionId}`. `SegmentRequestFilter` (order -1002) checks the
+   gate for that version and answers an empty list when it fails. Otherwise `SyntheticVersionIdFilter` (-1000) rewrites
+   the version id to the item id and Jellyfin returns the stored segments.
+
+The reference runtime is AniSkip's matched `episodeLength` when an AniSkip marker is used, else AIOMetadata's runtime for
+the title (the series runtime for an episode). A version's runtime comes only from the probe, RemuxDB or AIOStreams.
+When either is unknown, "markers when the runtime is unknown" decides (default off). The tolerance is ±2 % by default,
+clamped to 1-10 %. In degraded mode (versions off or the compat guard inactive) only that unknown-runtime setting applies.
+
+### MVC filter order
+| Order | Filter |
+|---|---|
+| -1002 | `SegmentRequestFilter` (must see the version id before it is rewritten) |
+| -1001 | `SearchItemFilter` |
+| -1000 | `SyntheticVersionIdFilter` |
+| -999 | `PlaybackInfoFilter` |
+| -998 | `SearchResultsFilter` |
+
+### Collections
+After each sync `CollectionPlan` lists, per ticked catalog, the titles in catalog order and `JellyfinCollectionSync`
+applies it: it finds the BoxSet by its `CurrentsCatalog` provider id (an admin may rename it), creates it locked when
+missing, appends new titles and removes only Currents titles that left the catalog. Items added by hand stay. A name
+taken by a collection Currents does not own becomes "{name} (Currents)"; two ticked catalogs with one name become
+"{name} ({type})".
+
+### Compat guard
+`CompatState` is created at registration from the server version (or `CURRENTS_COMPAT_TEST_VERSION`) and read on every
+call by the decorator, `PlaybackInfoFilter` and `SegmentRequestFilter`. See `docs/adr/0006-compat-guard-as-a-runtime-switch.md`.
+
+### Known limitations
+- The series runtime is the reference for TheIntroDB episodes, so episodes far from the typical length lose markers under a
+  strict tolerance.
+- IMDb-keyed anime get no AniSkip markers (AniSkip needs an anime-provider id); TheIntroDB covers them.
+- Unticking Collection leaves the BoxSet in place.
+- The first collection creates Jellyfin's Collections library and runs one full library scan.
+- TheIntroDB's daily limit (500 requests anonymously) fills a large library over several days; Currents pauses for the
+  `Retry-After` of a 429 and the next run continues.
+- Diagnostics "Recent problems" is an in-memory list of the last 50 events, lost on restart.
+
 ## Admin API
 `Web/AdminController` (admin only), used by the configuration page:
 - `POST /Currents/admin/catalogs` with JSON body `{"ManifestUrl": "..."}` lists AIOMetadata catalogs.
 - `POST /Currents/admin/test-streams` with JSON body `{"ManifestUrl": "..."}` tests an AIOStreams manifest.
 - `GET /Currents/admin/paths` returns the Movies/Shows folders to add as libraries.
 - `POST /Currents/admin/sync` starts a sync now.
+- `GET /Currents/admin/diagnostics` (`Web/DiagnosticsController`) returns the compat state, whether versions and skip
+  markers are on, whether a TheIntroDB or PublicMetaDB key is set (never the key), stream and skip-marker cache hit
+  rates, the number of probed files and the recent problems.
+- `POST /Currents/admin/diagnostics/test` runs the connection tests: AIOStreams, AIOMetadata, RemuxDB and each marker
+  source. Each reports `ok`, `off` (not configured) or a failure.
 
 Manifest URLs travel in request bodies, never query strings, because they contain credentials.
 
@@ -313,6 +393,10 @@ that URL itself, and falls back to a full server transcode only if that fails. C
 With versions on, the `IMediaSourceManager` decorator forces streaming through Jellyfin (`SupportsDirectPlay=false`)
 and ffmpeg uses the internal loopback URL instead.
 
+Degraded mode also applies on a Jellyfin version outside the tested range `[12.0, 13.0)`, unless the admin ticks "Run on
+this untested Jellyfin version" (see "Extras (M5)"). Skip markers then show only when "markers when the runtime is
+unknown" is on, because Currents cannot tell which file plays.
+
 ## Module rules
 - `Integration/` is the only folder that touches Jellyfin internals. Everything else is unit-tested with fakes.
 - Outbound HTTP goes through named clients with rate limiting, retries and a circuit breaker (`Clients/Http`). The
@@ -321,5 +405,4 @@ and ffmpeg uses the internal loopback URL instead.
 - Secrets never reach logs (`Common/SecretMasker`).
 
 ## Planned (later milestones)
-M5 segments/collections/maintenance/compat guard/diagnostics (including "Purge Currents content"), M6 releases, the
-`/Search/Hints` decision and the `targetAbi` decision.
+M6 releases, the `/Search/Hints` decision and the `targetAbi` decision.

@@ -125,6 +125,37 @@ Currents only manages title folders that carry its `.currents` marker file:
   holds other files (posters, subtitles, season NFOs Jellyfin saved there, your own files), those files, the marker
   and the folder all stay, so the title can be written into the same folder again if it returns to a catalog.
 
+## Skip markers, collections and maintenance
+- **Skip markers.** Jellyfin's "Skip intro" and "Skip credits" prompts work on Currents titles. Markers come from
+  TheIntroDB, AniSkip (anime) and, with a key, PublicMetaDB. Jellyfin keeps one set of markers per title, but each
+  version is a different file, so Currents offers markers only on versions whose length is within the allowed
+  difference of the length the markers were made for. Other versions get none.
+  Settings under **Skip markers**: on or off (default on), *Allowed length difference* (default 2 %, 1-10 %),
+  *Also offer markers when a version's length is unknown* (default off), and optional TheIntroDB and PublicMetaDB
+  keys. TheIntroDB works without a key but limits anonymous use to 500 requests a day, so a big library fills over a
+  few days. Markers are fetched by Jellyfin's "Extract media segments" task and by "Fetch skip markers", never while
+  you play.
+- **Collections.** Tick **Collection** on a catalog to keep a Jellyfin collection of its titles, in catalog order.
+  The first one creates Jellyfin's Collections library and runs one library scan. Currents removes only its own titles
+  from a collection; items you added stay. Unticking Collection leaves the collection in place.
+- **Tasks.** Dashboard -> Scheduled Tasks, under "Currents":
+  - *Sync AIOMetadata catalogs*: the catalog sync.
+  - *Fetch skip markers*: finds markers for every Currents title (manual; a sync that adds titles queues it).
+  - *Clear stream cache*: forgets cached stream lists, so the next open searches AIOStreams again.
+  - *Verify library*: rewrites titles whose files are missing and drops saved settings of deleted Jellyfin users.
+  - *Purge Currents content*: removes every Currents title, the sync state, and the probe and skip-marker caches.
+    The next sync writes the enabled catalogs again. Use it to start over.
+- **Untested Jellyfin versions.** Currents was tested on Jellyfin 12.x. On another version it stands down: titles play
+  through their `.strm` files, a warning appears in the Dashboard activity log and a banner on the plugin page. Tick
+  **Run on this untested Jellyfin version** to turn Currents on anyway; no restart is needed.
+- **Diagnostics.** On the plugin page, **Run connection tests** checks AIOStreams, AIOMetadata, RemuxDB
+  and each marker source (a source without a key shows `off`). The panel also shows whether versions are active or
+  degraded, cache hit rates for stream lists and skip markers, and the last 50 problems (kept in memory, cleared on
+  restart).
+
+Upgrading to 0.5.0: skip markers are on by default. The first run of "Fetch skip markers" (queued after the next sync
+that adds titles) or Jellyfin's "Extract media segments" fills them in. Turn them off under **Skip markers**.
+
 ## Development
 See [`dev/README.md`](dev/README.md), [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/architecture.md`](docs/architecture.md).
 

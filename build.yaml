@@ -1,6 +1,6 @@
 name: "Currents"
 guid: "483F31F4-DB4A-4900-A3B5-EE0FBA5084AC"
-version: "0.4.0.0"
+version: "0.5.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 owner: "survivalizer"
@@ -11,4 +11,4 @@ description: >
 category: "General"
 artifacts:
   - "Jellyfin.Plugin.Currents.dll"
-changelog: "Media: full track lists before playback (RemuxDB and AIOStreams media info); track choices that play the chosen track; probe results kept across restarts; stream subtitles and AIOStreams subtitle search; YouTube trailers; streams that need request headers."
+changelog: "Extras: skip-intro and credits markers (TheIntroDB, AniSkip, PublicMetaDB) offered only on versions of the right length; optional Jellyfin collections per catalog; Verify library, Purge Currents content and Clear stream cache tasks; a guard for untested Jellyfin versions; a diagnostics panel with connection tests."
