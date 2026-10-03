@@ -267,7 +267,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 | **M5 Extras** | Segments, collections, maintenance tasks, compat guard, diagnostics | Tasks run; guard verified on fake version |
 | **M6 Release** | Release pipeline, manifest, docs, client matrix pass | v1.0.0 installable from repo URL |
 
-> **M5 amendment (2026-10-03).** The exit criterion is checked at unit level and on the dev stack (`docs/spikes/2026-10-m5-e2e.md`): the five Currents tasks run, skip markers appear only on versions of the right length, a collection follows its catalog, and the compat guard stands down on a fake Jellyfin 13.0 (`CURRENTS_COMPAT_TEST_VERSION`) and comes back when forced on, with no restart.
+> **M5 amendment (2026-10-03).** The exit criterion is checked at unit level and on the dev stack (`docs/spikes/2026-10-m5-e2e.md`): the five Currents tasks run, skip markers appear only on versions of the right length, a collection follows its catalog, and the compat guard stands down on a fake Jellyfin 13.0 (`CURRENTS_COMPAT_TEST_VERSION`) and comes back when forced on, with no restart. Two gaps stay open from that run: Purge empties the Currents folders, but Jellyfin skips a library folder that is empty, so the purged titles stay listed until the next sync writes files again; and the first collection once came out in premiere-date order instead of catalog order (later ones kept catalog order).
 
 ## 11. Risks
 
