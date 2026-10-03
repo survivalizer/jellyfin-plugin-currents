@@ -77,3 +77,29 @@ shows an AIOMetadata card with a poster, and opening it adds the title and shows
 | Streamyfin | | M6 | M6 | |
 | Moonfin | | M6 | M6 | |
 | External player (VLC/MX) | | M6 | M6 | |
+
+## M6: release pass
+
+Tested against the 1.0 release candidate (branch `feat/m6`) on Jellyfin 12.1.
+
+| Client | Version | Browse and versions | Play, seek, resume | Subtitles | Skip prompt | Collections | Search | Notes |
+|---|---|---|---|---|---|---|---|---|
+| Jellyfin Web | 12.1 (Chromium) | works | works | caveats | not tested | not tested | works | M6 e2e (`docs/spikes/2026-10-m6-e2e.md`, Step 7): 20 versions listed, switching plays the picked version and is remembered; first frame 8-20 s, seek and Resume at the right point. Subtitles: the downloaded subtitle shows (cue rendered) but, when preselected, only after switching it off and on; after a probe, an over-limit version's player menu still lists built-in SUBRIP tracks that answer 404 (Defect 2). Skip prompt: no dev title had markers fitting a version and TheIntroDB answered 429 (M5 verified the prompt). Collections: no catalog had a collection on the dev server (M5 verified them). Search: posters, open adds the title, plays |
+| Moonfin (macOS) | | to test | to test | to test | to test | to test | to test | maintainer, checklist below |
+| Android TV | | optional | optional | optional | optional | optional | optional | when the device is at hand |
+| Moonfin (TV) | | optional | optional | optional | optional | optional | optional | when the device is at hand |
+| Swiftfin, Findroid, Infuse, Streamyfin, external players | | not tested in M6 | | | | | | reports welcome (issue template) |
+
+### Moonfin (macOS) checklist
+
+Sign in as a user with versions on. For each line write works / caveats / broken and a note.
+
+1. Browse the Currents Movies and Shows libraries: posters and titles show.
+2. Open a movie: is there a version picker? Pick the second version: it stays selected.
+3. Play: note the time to the first frame. Seek forward once. Stop, reopen: Resume is offered at the right point.
+4. Audio: switch to another audio track while playing.
+5. Subtitles: turn on a subtitle from AIOStreams or one downloaded in Jellyfin. If a small file (under 15 GB) has a built-in subtitle, try it too.
+6. Open a series, play an episode, let it reach the end or skip to the next episode.
+7. Skip intro: on an episode with an intro marker, does a skip prompt appear?
+8. Collections: is a Currents collection listed?
+9. Search for a title that is not in the library: does it appear, and does opening it add and play it?
