@@ -4,6 +4,7 @@ using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Clients.Posters;
 using Jellyfin.Plugin.Currents.Clients.RemuxDb;
 using Jellyfin.Plugin.Currents.Common;
+using Jellyfin.Plugin.Currents.Features.Subtitles;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Metadata;
@@ -14,6 +15,7 @@ using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
+using MediaBrowser.Controller.Subtitles;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -55,6 +57,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { MaxAutomaticRedirections = 5, AutomaticDecompression = System.Net.DecompressionMethods.All })
             .RemoveAllLoggers();
         serviceCollection.AddSingleton<SubtitleDownloader>();
+        serviceCollection.AddSingleton<ISubtitleProvider, CurrentsSubtitleProvider>();
         serviceCollection.AddHttpClient(HttpClientNames.Resolve, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(15);

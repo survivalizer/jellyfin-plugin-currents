@@ -65,6 +65,14 @@ public class ServiceRegistratorTests
     }
 
     [Fact]
+    public async Task Subtitle_provider_is_registered_for_jellyfin()
+    {
+        await using var provider = Register().BuildServiceProvider();
+
+        Assert.Contains(provider.GetServices<MediaBrowser.Controller.Subtitles.ISubtitleProvider>(), p => p is Jellyfin.Plugin.Currents.Features.Subtitles.CurrentsSubtitleProvider);
+    }
+
+    [Fact]
     public async Task Media_source_manager_is_decorated()
     {
         await using var provider = Register().BuildServiceProvider();

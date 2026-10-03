@@ -1,6 +1,8 @@
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
+using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using Xunit;
@@ -72,7 +74,7 @@ public sealed class CurrentsItemLocatorTests : IDisposable
         Assert.False(Create().TryGetTitle(outside, out _));
         Assert.False(Create().TryGetTitle(series, out _));
         Assert.False(Create().TryGetTitle(missing, out _));
-        Assert.False(Create().TryGetTitle(null, out _));
+        Assert.False(Create().TryGetTitle((BaseItem?)null, out _));
     }
 
     [Fact]
@@ -86,5 +88,16 @@ public sealed class CurrentsItemLocatorTests : IDisposable
 
         Assert.True(locator.TryGetTitle(new Movie { Path = path }, out var title));
         Assert.Equal("tt4", title!.StremioId);
+    }
+
+    [Fact]
+    public void A_strm_path_alone_identifies_the_title()
+    {
+        var path = Strm("Shows/Show/Season 01/Show S01E03.strm", Signed("series", "tt2:1:3"));
+
+        Assert.True(Create().TryGetTitle(path, out var title));
+        Assert.Equal(new CurrentsTitle("series", "tt2:1:3"), title);
+        Assert.False(Create().TryGetTitle(Path.Combine(_settings.DataFolderPath, "elsewhere", "Y.strm"), out _));
+        Assert.False(Create().TryGetTitle((string?)null, out _));
     }
 }

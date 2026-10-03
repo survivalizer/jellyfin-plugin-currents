@@ -77,6 +77,33 @@ public sealed class AioStreamsClient : IAioStreamsClient
         throw new AioStreamsException($"AIOStreams returned {(int)response.StatusCode} for {SecretMasker.Mask(uri)}.");
     }
 
+    public async Task<IReadOnlyList<StremioSubtitle>> SubtitlesAsync(AioStreamsCredentials credentials, string type, string id, CancellationToken cancellationToken)
+    {
+        var uri = credentials.Subtitles(type, id);
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        var client = _httpClientFactory.CreateClient(HttpClientNames.AioStreams);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return [];
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new AioStreamsException($"AIOStreams returned {(int)response.StatusCode} for {SecretMasker.Mask(uri)}.");
+        }
+
+        var body = await ReadBodyAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return JsonSerializer.Deserialize<SubtitlesResponse>(body, JsonDefaults.Options)?.Subtitles ?? [];
+        }
+        catch (JsonException ex)
+        {
+            throw new AioStreamsException($"AIOStreams returned invalid JSON for {SecretMasker.Mask(uri)}.", ex);
+        }
+    }
+
     private async Task<string> ReadBodyAsync(HttpContent content, CancellationToken cancellationToken)
     {
         if (content.Headers.ContentLength > _maxBodyBytes)

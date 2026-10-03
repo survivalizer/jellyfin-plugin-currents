@@ -23,7 +23,17 @@ public sealed class CurrentsItemLocator
     public bool TryGetTitle(BaseItem? item, [NotNullWhen(true)] out CurrentsTitle? title)
     {
         title = null;
-        if (item is not Video || item.Path is not { } path || !path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase))
+        return item is Video && TryGetTitle(item.Path, out title);
+    }
+
+    /// <summary>Recognises a Currents .strm by its path (Jellyfin's subtitle search only passes the media path).</summary>
+    /// <param name="path">The media path.</param>
+    /// <param name="title">The title when the path is a Currents .strm.</param>
+    /// <returns>True for a Currents .strm.</returns>
+    public bool TryGetTitle(string? path, [NotNullWhen(true)] out CurrentsTitle? title)
+    {
+        title = null;
+        if (path is null || !path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }

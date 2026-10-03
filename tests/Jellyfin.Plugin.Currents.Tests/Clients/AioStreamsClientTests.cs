@@ -146,4 +146,30 @@ public class AioStreamsClientTests
         Assert.Equal(2, result.Subtitles!.Count);
         Assert.Equal("https://subs.example.com/file/123", result.Subtitles[0].Url);
     }
+
+    [Fact]
+    public async Task Subtitles_use_the_path_authenticated_stremio_route()
+    {
+        var (client, stub) = Create(_ => StubHttpHandler.Json("""{ "subtitles": [ { "id": "1", "url": "https://subs.example.com/1", "lang": "eng" } ] }"""));
+
+        var subtitles = await client.SubtitlesAsync(Creds(), "series", "tt1:1:2", CancellationToken.None);
+
+        var uri = stub.Requests[0].AbsoluteUri;
+        Assert.StartsWith("https://aio.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/pw/subtitles/series/tt1", uri, StringComparison.Ordinal);
+        Assert.EndsWith("2.json", uri, StringComparison.Ordinal);
+        Assert.Null(stub.LastAuthorization);
+        Assert.Equal("https://subs.example.com/1", Assert.Single(subtitles).Url);
+    }
+
+    [Fact]
+    public async Task Subtitle_errors_hide_the_password_and_missing_lists_are_empty()
+    {
+        var (failing, _) = Create(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var (missing, _) = Create(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var ex = await Assert.ThrowsAsync<AioStreamsException>(() => failing.SubtitlesAsync(Creds(), "movie", "tt1", CancellationToken.None));
+
+        Assert.DoesNotContain("/pw/", ex.Message, StringComparison.Ordinal);
+        Assert.Empty(await missing.SubtitlesAsync(Creds(), "movie", "tt1", CancellationToken.None));
+    }
 }

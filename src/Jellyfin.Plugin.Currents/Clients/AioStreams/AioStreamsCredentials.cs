@@ -55,6 +55,13 @@ public sealed record AioStreamsCredentials(Uri BaseUri, string Uuid, string Pass
     public Uri Search(string type, string id) =>
         new(BaseUri, $"api/v1/search?type={Uri.EscapeDataString(type)}&id={Uri.EscapeDataString(id)}");
 
+    /// <summary>Builds the Stremio subtitles URI. The password is in the path: mask it before logging.</summary>
+    /// <param name="type">The Stremio type.</param>
+    /// <param name="id">The Stremio id (tt…, tt…:S:E).</param>
+    /// <returns>The subtitles URI.</returns>
+    public Uri Subtitles(string type, string id) =>
+        new(BaseUri, $"stremio/{Uri.EscapeDataString(Uuid)}/{Uri.EscapeDataString(Password)}/subtitles/{Uri.EscapeDataString(type)}/{Uri.EscapeDataString(id)}.json");
+
     /// <summary>A short, non-reversible id for this config, for cache keys.</summary>
     /// <returns>24 lower-case hex characters.</returns>
     public string Fingerprint() =>
