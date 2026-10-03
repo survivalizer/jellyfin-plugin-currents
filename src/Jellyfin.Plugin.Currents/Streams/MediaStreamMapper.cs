@@ -46,41 +46,6 @@ public static class MediaStreamMapper
         ["7.1"] = (8, "7.1"),
     };
 
-    // ISO 639-2/B codes, as ffprobe reports them.
-    private static readonly Dictionary<string, string> LanguageCodes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["English"] = "eng",
-        ["Japanese"] = "jpn",
-        ["French"] = "fre",
-        ["German"] = "ger",
-        ["Spanish"] = "spa",
-        ["Italian"] = "ita",
-        ["Portuguese"] = "por",
-        ["Russian"] = "rus",
-        ["Korean"] = "kor",
-        ["Chinese"] = "chi",
-        ["Hindi"] = "hin",
-        ["Arabic"] = "ara",
-        ["Dutch"] = "dut",
-        ["Polish"] = "pol",
-        ["Turkish"] = "tur",
-        ["Swedish"] = "swe",
-        ["Danish"] = "dan",
-        ["Norwegian"] = "nor",
-        ["Finnish"] = "fin",
-        ["Czech"] = "cze",
-        ["Hungarian"] = "hun",
-        ["Greek"] = "gre",
-        ["Hebrew"] = "heb",
-        ["Thai"] = "tha",
-        ["Vietnamese"] = "vie",
-        ["Indonesian"] = "ind",
-        ["Ukrainian"] = "ukr",
-        ["Tamil"] = "tam",
-        ["Telugu"] = "tel",
-        ["Malayalam"] = "mal",
-    };
-
     private static readonly HashSet<string> NotLanguages = new(StringComparer.OrdinalIgnoreCase)
     {
         "Unknown", "Multi", "Dual Audio", "Dubbed", "Original",
@@ -276,7 +241,7 @@ public static class MediaStreamMapper
 
         if (languages.Count == 1)
         {
-            audio.Language = LanguageCodes.TryGetValue(languages[0], out var code) ? code : null;
+            audio.Language = LanguageCodes.ToIso6392(languages[0]);
         }
         else if (languages.Count > 1)
         {

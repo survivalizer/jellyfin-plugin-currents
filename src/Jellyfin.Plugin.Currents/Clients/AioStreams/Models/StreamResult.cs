@@ -30,4 +30,7 @@ public sealed class StreamResult
     public ParsedFile? ParsedFile { get; set; }
 
     public Dictionary<string, string>? RequestHeaders { get; set; }
+
+    /// <summary>Gets or sets subtitles that came with this stream (release-specific).</summary>
+    public List<StremioSubtitle>? Subtitles { get; set; }
 }

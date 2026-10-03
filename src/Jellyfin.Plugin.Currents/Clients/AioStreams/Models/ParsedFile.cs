@@ -22,4 +22,11 @@ public sealed class ParsedFile
     public string? Container { get; set; }
 
     public string? Extension { get; set; }
+
+    /// <summary>Gets or sets where the track lists came from ("probe", "indexer" or "addon"); null when AIOStreams only parsed the name.</summary>
+    public string? MediaInfoQuality { get; set; }
+
+    public List<MediaTrack>? AudioTracks { get; set; }
+
+    public List<MediaTrack>? SubtitleTracks { get; set; }
 }

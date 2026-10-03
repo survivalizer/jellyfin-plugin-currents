@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "data": {
+    "results": [
+      {
+        "url": "https://aio.example.com/api/v1/debrid/playback/ENC/x/Show.S01E01.mkv",
+        "filename": "Show.S01E01.1080p.WEB-DL.mkv",
+        "infoHash": "f1c8b4ba4ae611494ffb09958241165aaf1f07db",
+        "fileIdx": 3,
+        "parsedFile": {
+          "resolution": "1080p", "encode": "AVC", "audioTags": ["DD+"], "audioChannels": ["5.1"],
+          "visualTags": [], "languages": ["English", "French"],
+          "mediaInfoQuality": "probe",
+          "audioTracks": [
+            { "lang": "eng", "codec": "eac3", "channels": "5.1", "default": true },
+            { "lang": "fra", "codec": "ac3", "channels": 2, "title": "VF" }
+          ],
+          "subtitleTracks": [ { "lang": "eng", "codec": "subrip", "forced": true }, { "lang": "fre" } ]
+        },
+        "subtitles": [
+          { "id": "123", "url": "https://subs.example.com/file/123", "lang": "eng", "SubEncoding": "UTF-8" },
+          { "id": "error.Addon", "url": "https://github.com/Viren070/AIOStreams", "lang": "[❌] Addon - failed" }
+        ]
+      }
+    ],
+    "errors": [],
+    "statistics": []
+  }
+}

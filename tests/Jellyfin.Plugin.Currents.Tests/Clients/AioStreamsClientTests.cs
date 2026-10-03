@@ -130,4 +130,20 @@ public class AioStreamsClientTests
 
         Assert.Equal(2, outcome.Results.Count);
     }
+
+    [Fact]
+    public async Task Track_lists_and_stream_subtitles_are_read()
+    {
+        var (client, _) = Create(_ => StubHttpHandler.Json(Fixture.Read("aiostreams/search-tracks.json")));
+
+        var result = Assert.Single((await client.SearchAsync(Creds(), "series", "tt1:1:1", CancellationToken.None)).Results);
+
+        Assert.Equal("probe", result.ParsedFile!.MediaInfoQuality);
+        Assert.Equal(new[] { "eng", "fra" }, result.ParsedFile.AudioTracks!.Select(t => t.Lang));
+        Assert.Equal(new[] { "5.1", "2" }, result.ParsedFile.AudioTracks!.Select(t => t.Channels));
+        Assert.True(result.ParsedFile.AudioTracks![0].Default);
+        Assert.True(result.ParsedFile.SubtitleTracks![0].Forced);
+        Assert.Equal(2, result.Subtitles!.Count);
+        Assert.Equal("https://subs.example.com/file/123", result.Subtitles[0].Url);
+    }
 }
