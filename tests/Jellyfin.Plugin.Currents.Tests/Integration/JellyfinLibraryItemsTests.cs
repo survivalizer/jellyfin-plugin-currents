@@ -28,6 +28,7 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
     private readonly User _alice = new("alice", "Default", "Default");
     private readonly Folder _moviesFolder;
     private readonly HashSet<Guid> _created = [];
+    private readonly Dictionary<Guid, string> _paths = [];
 
     public JellyfinLibraryItemsTests()
     {
@@ -39,7 +40,7 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
             .On(nameof(ILibraryManager.FindByPath), args => (string)args[0]! == paths.Movies && (bool?)args[1] == true ? _moviesFolder : null)
             .On(nameof(ILibraryManager.GetContentType), _ => CollectionType.movies)
             .On(nameof(ILibraryManager.GetCollectionFolders), args => args[0] == _moviesFolder ? new List<Folder> { new CollectionFolder { Id = MoviesLibrary } } : new List<Folder>())
-            .On(nameof(ILibraryManager.GetItemById), args => _created.Contains((Guid)args[0]!) ? new Movie { Id = (Guid)args[0]! } : null)
+            .On(nameof(ILibraryManager.GetItemById), args => _created.Contains((Guid)args[0]!) ? new Movie { Id = (Guid)args[0]!, Path = _paths.GetValueOrDefault((Guid)args[0]!) ?? Path.Combine(paths.Movies, "X", "x.strm") } : null)
             .On(nameof(ILibraryManager.CreateItem), args =>
             {
                 _created.Add(((BaseItem)args[0]!).Id);
@@ -81,6 +82,18 @@ public sealed class JellyfinLibraryItemsTests : IDisposable
         Assert.Equal(found, ((BaseItem)call[0]!).Id);
         Assert.False(((DeleteOptions)call[1]!).DeleteFileLocation);
         Assert.Equal(true, call[2]);
+    }
+
+    [Fact]
+    public void Remove_items_leaves_items_outside_the_currents_library()
+    {
+        var own = Guid.NewGuid();
+        _created.Add(own);
+        _paths[own] = Path.Combine(_settings.DataFolderPath, "elsewhere", "film.mkv");
+
+        Create().RemoveItems([own]);
+
+        Assert.Empty(_library.Fake.Calls(nameof(ILibraryManager.DeleteItem)));
     }
 
     private string Root => LibraryPaths.FromSettings(_settings).Root;

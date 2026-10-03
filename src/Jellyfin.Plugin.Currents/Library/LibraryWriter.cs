@@ -8,7 +8,7 @@ namespace Jellyfin.Plugin.Currents.Library;
 /// <summary>Writes titles as .strm + .nfo files. Writes are atomic and idempotent.</summary>
 public sealed class LibraryWriter
 {
-    private const string MarkerFile = ".currents";
+    internal const string MarkerFile = ".currents";
     private static readonly string[] SubtitleExtensions = [".srt", ".vtt", ".ass", ".ssa", ".sub", ".idx", ".sup", ".smi"];
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private readonly LibraryPaths _paths;

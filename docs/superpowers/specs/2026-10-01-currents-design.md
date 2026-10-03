@@ -188,6 +188,7 @@ Per catalog, optional Jellyfin BoxSet kept in sync with catalog membership each 
 > - The first collection creates Jellyfin's Collections library, which runs one full library scan.
 > - Currents removes only Currents titles from its collections; items an admin added by hand stay.
 > - Unticking a catalog leaves its collection in place.
+> - Currents restores `DisplayOrder` "Default" on its collections each sync, which overrides a manual sort on a Currents collection.
 > - When a collection name is taken by a collection Currents does not own, Currents uses "{name} (Currents)". Two ticked catalogs with the same name are told apart as "{name} ({type})".
 
 ### 5.7 Upgrade safety
@@ -196,7 +197,7 @@ Per catalog, optional Jellyfin BoxSet kept in sync with catalog membership each 
 
 > **M5 amendments (2026-10-03).**
 > - **Compat guard as a runtime switch** (ADR 0006). The decorator and filters are always registered and stand down at runtime outside the tested range `[12.0, 13.0)`, unless the admin ticks "Run on this untested Jellyfin version". This replaces "decorator not registered"; force-enable needs no restart. Search stays governed by its own switch. A Jellyfin whose interfaces changed fails to load the plugin before any guard runs.
-> - **Purge and Verify.** "Purge Currents content" removes every Currents title, the sync state, and the probe and skip-marker caches, then refreshes the library; the next sync writes the enabled catalogs again. "Verify library" rewrites titles whose files are missing and drops `users.json` records of deleted Jellyfin users. Jellyfin's own subtitle-extraction cache is left to Jellyfin's cache cleanup.
+> - **Purge and Verify.** "Purge Currents content" removes every Currents title, the sync state, and the probe and skip-marker caches, then removes the purged titles' Jellyfin entries (only for folders Currents actually removed) and refreshes the library; the next sync writes the enabled catalogs again. "Verify library" rewrites titles whose files are missing and drops `users.json` records of deleted Jellyfin users. Jellyfin's own subtitle-extraction cache is left to Jellyfin's cache cleanup.
 
 ## 6. Multi-user (D5)
 
@@ -267,7 +268,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 | **M5 Extras** | Segments, collections, maintenance tasks, compat guard, diagnostics | Tasks run; guard verified on fake version |
 | **M6 Release** | Release pipeline, manifest, docs, client matrix pass | v1.0.0 installable from repo URL |
 
-> **M5 amendment (2026-10-03).** The exit criterion is checked at unit level and on the dev stack (`docs/spikes/2026-10-m5-e2e.md`): the five Currents tasks run, skip markers appear only on versions of the right length, a collection follows its catalog, and the compat guard stands down on a fake Jellyfin 13.0 (`CURRENTS_COMPAT_TEST_VERSION`) and comes back when forced on, with no restart. Two gaps stay open from that run: Purge empties the Currents folders, but Jellyfin skips a library folder that is empty, so the purged titles stay listed until the next sync writes files again; and the first collection once came out in premiere-date order instead of catalog order (later ones kept catalog order).
+> **M5 amendment (2026-10-03).** The exit criterion is checked at unit level and on the dev stack (`docs/spikes/2026-10-m5-e2e.md`): the five Currents tasks run, skip markers appear only on versions of the right length, a collection follows its catalog, and the compat guard stands down on a fake Jellyfin 13.0 (`CURRENTS_COMPAT_TEST_VERSION`) and comes back when forced on, with no restart. Two gaps from that run were fixed afterwards (32e37e8, e5956a2; unit-tested, dev-stack re-check pending): Purge now also removes the purged titles' Jellyfin entries (Jellyfin skips an empty library folder, so a refresh alone left them listed), and Currents restores `DisplayOrder` "Default" on its collections (the first collection once came out in premiere-date order).
 
 ## 11. Risks
 

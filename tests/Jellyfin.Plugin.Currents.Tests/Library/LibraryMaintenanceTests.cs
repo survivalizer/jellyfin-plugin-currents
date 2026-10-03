@@ -182,7 +182,8 @@ public sealed class LibraryMaintenanceTests : IDisposable
         Assert.Equal(0, new SegmentStore(_settings, Time).Count);
         Assert.Equal(1, _streams.Clears);
         Assert.Single(_refresher.Refreshed);
-        Assert.Equal(new[] { alphaItem, betaItem }.Order(), _items.Removed.Order());
+        // Alpha's folder stays (it holds a user file), so Jellyfin keeps its item.
+        Assert.Equal(new[] { betaItem }, _items.Removed);
     }
 
     [Fact]
@@ -198,6 +199,31 @@ public sealed class LibraryMaintenanceTests : IDisposable
         Assert.Equal(2, removed);
         Assert.Equal(new[] { betaItem }, _items.Removed);
         Assert.False(Directory.Exists(Folder(alpha)));
+    }
+
+    [Fact]
+    public async Task Purge_keeps_the_jellyfin_item_of_an_unmarked_folder()
+    {
+        var alpha = AddMovie("tt1", "Alpha");
+        File.Delete(Path.Combine(Folder(alpha), ".currents"));
+        _items.Titles[alpha.StateId] = Guid.NewGuid();
+
+        await Create().PurgeAsync(new Progress<double>(), CancellationToken.None);
+
+        Assert.Empty(_items.Removed);
+        Assert.True(Directory.Exists(Folder(alpha)));
+    }
+
+    [Fact]
+    public async Task Purge_keeps_the_jellyfin_item_of_a_folder_kept_for_foreign_files()
+    {
+        var alpha = AddMovie("tt1", "Alpha");
+        File.WriteAllText(Path.Combine(Folder(alpha), "notes.txt"), "mine");
+        _items.Titles[alpha.StateId] = Guid.NewGuid();
+
+        await Create().PurgeAsync(new Progress<double>(), CancellationToken.None);
+
+        Assert.Empty(_items.Removed);
     }
 
     [Fact]

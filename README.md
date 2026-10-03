@@ -143,7 +143,8 @@ Currents only manages title folders that carry its `.currents` marker file:
   - *Fetch skip markers*: finds markers for every Currents title (manual; a sync that adds titles queues it).
   - *Clear stream cache*: forgets cached stream lists, so the next open searches AIOStreams again.
   - *Verify library*: rewrites titles whose files are missing and drops saved settings of deleted Jellyfin users.
-  - *Purge Currents content*: removes every Currents title (files and their Jellyfin entries), the sync state, and the probe and skip-marker caches.
+  - *Purge Currents content*: removes every Currents title (files and their Jellyfin entries), the sync state, and
+    the probe and skip-marker caches.
     The next sync writes the enabled catalogs again. Use it to start over.
 - **Untested Jellyfin versions.** Currents was tested on Jellyfin 12.x. On another version it stands down: titles play
   through their `.strm` files, a warning appears in the Dashboard activity log and a banner on the plugin page. Tick

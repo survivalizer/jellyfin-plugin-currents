@@ -157,7 +157,17 @@ public sealed class JellyfinLibraryItems : ILibraryItems
         {
             try
             {
-                if (_library.GetItemById(id) is { } item)
+                if (_library.GetItemById(id) is not { } item)
+                {
+                    continue;
+                }
+
+                if (!IsUnderRoot(item.Path))
+                {
+                    _logger.LogDebug("Not removing library item {Id}: it is not under the Currents library", id);
+                    continue;
+                }
+
                 {
                     _library.DeleteItem(item, new DeleteOptions { DeleteFileLocation = false }, notifyParentItem: true);
                 }
@@ -205,6 +215,12 @@ public sealed class JellyfinLibraryItems : ILibraryItems
         }
 
         yield return (CurrentsProviderIds.Currents, key.StremioId);
+    }
+
+    private bool IsUnderRoot(string? path)
+    {
+        var root = Paths().Root + Path.DirectorySeparatorChar;
+        return path is not null && Path.GetFullPath(path).StartsWith(root, OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
     }
 
     private LibraryPaths Paths() => LibraryPaths.FromSettings(_settings);

@@ -134,6 +134,7 @@ public sealed class LibraryMaintenance
         using var job = await _jobs.EnterAsync(cancellationToken).ConfigureAwait(false);
         var writer = _titles.CreateWriter();
         var itemIds = new List<Guid>();
+        var root = LibraryPaths.FromSettings(_settings).Root;
         var removed = _titles.Use(state =>
         {
             var count = 0;
@@ -141,9 +142,12 @@ public sealed class LibraryMaintenance
             {
                 try
                 {
-                    var itemId = _items.FindTitle(title);
+                    // Only a folder Currents manages (marker present) and actually removed gives up its Jellyfin item.
+                    var folder = Path.Combine(root, title.Folder);
+                    var managed = File.Exists(Path.Combine(folder, LibraryWriter.MarkerFile));
+                    var itemId = managed ? _items.FindTitle(title) : null;
                     writer.Delete(title.Folder);
-                    if (itemId is { } id)
+                    if (itemId is { } id && !Directory.Exists(folder))
                     {
                         itemIds.Add(id);
                     }
