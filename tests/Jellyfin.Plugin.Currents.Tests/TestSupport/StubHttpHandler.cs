@@ -12,6 +12,8 @@ internal sealed class StubHttpHandler : HttpMessageHandler
 
     public List<Uri> Requests { get; } = [];
 
+    public List<(Uri Uri, Dictionary<string, string> Headers)> Sent { get; } = [];
+
     public AuthenticationHeaderValue? LastAuthorization { get; private set; }
 
     public static HttpResponseMessage Json(string json, HttpStatusCode status = HttpStatusCode.OK) =>
@@ -27,6 +29,7 @@ internal sealed class StubHttpHandler : HttpMessageHandler
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Requests.Add(request.RequestUri!);
+        Sent.Add((request.RequestUri!, request.Headers.ToDictionary(h => h.Key, h => string.Join(",", h.Value), StringComparer.OrdinalIgnoreCase)));
         LastAuthorization = request.Headers.Authorization;
         return Task.FromResult(_respond(request));
     }

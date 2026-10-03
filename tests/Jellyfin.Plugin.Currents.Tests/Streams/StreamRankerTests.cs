@@ -45,12 +45,12 @@ public class StreamRankerTests
     }
 
     [Fact]
-    public void Streams_needing_request_headers_are_dropped()
+    public void Streams_needing_request_headers_are_kept()
     {
         var headed = S("h");
         headed.RequestHeaders = new Dictionary<string, string> { ["Referer"] = "https://example.com" };
 
-        Assert.Equal(new[] { "a" }, Names(StreamRanker.Rank([headed, S("a")], new StreamPreferences())));
+        Assert.Equal(new[] { "h", "a" }, Names(StreamRanker.Rank([headed, S("a")], new StreamPreferences())));
     }
 
     [Fact]

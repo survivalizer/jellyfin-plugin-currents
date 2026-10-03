@@ -2,7 +2,7 @@ using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 
 namespace Jellyfin.Plugin.Currents.Streams;
 
-/// <summary>Filters and re-ranks AIOStreams results by preferences. The sort is stable: ties keep AIOStreams' order, which carries the user's own AIOStreams sort rules (spec §5.4).</summary>
+/// <summary>Filters and re-ranks AIOStreams results by preferences. Header-bound streams are kept; the resolver filters them per use. The sort is stable: ties keep AIOStreams' order, which carries the user's own AIOStreams sort rules (spec §5.4).</summary>
 public static class StreamRanker
 {
     public static IReadOnlyList<StreamResult> Rank(IEnumerable<StreamResult> results) => Rank(results, new StreamPreferences());
@@ -27,7 +27,6 @@ public static class StreamRanker
 
     private static bool IsPlayable(StreamResult result) =>
         result.Type is not ("error" or "statistic")
-        && (result.RequestHeaders is null || result.RequestHeaders.Count == 0)
         && Uri.TryCreate(result.Url, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 

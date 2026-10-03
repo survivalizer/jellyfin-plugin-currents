@@ -58,6 +58,15 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .RemoveAllLoggers();
         serviceCollection.AddSingleton<SubtitleDownloader>();
         serviceCollection.AddSingleton<ISubtitleProvider, CurrentsSubtitleProvider>();
+
+        // Long-lived byte streams to ffmpeg: no overall timeout, but connecting and the response headers are bounded (15 s).
+        serviceCollection.AddHttpClient(HttpClientNames.Proxy, client =>
+            {
+                client.Timeout = Timeout.InfiniteTimeSpan;
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, ConnectTimeout = TimeSpan.FromSeconds(15) })
+            .RemoveAllLoggers();
         serviceCollection.AddHttpClient(HttpClientNames.Resolve, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(15);

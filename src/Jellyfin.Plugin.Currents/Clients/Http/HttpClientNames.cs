@@ -9,4 +9,5 @@ public static class HttpClientNames
     public const string Posters = "Currents.Posters";
     public const string RemuxDb = "Currents.RemuxDb";
     public const string Subtitles = "Currents.Subtitles";
+    public const string Proxy = "Currents.Proxy";
 }

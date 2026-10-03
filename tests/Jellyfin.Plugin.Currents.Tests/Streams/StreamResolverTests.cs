@@ -131,7 +131,7 @@ public sealed class StreamResolverTests : IDisposable
     }
 
     [Fact]
-    public async Task Skips_streams_that_need_request_headers()
+    public async Task Degraded_strm_playback_skips_header_streams()
     {
         _streams.Outcome = new SearchOutcome(
             [
@@ -145,6 +145,52 @@ public sealed class StreamResolverTests : IDisposable
 
         Assert.Equal(new Uri("https://ok.example.com/b.mkv"), result.Url);
         Assert.DoesNotContain(new Uri("https://needs.example.com/a.mkv"), _http.Requests);
+        Assert.Null(result.Headers);
+    }
+
+    private VersionTicket Ticket(string url) => new(Guid.Empty, "movie", "tt1", KeyOf(url));
+
+    [Fact]
+    public async Task Version_resolves_carry_cleaned_headers_through_same_origin_redirects()
+    {
+        const string url = "https://dav.example.com/files/movie.mkv";
+        _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream(url, new() { ["Authorization"] = "Basic SECRET", ["X-Custom"] = "1", ["Host"] = "evil" })], []);
+        _routes[url] = () => StubHttpHandler.Redirect("https://dav.example.com/files/real.mkv");
+        _routes["https://dav.example.com/files/real.mkv"] = () => new HttpResponseMessage(HttpStatusCode.PartialContent);
+
+        var result = await Create().ResolveAsync(Ticket(url), CancellationToken.None);
+
+        Assert.Equal(new Uri("https://dav.example.com/files/real.mkv"), result.Url);
+        Assert.Equal(new[] { "Authorization", "X-Custom" }, result.Headers!.Keys.Order(StringComparer.Ordinal));
+        Assert.All(_http.Sent, s => Assert.Equal("Basic SECRET", s.Headers["Authorization"]));
+        Assert.DoesNotContain(_http.Sent, s => s.Headers.ContainsKey("Host"));
+    }
+
+    [Fact]
+    public async Task Credentials_are_dropped_on_cross_origin_redirects()
+    {
+        const string url = "https://dav.example.com/files/movie.mkv";
+        _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream(url, new() { ["Authorization"] = "Bearer SECRET", ["Cookie"] = "s=1", ["Referer"] = "https://dav.example.com/" })], []);
+        _routes[url] = () => StubHttpHandler.Redirect("https://cdn.example.net/signed/movie.mkv");
+        _routes["https://cdn.example.net/signed/movie.mkv"] = () => new HttpResponseMessage(HttpStatusCode.OK);
+
+        var result = await Create().ResolveAsync(Ticket(url), CancellationToken.None);
+
+        var cdn = _http.Sent.Single(s => s.Uri.Host == "cdn.example.net");
+        Assert.False(cdn.Headers.ContainsKey("Authorization"));
+        Assert.False(cdn.Headers.ContainsKey("Cookie"));
+        Assert.Equal("https://dav.example.com/", cdn.Headers["Referer"]);
+        Assert.Equal(new[] { "Referer" }, result.Headers!.Keys);
+    }
+
+    [Fact]
+    public async Task Streams_without_headers_resolve_without_headers()
+    {
+        const string url = "https://ok.example.com/b.mkv";
+        _streams.Outcome = new SearchOutcome([FakeAioStreamsClient.Stream(url)], []);
+        _routes[url] = () => new HttpResponseMessage(HttpStatusCode.OK);
+
+        Assert.Null((await Create().ResolveAsync(Ticket(url), CancellationToken.None)).Headers);
     }
 
     [Fact]

@@ -27,7 +27,7 @@ public class PlayControllerTests
             http.Request.Headers[header] = "203.0.113.9";
         }
 
-        return new(_resolver, _settings, _time, new LocalCallerPolicy(() => [])) { ControllerContext = new ControllerContext { HttpContext = http } };
+        return new(_resolver, _settings, _time, new LocalCallerPolicy(() => []), new FakeHttpClientFactory(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)))) { ControllerContext = new ControllerContext { HttpContext = http } };
     }
 
     private string Token(VersionTicket ticket, TimeSpan? lifetime = null) =>
@@ -179,5 +179,15 @@ public class PlayControllerTests
             LastTicket = ticket;
             return Task.FromResult(Result);
         }
+    }
+
+    [Fact]
+    public async Task Header_bound_versions_are_proxied_not_redirected()
+    {
+        _resolver.Result = new ResolveResult(new Uri("https://dav.example.com/real.mkv"), null, new Dictionary<string, string> { ["Authorization"] = "Basic SECRET" });
+
+        var result = await Create().PlayVersion(Token(new VersionTicket(Guid.Empty, "movie", "tt1", "k")), CancellationToken.None);
+
+        Assert.IsType<ProxyStreamResult>(result);
     }
 }
