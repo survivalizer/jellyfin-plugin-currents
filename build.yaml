@@ -1,6 +1,6 @@
 name: "Currents"
 guid: "483F31F4-DB4A-4900-A3B5-EE0FBA5084AC"
-version: "0.5.0.0"
+version: "1.0.0.0"
 targetAbi: "12.1.0.0"
 framework: "net10.0"
 owner: "survivalizer"
@@ -11,4 +11,4 @@ description: >
 category: "General"
 artifacts:
   - "Jellyfin.Plugin.Currents.dll"
-changelog: "Extras: skip-intro and credits markers (TheIntroDB, AniSkip, PublicMetaDB) offered only on versions of the right length; optional Jellyfin collections per catalog; Verify library, Purge Currents content and Clear stream cache tasks; a guard for untested Jellyfin versions; a diagnostics panel with connection tests."
+changelog: "1.0: requires Jellyfin 12.1. Poster and subtitle downloads reach only public addresses (plus your AIOStreams/AIOMetadata host and port); stream redirects to another site carry only harmless headers; built-in text subtitles are hidden on files over 15 GB (configurable) so playback never waits for Jellyfin to read the whole file; /Search/Hints lists AIOMetadata results; anonymous subtitle requests get 404 instead of 500; new configuration, self-service and troubleshooting guides."

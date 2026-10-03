@@ -107,6 +107,13 @@ docs/                                  architecture, configuration, ADRs, client
 > - **Afterwards.** Search-added series get new episodes on each catalog sync; titles added by search are never pruned (a catalog title that is only opened from search keeps its catalog origin and can still be pruned).
 > - **Deleted titles.** A search-added title deleted in Jellyfin (its folder is gone) is forgotten by the next catalog sync, not written again; a Movies/ or Shows/ root missing when the sync starts (e.g. an unmounted share) is not a deletion, and search-added series are then not rewritten. Opening a known title whose files are gone (no folder, or a movie without its `.strm`) fetches its meta again and writes it like a new add, in the old folder.
 
+> **M6 amendment (2026-10-03).** `/Search/Hints` (legacy clients) answers with remote results under the same rules as `GET /Items?searchTerm=`:
+> - a signed-in user with search-add on;
+> - a term of at least 2 characters;
+> - first page only;
+> - video media types only;
+> - kinds the user can add.
+
 ### 4.3 Playback
 1. **Item detail**: the decorated `IMediaSourceManager.GetStaticMediaSources` detects Currents items (path under a plugin root), resolves the requesting user from `IHttpContextAccessor`, and calls `IStreamService.GetStreams(user, item)` — cached per (user, title) for `StreamCacheTtl` (default 1h), single-flight to absorb duplicate web-client calls.
 2. **Mapping** each ranked stream to `MediaSourceInfo`:
@@ -129,6 +136,8 @@ docs/                                  architecture, configuration, ADRs, client
 
 > **M4 amendment (2026-10-02).** Streams that require request headers (`requestHeaders`) are proxied by the loopback version route (`/Currents/play/s/{token}`). It relays `Range` and the `206` answer and only content headers, never follows redirects (a 3xx or 5xx answer is a 502), and drops `Authorization`, `Cookie` and `Proxy-Authorization` on a cross-origin redirect. `StreamHeaders` drops reserved headers (Host, Range, Content-Length, hop-by-hop) and values with CR/LF. The headers stay server-side: no client field carries them. Degraded `.strm` playback skips header-bound streams, because its URL reaches clients.
 
+> **M6 amendment (2026-10-03).** On a cross-origin redirect the loopback version route carries only `User-Agent`, `Referer`, `Origin`, `Accept` and `Accept-Language`. This supersedes the M4 rule above that stripped only `Authorization`, `Cookie` and `Proxy-Authorization`.
+
 ### 4.4 Degraded mode
 `.strm` resolve URLs carry no user. If the decorator is disabled (manually or by the compat guard), playing a title uses the global default config with auto-selection. Titles, metadata, and watch state are unaffected. `StrmBaseUrl` must be reachable by clients, because clients may direct-play the resolve URL themselves and follow its redirect (M0 S4).
 
@@ -145,6 +154,8 @@ docs/                                  architecture, configuration, ADRs, client
 > - **Downloaded subtitles** that Jellyfin saves next to the `.strm` appear in every version (indexes 2000+).
 >
 > Deferred: automated subtitle downloads (scheduled searches return nothing), and Jellyfin's subtitle dialog does not list the existing subtitles of a Currents item.
+
+> **M6 amendment (2026-10-03).** Built-in text subtitles of versions larger than the admin's limit (default 15 GB, 0 = never) are hidden, and any built-in subtitle fetch on such a version answers 404, so Jellyfin never starts the whole-file extraction. The spike found no extraction-free path in 12.1. Stream-attached (AIOStreams) and downloaded subtitles are unaffected. A caller only reaches subtitles of versions it may play: a subtitle request for another user's version, or any anonymous request on a Currents version, answers 404.
 
 ### 5.2 Skip intro / credits
 `IMediaSegmentProvider` (incl. `CleanupExtractedData`) sourcing markers from IntroDB and AniSkip (and PublicMetaDB when a key is configured). Applied only when the playing version's runtime is within tolerance (default ±2%) of the reference runtime.
@@ -200,6 +211,8 @@ Per catalog, optional Jellyfin BoxSet kept in sync with catalog membership each 
 > - **Compat guard as a runtime switch** (ADR 0006). The decorator and filters are always registered and stand down at runtime outside the tested range `[12.0, 13.0)`, unless the admin ticks "Run on this untested Jellyfin version". This replaces "decorator not registered"; force-enable needs no restart. Search stays governed by its own switch. A Jellyfin whose interfaces changed fails to load the plugin before any guard runs.
 > - **Purge and Verify.** "Purge Currents content" removes every Currents title, the sync state, and the probe and skip-marker caches, then removes the purged titles' Jellyfin entries (only for folders Currents actually removed) and refreshes the library; the next sync writes the enabled catalogs again. "Verify library" rewrites titles whose files are missing and drops `users.json` records of deleted Jellyfin users. Jellyfin's own subtitle-extraction cache is left to Jellyfin's cache cleanup.
 
+> **M6 amendment (2026-10-03).** Jellyfin 12.1 only: the compat guard's tested range is `[12.1, 13.0)`, which supersedes `[12.0, 13.0)` above.
+
 ## 6. Multi-user (D5)
 
 ### Precedence (first match wins)
@@ -241,6 +254,8 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 
 > **M2 amendment (2026-10-01).** Streams that require request headers (`requestHeaders`) are skipped. M4 proxies them (see the M4 amendment in section 4.3); degraded `.strm` playback still skips them.
 
+> **M6 amendment (2026-10-03).** **Outbound address guard.** Poster and subtitle downloads may only connect to public addresses. The exact host and port (default port per scheme) of the admin's AIOStreams and AIOMetadata manifest URLs are exempt, because they are self-hosted on a LAN; other ports on those hosts are not. When Jellyfin uses an outbound HTTP proxy, the proxy decides.
+
 ## 8. Testing
 
 - **Unit (every CI run)**: ranker, parsedFile→MediaStream mapping, ID canonicalization, path/NFO generation, pruning rules, token sign/verify/expiry, placeholder detection, config precedence, clients against recorded JSON fixtures.
@@ -249,6 +264,8 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 - **Manual client matrix** (`docs/client-matrix.md`): web, Android TV, Swiftfin, Findroid, Infuse, Streamyfin, external players (VLC/MX/ExoPlayer).
 - The user's existing local Jellyfin is **not** used for automated tests; the dev stack is.
 
+> **M6 amendment (2026-10-03).** The contract tests are a script (`dev/check-contract.py`) plus a CI job that read the OpenAPI document of the targeted Jellyfin version, because Jellyfin.Api is not a package and reflection over its controllers is not possible. The script matches by OpenAPI `operationId` only (Jellyfin's tags are groups, not controller names) and has 17 entries. Actions hidden from the OpenAPI document (the `*Legacy` ones) cannot be checked.
+
 ## 9. Repository & delivery
 
 - Public GitHub repo `survivalizer/jellyfin-plugin-currents`, GPL-3.0.
@@ -256,6 +273,8 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 - Packaging: `build.yaml` for jprm (`targetAbi: 12.0.0.0`, `framework: net10.0`).
 - Docs: `README.md`, `docs/` (architecture, configuration, self-service, troubleshooting, client matrix), ADRs in `docs/adr/` (record D1, D3, D5, D8), `CLAUDE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue/PR templates, `CODEOWNERS`.
 - CI (GitHub Actions): build + test + format check + CodeQL on push/PR; on release tag: jprm build, GitHub Release with zip, update `manifest.json` on `gh-pages` (`https://survivalizer.github.io/jellyfin-plugin-currents/manifest.json`). Conventional Commits + release-please.
+
+> **M6 amendment (2026-10-03).** `targetAbi` is `12.1.0.0`, which supersedes `12.0.0.0` above. Releases are tag-driven (`release.yml`); release-please is not used.
 
 ## 10. Milestones
 
@@ -270,6 +289,8 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 | **M6 Release** | Release pipeline, manifest, docs, client matrix pass | v1.0.0 installable from repo URL |
 
 > **M5 amendment (2026-10-03).** The exit criterion is checked at unit level and on the dev stack (`docs/spikes/2026-10-m5-e2e.md`): the five Currents tasks run, skip markers appear only on versions of the right length, a collection follows its catalog, and the compat guard stands down on a fake Jellyfin 13.0 (`CURRENTS_COMPAT_TEST_VERSION`) and comes back when forced on, with no restart. Two gaps from that run were fixed afterwards (32e37e8, e5956a2, d679af6; unit-tested and verified on the dev stack, `docs/spikes/2026-10-m5-e2e.md` "Re-check after the post-run fixes"): Purge now also removes the purged titles' Jellyfin entries (Jellyfin skips an empty library folder, so a refresh alone left them listed), and Currents restores `DisplayOrder` "Default" on its collections (the first collection once came out in premiere-date order).
+
+> **M6 amendment (2026-10-03).** Exit verified by installing 1.0.0 from the repository URL on a fresh Jellyfin 12.1 container (docs/spikes/2026-10-m6-e2e.md).
 
 ## 11. Risks
 
