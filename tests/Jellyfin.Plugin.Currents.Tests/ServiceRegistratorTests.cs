@@ -6,6 +6,7 @@ using Jellyfin.Plugin.Currents.Search;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaSegments;
@@ -38,6 +39,8 @@ public class ServiceRegistratorTests
         services.AddSingleton(InterfaceFake.Create<ILibraryMonitor>().Instance);
         services.AddSingleton(InterfaceFake.Create<IFileSystem>().Instance);
         services.AddSingleton(InterfaceFake.Create<ILocalizationManager>().Instance);
+        services.AddSingleton(InterfaceFake.Create<ICollectionManager>().Instance);
+        services.AddSingleton(InterfaceFake.Create<IMediaSegmentManager>().Instance);
         new ServiceRegistrator().RegisterServices(services, null!);
         services.AddSingleton<ICurrentsSettings>(new FakeSettings());
         return services;
@@ -65,6 +68,14 @@ public class ServiceRegistratorTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.DoesNotContain(logs.Messages, m => m.Contains("SECRETKEY", StringComparison.Ordinal));
         Assert.DoesNotContain(logs.Categories, c => c.StartsWith("System.Net.Http.HttpClient", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Collection_sync_is_the_jellyfin_one()
+    {
+        await using var provider = Register().BuildServiceProvider();
+
+        Assert.IsType<JellyfinCollectionSync>(provider.GetRequiredService<Jellyfin.Plugin.Currents.Library.ICollectionSync>());
     }
 
     [Fact]

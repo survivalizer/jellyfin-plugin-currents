@@ -5,4 +5,7 @@ public static class CurrentsProviderIds
 {
     /// <summary>The Stremio id Currents uses for a title ("tt123", "tmdb:456", "kitsu:789").</summary>
     public const string Currents = "Currents";
+
+    /// <summary>The catalog key ("{type}/{id}") on a collection Currents keeps for that catalog.</summary>
+    public const string Catalog = "CurrentsCatalog";
 }
