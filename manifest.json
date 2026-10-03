@@ -8,6 +8,14 @@
         "category": "General",
         "versions": [
             {
+                "version": "0.5.0.0",
+                "changelog": "Extras: skip-intro and credits markers (TheIntroDB, AniSkip, PublicMetaDB) offered only on versions of the right length; optional Jellyfin collections per catalog; Verify library, Purge Currents content and Clear stream cache tasks; a guard for untested Jellyfin versions; a diagnostics panel with connection tests.",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://github.com/survivalizer/jellyfin-plugin-currents/releases/download/v0.5.0/currents_0.5.0.0.zip",
+                "checksum": "90e1f29cf6ff2069713b10689ee0376e",
+                "timestamp": "2026-10-03T12:19:33Z"
+            },
+            {
                 "version": "0.4.0.0",
                 "changelog": "Media: full track lists before playback (RemuxDB and AIOStreams media info); track choices that play the chosen track; probe results kept across restarts; stream subtitles and AIOStreams subtitle search; YouTube trailers; streams that need request headers.",
                 "targetAbi": "12.0.0.0",
