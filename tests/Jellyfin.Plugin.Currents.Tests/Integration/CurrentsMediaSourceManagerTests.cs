@@ -8,7 +8,9 @@ using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using Jellyfin.Plugin.Currents.Users;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -62,6 +64,7 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
         _locator = new CurrentsItemLocator(_settings, _time);
         _inner.Fake.On(nameof(IMediaSourceManager.GetStaticMediaSources), _ => _innerSources);
         _inner.Fake.On(nameof(IMediaSourceManager.GetPlaybackMediaSources), _ => Task.FromResult<IReadOnlyList<MediaSourceInfo>>(_innerSources));
+        _inner.Fake.On(nameof(IMediaSourceManager.GetMediaStreams), _ => (IReadOnlyList<MediaStream>)[]);
     }
 
     public void Dispose()
@@ -296,6 +299,26 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
         Create(null).Dispose();
 
         Assert.Single(_inner.Fake.Calls(nameof(IDisposable.Dispose)));
+    }
+
+    [Fact]
+    public async Task Downloaded_subtitles_appear_in_every_version()
+    {
+        _inner.Fake.On(nameof(IMediaSourceManager.GetMediaStreams), args => args[0] is MediaStreamQuery query && query.ItemId == _movie.Id && query.Type == MediaStreamType.Subtitle
+            ? (IReadOnlyList<MediaStream>)
+            [
+                new MediaStream { Type = MediaStreamType.Subtitle, Index = 0, IsExternal = true, Codec = "srt", Language = "eng", Path = "/library/Movies/M (2020)/M (2020).eng.srt" },
+                new MediaStream { Type = MediaStreamType.Subtitle, Index = 1, IsExternal = false, Codec = "subrip" },
+            ]
+            : []);
+
+        var page = Create(Request(Alice, ItemPage)).GetStaticMediaSources(_movie, true);
+        var playback = await Create(Request(Alice, PlaybackInfo)).GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None);
+
+        Assert.Equal(2, page.Count);
+        Assert.All(page.Concat(playback), source => Assert.Single(source.MediaStreams, s => s.Index == 2000 && s.IsExternal && s.SupportsExternalStream && s.Language == "eng"));
+        Assert.All(page.Concat(playback), source => Assert.DoesNotContain(source.MediaStreams, s => s.Index == 2001));
+        Assert.NotSame(page[0].MediaStreams.Single(s => s.Index == 2000), page[1].MediaStreams.Single(s => s.Index == 2000));
     }
 
     private sealed class FixedInternalBaseUrl(string value) : IInternalBaseUrl

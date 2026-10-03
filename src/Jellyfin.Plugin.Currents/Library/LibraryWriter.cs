@@ -9,6 +9,7 @@ namespace Jellyfin.Plugin.Currents.Library;
 public sealed class LibraryWriter
 {
     private const string MarkerFile = ".currents";
+    private static readonly string[] SubtitleExtensions = [".srt", ".vtt", ".ass", ".ssa", ".sub", ".idx", ".sup", ".smi"];
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private readonly LibraryPaths _paths;
     private readonly StrmSigner _signer;
@@ -77,15 +78,17 @@ public sealed class LibraryWriter
         // Only plugin-owned files are removed; anything else in the folder is user or Jellyfin content and stays.
         foreach (var sub in Directory.GetDirectories(full).Where(IsSeasonFolder))
         {
-            foreach (var strm in Directory.GetFiles(sub, "*.strm"))
+            var names = StrmNames(sub);
+            foreach (var file in Directory.GetFiles(sub).Where(f => IsStrm(f) || IsCompanionSubtitle(f, names)))
             {
-                File.Delete(strm);
+                File.Delete(file);
             }
 
             RemoveIfEmpty(sub);
         }
 
-        foreach (var file in Directory.GetFiles(full).Where(IsPluginContentFile))
+        var topNames = StrmNames(full);
+        foreach (var file in Directory.GetFiles(full).Where(f => IsPluginFile(f, topNames)))
         {
             File.Delete(file);
         }
@@ -114,6 +117,17 @@ public sealed class LibraryWriter
     private static bool IsPluginContentFile(string path) =>
         IsStrm(path) || Path.GetFileName(path) is "movie.nfo" or "tvshow.nfo";
 
+    private static string[] StrmNames(string folder) =>
+        Directory.GetFiles(folder, "*.strm").Select(Path.GetFileNameWithoutExtension).OfType<string>().ToArray();
+
+    // A subtitle Jellyfin saved for one of the folder's .strm files: "{strm name}.{lang}[.forced][.sdh][.N].{ext}".
+    private static bool IsCompanionSubtitle(string path, IReadOnlyCollection<string> strmNames) =>
+        SubtitleExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)
+        && strmNames.Any(name => Path.GetFileName(path).StartsWith(name + ".", StringComparison.Ordinal));
+
+    private static bool IsPluginFile(string path, IReadOnlyCollection<string> strmNames) =>
+        IsPluginContentFile(path) || IsCompanionSubtitle(path, strmNames);
+
     private static void RemoveIfEmpty(string directory)
     {
         if (!Directory.EnumerateFileSystemEntries(directory).Any())
@@ -136,11 +150,18 @@ public sealed class LibraryWriter
         throw new InvalidOperationException($"The target folder {Path.GetFileName(folder)} exists and is not managed by Currents.");
     }
 
-    private static bool HoldsOnlyPluginFiles(string folder) =>
-        Directory.GetFiles(folder).All(IsPluginContentFile)
-        && Directory.GetDirectories(folder).All(sub => IsSeasonFolder(sub)
-            && Directory.GetDirectories(sub).Length == 0
-            && Directory.GetFiles(sub).All(IsStrm));
+    private static bool HoldsOnlyPluginFiles(string folder)
+    {
+        var names = StrmNames(folder);
+        return Directory.GetFiles(folder).All(f => IsPluginFile(f, names))
+            && Directory.GetDirectories(folder).All(sub =>
+            {
+                var episodes = StrmNames(sub);
+                return IsSeasonFolder(sub)
+                    && Directory.GetDirectories(sub).Length == 0
+                    && Directory.GetFiles(sub).All(f => IsStrm(f) || IsCompanionSubtitle(f, episodes));
+            });
+    }
 
     private static bool IsBelow(string full, string parent) =>
         full.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.Ordinal);

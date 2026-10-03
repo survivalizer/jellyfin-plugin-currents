@@ -113,6 +113,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
             }
 
             var source = _builder.Build(entry, Context(item, enablePathSubstitution, requester == Guid.Empty ? null : _request.User, forPlayback: true));
+            AddDownloaded(source, DownloadedSubtitles(item));
             _localizer.Apply(source);
             return source;
         }
@@ -201,6 +202,32 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         }
     }
 
+    // Subtitles Jellyfin downloaded for the item (saved next to the .strm) are stored under the item id; every version gets its own copies.
+    private List<MediaStream> DownloadedSubtitles(BaseItem item) =>
+        _inner.GetMediaStreams(new MediaStreamQuery { ItemId = item.Id, Type = MediaStreamType.Subtitle })
+            .Where(s => s.IsExternal && s.Index is >= 0 and < TrackIndexes.Synthetic)
+            .ToList();
+
+    private static void AddDownloaded(MediaSourceInfo source, List<MediaStream> downloaded)
+    {
+        if (downloaded.Count == 0)
+        {
+            return;
+        }
+
+        source.MediaStreams =
+        [
+            .. source.MediaStreams,
+            .. downloaded.Select(s =>
+            {
+                var copy = MediaStreamCopy.Of(s);
+                copy.Index = TrackIndexes.DownloadedSubtitles + s.Index;
+                copy.SupportsExternalStream = true;
+                return copy;
+            }),
+        ];
+    }
+
     private List<MediaSourceInfo> Sources(BaseItem item, VersionList? list, bool redact, User? user, bool forPlayback)
     {
         if (list is null)
@@ -214,11 +241,13 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         }
 
         var context = Context(item, redact, user, forPlayback);
+        var downloaded = DownloadedSubtitles(item);
         var sources = new List<MediaSourceInfo>(list.Versions.Count);
         foreach (var version in list.Versions)
         {
             if (TryBuild(version, context) is { } source)
             {
+                AddDownloaded(source, downloaded);
                 _localizer.Apply(source);
                 sources.Add(source);
             }

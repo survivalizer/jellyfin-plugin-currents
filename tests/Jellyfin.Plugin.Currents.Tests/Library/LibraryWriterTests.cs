@@ -319,4 +319,68 @@ public sealed class LibraryWriterTests : IDisposable
         Assert.Empty(Directory.GetFiles(Path.Combine(_root, "Movies")));
         Assert.Single(Directory.GetDirectories(_root));
     }
+
+    [Fact]
+    public void Downloaded_subtitles_do_not_block_adoption()
+    {
+        var key = new TitleKey(MediaKind.Series, "imdb", "tt1");
+        var rel = Path.Combine("Shows", "S (2000) [imdbid-tt1]");
+        var folder = Path.Combine(_root, rel);
+        Directory.CreateDirectory(Path.Combine(folder, "Season 01"));
+        File.WriteAllText(Path.Combine(folder, "tvshow.nfo"), "old");
+        File.WriteAllText(Path.Combine(folder, "Season 01", "S (2000) S01E01.strm"), "old");
+        File.WriteAllText(Path.Combine(folder, "Season 01", "S (2000) S01E01.eng.srt"), "sub");
+        File.WriteAllText(Path.Combine(folder, "Season 01", "S (2000) S01E01.fre.forced.sdh.ass"), "sub");
+        var meta = new StremioMeta { Id = "tt1", Name = "S", Year = "2000", Videos = [new StremioVideo { Id = "tt1:1:1", Season = 1, Episode = 1 }] };
+
+        _writer.WriteSeries(key, meta, rel);
+
+        Assert.True(File.Exists(Path.Combine(folder, ".currents")));
+        Assert.Equal("sub", File.ReadAllText(Path.Combine(folder, "Season 01", "S (2000) S01E01.eng.srt")));
+    }
+
+    [Fact]
+    public void Unrelated_subtitles_still_block_adoption()
+    {
+        var rel = Path.Combine("Movies", "A (2000) [imdbid-tt1]");
+        var folder = Path.Combine(_root, rel);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "A (2000).strm"), "old");
+        File.WriteAllText(Path.Combine(folder, "Other Movie.eng.srt"), "mine");
+
+        Assert.Throws<InvalidOperationException>(() => _writer.WriteMovie(new TitleKey(MediaKind.Movie, "imdb", "tt1"), new StremioMeta { Id = "tt1", Name = "A", Year = "2000" }, rel));
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(folder, "Other Movie.eng.srt")));
+    }
+
+    [Fact]
+    public void Delete_removes_companion_subtitles_and_keeps_other_files()
+    {
+        var meta = new StremioMeta { Id = "tt1", Name = "S", Year = "2000", Videos = [new StremioVideo { Id = "tt1:1:1", Season = 1, Episode = 1 }] };
+        var result = _writer.WriteSeries(new TitleKey(MediaKind.Series, "imdb", "tt1"), meta, null);
+        var folder = Path.Combine(_root, result.RelativeFolder);
+        var season = Path.Combine(folder, "Season 01");
+        var subtitle = Path.Combine(season, Path.GetFileNameWithoutExtension(Directory.GetFiles(season, "*.strm").Single()) + ".eng.srt");
+        File.WriteAllText(subtitle, "sub");
+        var notes = Path.Combine(season, "notes.txt");
+        File.WriteAllText(notes, "mine");
+
+        _writer.Delete(result.RelativeFolder);
+
+        Assert.False(File.Exists(subtitle));
+        Assert.True(File.Exists(notes));
+        Assert.True(File.Exists(Path.Combine(folder, ".currents")));
+    }
+
+    [Fact]
+    public void Delete_removes_a_folder_that_only_gained_downloaded_subtitles()
+    {
+        var result = _writer.WriteMovie(new TitleKey(MediaKind.Movie, "imdb", "tt1"), new StremioMeta { Id = "tt1", Name = "A", Year = "2000" }, null);
+        var folder = Path.Combine(_root, result.RelativeFolder);
+        File.WriteAllText(Path.Combine(folder, "A (2000).eng.srt"), "sub");
+        File.WriteAllText(Path.Combine(folder, "A (2000).eng.0.srt"), "sub");
+
+        _writer.Delete(result.RelativeFolder);
+
+        Assert.False(Directory.Exists(folder));
+    }
 }
