@@ -26,8 +26,8 @@ public static class TrackComposer
         if (probed is not null)
         {
             return new VersionTracks(
-                probed.Streams(),
-                probed.Streams(),
+                WithExternalSupport(probed.Streams()),
+                WithExternalSupport(probed.Streams()),
                 probed.Container ?? prefill.Container,
                 probed.RunTimeTicks ?? prefill.RunTimeTicks,
                 probed.Bitrate ?? prefill.Bitrate,
@@ -49,6 +49,22 @@ public static class TrackComposer
         }
 
         return Unprobed(FromReleaseName(result.ParsedFile, prefill), prefill, prefill.Container, prefill.RunTimeTicks, prefill.Bitrate, result.Size, TrackOrigin.ReleaseName);
+    }
+
+    // A probe result leaves SupportsExternalStream false, but Jellyfin only extracts embedded subtitles flagged with it
+    // (SubtitleEncoder.ExtractAllExtractableSubtitles) and needs it to offer External delivery with conversion (StreamBuilder).
+    // Same rule as MediaSourceManager.StreamSupportsExternalStream for library streams.
+    private static IReadOnlyList<MediaStream> WithExternalSupport(IReadOnlyList<MediaStream> streams)
+    {
+        foreach (var stream in streams)
+        {
+            if (stream.Type == MediaStreamType.Subtitle)
+            {
+                stream.SupportsExternalStream = stream.IsExternal || stream.IsTextSubtitleStream || stream.IsPgsSubtitleStream || stream.IsVobSubSubtitleStream;
+            }
+        }
+
+        return streams;
     }
 
     private static VersionTracks Unprobed(List<MediaStream> tracks, PrefilledMedia prefill, string container, long? runtime, int? bitrate, long? size, TrackOrigin origin)

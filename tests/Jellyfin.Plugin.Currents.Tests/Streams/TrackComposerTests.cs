@@ -63,6 +63,36 @@ public class TrackComposerTests
         Assert.False(tracks.NeedsProbe);
     }
 
+    // Jellyfin only extracts (and only offers External delivery with conversion for) embedded subtitles flagged
+    // SupportsExternalStream; its MediaSourceManager.GetMediaStreams sets the flag, a probe result does not.
+    [Fact]
+    public void Probed_subtitles_support_external_streams_like_jellyfin_library_streams()
+    {
+        var probed = ProbedMedia.From(new MediaSourceInfo
+        {
+            Container = "matroska,webm",
+            MediaStreams =
+            [
+                new MediaStream { Type = MediaStreamType.Video, Index = 0, Codec = "hevc" },
+                new MediaStream { Type = MediaStreamType.Audio, Index = 1, Codec = "dts" },
+                new MediaStream { Type = MediaStreamType.Subtitle, Index = 2, Codec = "subrip" },
+                new MediaStream { Type = MediaStreamType.Subtitle, Index = 3, Codec = "ass" },
+                new MediaStream { Type = MediaStreamType.Subtitle, Index = 4, Codec = "PGSSUB" },
+                new MediaStream { Type = MediaStreamType.Subtitle, Index = 5, Codec = "DVDSUB" },
+                new MediaStream { Type = MediaStreamType.Subtitle, Index = 6, Codec = "DVBSUB" },
+            ],
+        });
+
+        var tracks = TrackComposer.Compose(Release("English"), null, probed, null);
+
+        foreach (var view in new[] { tracks.Playback, tracks.Display })
+        {
+            Assert.Equal(
+                new[] { false, false, true, true, true, true, false },
+                view.Select(s => s.SupportsExternalStream));
+        }
+    }
+
     [Fact]
     public void Remuxdb_tracks_are_shown_with_synthetic_indexes()
     {
