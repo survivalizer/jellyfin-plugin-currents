@@ -4,6 +4,7 @@ using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Clients.Posters;
 using Jellyfin.Plugin.Currents.Clients.RemuxDb;
 using Jellyfin.Plugin.Currents.Common;
+using Jellyfin.Plugin.Currents.Features.Segments;
 using Jellyfin.Plugin.Currents.Features.Subtitles;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
@@ -15,6 +16,7 @@ using Jellyfin.Plugin.Currents.Users;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.MediaSegments;
 using MediaBrowser.Controller.Plugins;
 using MediaBrowser.Controller.Subtitles;
 using Microsoft.AspNetCore.Mvc;
@@ -74,6 +76,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<DiagnosticsLog>();
         serviceCollection.AddSingleton<SegmentStore>();
         serviceCollection.AddSingleton<SegmentService>();
+
+        // Jellyfin finds segment providers only through DI (MediaSegmentManager takes IEnumerable<IMediaSegmentProvider>).
+        serviceCollection.AddSingleton<IMediaSegmentProvider, CurrentsSegmentProvider>();
 
         // Long-lived byte streams to ffmpeg: no overall timeout, but connecting and the response headers are bounded (15 s).
         serviceCollection.AddHttpClient(HttpClientNames.Proxy, client =>

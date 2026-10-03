@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.Currents.Common;
 using MediaBrowser.Model.Tasks;
 
 namespace Jellyfin.Plugin.Currents.Library;
@@ -6,19 +7,29 @@ namespace Jellyfin.Plugin.Currents.Library;
 public sealed class CatalogSyncTask : IScheduledTask
 {
     private readonly CatalogSyncService _sync;
+    private readonly ITaskManager _tasks;
+    private readonly ICurrentsSettings _settings;
 
-    public CatalogSyncTask(CatalogSyncService sync) => _sync = sync;
+    public CatalogSyncTask(CatalogSyncService sync, ITaskManager tasks, ICurrentsSettings settings)
+    {
+        _sync = sync;
+        _tasks = tasks;
+        _settings = settings;
+    }
 
     public string Name => "Sync AIOMetadata catalogs";
 
-    public string Key => "CurrentsCatalogSync";
+    public string Key => TaskKeys.CatalogSync;
 
     public string Description => "Writes the selected AIOMetadata catalogs into the Currents library folders.";
 
     public string Category => "Currents";
 
-    public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken) =>
-        _sync.SyncAsync(progress, cancellationToken);
+    public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
+    {
+        var report = await _sync.SyncAsync(progress, cancellationToken).ConfigureAwait(false);
+        SkipMarkerQueue.AfterSync(report, _tasks, _settings);
+    }
 
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
     {

@@ -8,6 +8,7 @@ using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.MediaSegments;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.IO;
@@ -97,5 +98,26 @@ public class ServiceRegistratorTests
         Assert.NotNull(provider.GetRequiredService<SearchItemFilter>());
         Assert.NotNull(provider.GetRequiredService<SearchResultsFilter>());
         Assert.IsType<JellyfinLibraryItems>(provider.GetRequiredService<Jellyfin.Plugin.Currents.Library.ILibraryItems>());
+    }
+
+    [Fact]
+    public async Task Segment_provider_is_registered_and_builds_before_the_plugin_is_loaded()
+    {
+        var services = Register();
+        services.AddSingleton(InterfaceFake.Create<IMediaSegmentManager>().Instance);
+        services.AddSingleton<ICurrentsSettings>(new UnloadedSettings());
+        await using var provider = services.BuildServiceProvider();
+
+        var segmentProvider = Assert.Single(provider.GetServices<IMediaSegmentProvider>());
+
+        Assert.Equal("Currents", segmentProvider.Name);
+    }
+
+    // Jellyfin builds segment providers before CurrentsPlugin.Instance exists (PluginSettings throws then).
+    private sealed class UnloadedSettings : ICurrentsSettings
+    {
+        public Jellyfin.Plugin.Currents.Configuration.PluginConfiguration Current => throw new InvalidOperationException("The Currents plugin has not been initialised.");
+
+        public string DataFolderPath => throw new InvalidOperationException("The Currents plugin has not been initialised.");
     }
 }
