@@ -128,4 +128,26 @@ public sealed class VersionCatalogTests : IDisposable
         Assert.Empty(alice.Versions.Select(v => v.VersionId).Intersect(bob.Versions.Select(v => v.VersionId)));
         Assert.Equal(2, _client.Calls);
     }
+
+    [Fact]
+    public async Task A_user_who_may_not_play_gets_a_refusal()
+    {
+        _users.Update(Alice, r => r.StreamsDisabled = true);
+
+        var list = await _catalog.GetAsync(Guid.NewGuid(), Title, Alice, Wait, CancellationToken.None);
+
+        Assert.Empty(list.Versions);
+        Assert.True(list.Refused);
+    }
+
+    [Fact]
+    public async Task No_streams_is_not_a_refusal()
+    {
+        _client.Outcome = new SearchOutcome([], []);
+
+        var list = await _catalog.GetAsync(Guid.NewGuid(), Title, Alice, Wait, CancellationToken.None);
+
+        Assert.Empty(list.Versions);
+        Assert.False(list.Refused);
+    }
 }

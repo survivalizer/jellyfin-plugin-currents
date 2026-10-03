@@ -35,6 +35,7 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
     private readonly FakeSettings _settings = new();
     private CompatState _compat;
     private readonly FakeAioStreamsClient _client = new();
+    private readonly UserStore _users;
     private readonly ManualTimeProvider _time = new(DateTimeOffset.Parse("2026-10-01T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
     private readonly (IDisposableMediaSourceManager Instance, InterfaceFake Fake) _inner = InterfaceFake.Create<IDisposableMediaSourceManager>();
     private readonly List<MediaSourceInfo> _innerSources = [new MediaSourceInfo { Id = "inner" }];
@@ -65,10 +66,10 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
                 new StreamResult { Url = "https://aio.example.com/play/2", Filename = "b.mkv", ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC" } },
             ],
             []);
-        var users = new UserStore(_settings, NullLogger<UserStore>.Instance);
-        users.Update(Alice, r => r.Self.AioStreamsManifestUrl = AliceUrl);
+        _users = new UserStore(_settings, NullLogger<UserStore>.Instance);
+        _users.Update(Alice, r => r.Self.AioStreamsManifestUrl = AliceUrl);
         _registry = new VersionRegistry(_settings, _time);
-        _catalog = new VersionCatalog(new StreamService(_client, _settings, new Jellyfin.Plugin.Currents.Common.DiagnosticsLog(_time), _time, NullLogger<StreamService>.Instance), new StreamProfileResolver(users, _settings), _registry, _settings, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
+        _catalog = new VersionCatalog(new StreamService(_client, _settings, new Jellyfin.Plugin.Currents.Common.DiagnosticsLog(_time), _time, NullLogger<StreamService>.Instance), new StreamProfileResolver(_users, _settings), _registry, _settings, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
         _probes = new ProbeCache(_settings, _time);
         _builder = new VersionSourceBuilder(_settings, _time, _probes, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
         _locator = new CurrentsItemLocator(_settings, _time);
@@ -306,6 +307,30 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
 
         Assert.Equal(2, _client.Calls);
         Assert.Equal(page.Select(s => s.Id), resumed.Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task A_user_whose_streams_were_turned_off_gets_no_stale_versions()
+    {
+        var before = await Create(Request(Alice, PlaybackInfo)).GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None);
+        Assert.Equal(2, before.Count);
+
+        _users.Update(Alice, r => r.StreamsDisabled = true);
+        var after = await Create(Request(Alice, PlaybackInfo)).GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None);
+
+        Assert.StartsWith("currents://notice", Assert.Single(after).Path, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_empty_fresh_lookup_still_keeps_a_resumed_version()
+    {
+        var before = await Create(Request(Alice, PlaybackInfo)).GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None);
+        _client.Outcome = new SearchOutcome([], []);
+        _time.Advance(TimeSpan.FromHours(2));
+
+        var after = await Create(Request(Alice, PlaybackInfo)).GetPlaybackMediaSources(_movie, null, true, false, CancellationToken.None);
+
+        Assert.Equal(before.Select(s => s.Id), after.Select(s => s.Id));
     }
 
     [Fact]

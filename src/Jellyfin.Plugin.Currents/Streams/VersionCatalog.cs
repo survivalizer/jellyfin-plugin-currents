@@ -43,7 +43,8 @@ public sealed class VersionCatalog
     {
         if (lookup.Error is not null || lookup.Streams.Count == 0)
         {
-            return VersionList.Unavailable(lookup.Error ?? "No streams found for this title.");
+            var notice = lookup.Error ?? "No streams found for this title.";
+            return profile.CanPlay ? VersionList.Unavailable(notice) : VersionList.Refusal(notice);
         }
 
         var settings = _settings.Current;

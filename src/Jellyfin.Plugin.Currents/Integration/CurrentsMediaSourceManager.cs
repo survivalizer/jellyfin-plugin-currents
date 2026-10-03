@@ -94,7 +94,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
             : Registered(item.Id, _request.IsAnonymousRequest);
 
         // A playback resumed after the stream cache expired must not lose its version when a fresh search comes back empty.
-        if (userId != Guid.Empty && list is { Versions.Count: 0 } && _registry.ForItemAndUser(item.Id, userId) is { Count: > 0 } registered)
+        if (userId != Guid.Empty && list is { Versions.Count: 0, Refused: false } && _registry.ForItemAndUser(item.Id, userId) is { Count: > 0 } registered)
         {
             list = new VersionList(registered, null);
         }

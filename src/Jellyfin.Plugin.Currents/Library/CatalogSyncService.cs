@@ -149,12 +149,7 @@ public sealed class CatalogSyncService
         }
         else
         {
-            pruned = _titles.Use(state =>
-            {
-                var count = Prune(state, writer, paths, seen, protectedIds, failed, config.PruneAfterMisses);
-                state.Save();
-                return count;
-            });
+            pruned = Prune(writer, paths, seen, protectedIds, failed, config.PruneAfterMisses);
         }
 
         await _refresher.RefreshAsync([paths.Movies, paths.Shows], cancellationToken).ConfigureAwait(false);
@@ -315,36 +310,75 @@ public sealed class CatalogSyncService
         return meta;
     }
 
-    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "The Jellyfin played lookup can throw arbitrary exceptions; one title must never stop the sync.")]
-    private int Prune(StateStore state, LibraryWriter writer, LibraryPaths paths, HashSet<string> seen, HashSet<string> protectedIds, HashSet<string> failed, int threshold)
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "The Jellyfin played lookup and file deletes can throw arbitrary exceptions; one title must never stop the sync.")]
+    private int Prune(LibraryWriter writer, LibraryPaths paths, HashSet<string> seen, HashSet<string> protectedIds, HashSet<string> failed, int threshold)
     {
-        var pruned = 0;
-        foreach (var title in state.Titles)
+        // Under the state lock: count this run's miss and pick the titles that reached the threshold.
+        var due = _titles.Use(state =>
         {
-            if (seen.Contains(title.StateId) || protectedIds.Contains(title.StateId) || title.AddedBySearch || title.Catalogs.Exists(failed.Contains))
+            var reached = new List<(string StateId, string Folder, MediaKind Kind)>();
+            foreach (var title in state.Titles)
             {
-                continue;
+                if (seen.Contains(title.StateId) || protectedIds.Contains(title.StateId) || title.AddedBySearch || title.Catalogs.Exists(failed.Contains))
+                {
+                    continue;
+                }
+
+                title.MissCount++;
+                if (title.MissCount >= Math.Max(1, threshold))
+                {
+                    reached.Add((title.StateId, title.Folder, title.Kind));
+                }
             }
 
-            title.MissCount++;
+            state.Save();
+            return reached;
+        });
+
+        // Outside the lock: the played lookup queries Jellyfin's database.
+        var unplayed = new List<string>();
+        foreach (var (stateId, folder, kind) in due)
+        {
             try
             {
-                var played = title.MissCount >= threshold && _played.IsPlayedByAnyone(Path.Combine(paths.Root, title.Folder), title.Kind);
-                if (PruningPolicy.ShouldPrune(title, threshold, played))
+                if (!_played.IsPlayedByAnyone(Path.Combine(paths.Root, folder), kind))
                 {
-                    writer.Delete(title.Folder);
-                    state.Remove(title.StateId);
-                    pruned++;
-                    _logger.LogInformation("Pruned {Folder} after {Misses} syncs without it", title.Folder, title.MissCount);
+                    unplayed.Add(stateId);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogWarning(ex, "Could not prune {Folder}; keeping it", title.Folder);
+                _logger.LogWarning(ex, "Could not check whether {Folder} was played; keeping it", folder);
             }
         }
 
-        return pruned;
+        // Under the lock again: delete the titles that are still due.
+        return _titles.Use(state =>
+        {
+            var pruned = 0;
+            foreach (var stateId in unplayed)
+            {
+                if (state.Get(stateId) is not { } title || !PruningPolicy.ShouldPrune(title, threshold, playedByAnyone: false))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    writer.Delete(title.Folder);
+                    state.Remove(stateId);
+                    pruned++;
+                    _logger.LogInformation("Pruned {Folder} after {Misses} syncs without it", title.Folder, title.MissCount);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Could not prune {Folder}; keeping it", title.Folder);
+                }
+            }
+
+            state.Save();
+            return pruned;
+        });
     }
 
     /// <summary>

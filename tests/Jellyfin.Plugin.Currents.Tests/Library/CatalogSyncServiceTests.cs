@@ -182,6 +182,24 @@ public sealed class CatalogSyncServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task The_played_lookup_runs_outside_the_state_lock()
+    {
+        _settings.Current.PruneAfterMisses = 1;
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Alpha")];
+        await SyncAsync();
+
+        var lockFree = false;
+        _played.OnLookup = () => lockFree = Task.Run(() => _titles.Get("movie/tt1")).Wait(TimeSpan.FromSeconds(2));
+        _client.Catalogs[MovieCatalog] = [Movie("tt2", "Beta")];
+
+        var report = await SyncAsync();
+
+        Assert.True(lockFree);
+        Assert.Equal(1, report.Pruned);
+        Assert.Null(_titles.Get("movie/tt1"));
+    }
+
+    [Fact]
     public async Task Never_prunes_played_titles()
     {
         _client.Catalogs[MovieCatalog] = [Movie("tt1", "Keep"), Movie("tt2", "Watched")];
@@ -673,8 +691,13 @@ public sealed class CatalogSyncServiceTests : IDisposable
     {
         public HashSet<string> PlayedFolderNames { get; } = new(StringComparer.Ordinal);
 
-        public bool IsPlayedByAnyone(string absoluteFolder, MediaKind kind) =>
-            PlayedFolderNames.Contains(Path.GetFileName(absoluteFolder));
+        public Action? OnLookup { get; set; }
+
+        public bool IsPlayedByAnyone(string absoluteFolder, MediaKind kind)
+        {
+            OnLookup?.Invoke();
+            return PlayedFolderNames.Contains(Path.GetFileName(absoluteFolder));
+        }
     }
 
     private sealed class FakeCollectionSync : ICollectionSync
