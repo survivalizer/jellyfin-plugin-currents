@@ -280,6 +280,11 @@ answer is a 502) and relays `Range` and the 206 answer and only content headers.
 ### Known limitations
 - No automated subtitle downloads: scheduled or automatic subtitle searches return nothing.
 - Jellyfin's subtitle dialog does not list the existing subtitles of Currents items.
+- Embedded subtitles of a probed version play as External tracks (`TrackComposer` sets `SupportsExternalStream` on
+  probed subtitle streams, as Jellyfin does for library streams; without it Jellyfin chose burn-in and never extracted
+  the file). The first request makes Jellyfin extract every subtitle stream of the version, which reads the whole remote
+  file (about 21 min for 44.6 GB on the dev stack); the result is cached per version under `data/subtitles/`. Burn-in of
+  an embedded text subtitle waits for the same extraction before the video starts.
 - Loopback subtitle tokens appear in ffmpeg logs, like version tokens do (accepted, as in M2).
 - The companion-subtitle rule also matches a user's own `{strm name}.srt` in a Currents folder; it is then treated as a
   plugin file and removed with the title.
