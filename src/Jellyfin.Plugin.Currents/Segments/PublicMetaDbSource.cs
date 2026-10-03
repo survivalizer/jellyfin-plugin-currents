@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json.Serialization;
 using Jellyfin.Plugin.Currents.Common;
@@ -14,10 +16,13 @@ public sealed class PublicMetaDbSource : ISegmentSource, IDisposable
     private const int MaxBodyBytes = 512 * 1024;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ICurrentsSettings _settings;
+    private readonly DiagnosticsLog _diagnostics;
+    private readonly ConcurrentDictionary<HttpStatusCode, bool> _reported = new();
     private readonly SourcePacer _pacer = new(20, TimeSpan.FromSeconds(1));
 
-    public PublicMetaDbSource(IHttpClientFactory httpClientFactory, ICurrentsSettings settings)
+    public PublicMetaDbSource(IHttpClientFactory httpClientFactory, ICurrentsSettings settings, DiagnosticsLog diagnostics)
     {
+        _diagnostics = diagnostics;
         _httpClientFactory = httpClientFactory;
         _settings = settings;
     }
@@ -39,7 +44,7 @@ public sealed class PublicMetaDbSource : ISegmentSource, IDisposable
             : string.Create(CultureInfo.InvariantCulture, $"tmdb_id={request.Id}&media_type=tv&season={request.Season}&episode={request.Episode}");
         using var message = new HttpRequestMessage(HttpMethod.Get, new Uri($"{BaseUrl}?{query}"));
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.Current.PublicMetaDbApiKey.Trim());
-        var body = await SegmentHttp.GetAsync(_httpClientFactory, message, Name, MaxBodyBytes, null, cancellationToken).ConfigureAwait(false);
+        var body = await SegmentHttp.GetAsync(_httpClientFactory, message, Name, MaxBodyBytes, null, cancellationToken, OnRejected).ConfigureAwait(false);
         if (body is null || Pick(SegmentHttp.Parse<Answer>(body, Name).Items ?? []) is not { } row)
         {
             return null;
@@ -60,6 +65,15 @@ public sealed class PublicMetaDbSource : ISegmentSource, IDisposable
     }
 
     public void Dispose() => _pacer.Dispose();
+
+    // A rejected key means this source has nothing to offer; the other sources still answer, so the lookup does not fail.
+    private void OnRejected(HttpStatusCode status)
+    {
+        if (_reported.TryAdd(status, true))
+        {
+            _diagnostics.Record("Skip markers", string.Create(CultureInfo.InvariantCulture, $"PublicMetaDB rejected the API key ({(int)status}). Check the key on the Currents page."));
+        }
+    }
 
     private static Row? Pick(List<Row> rows)
     {

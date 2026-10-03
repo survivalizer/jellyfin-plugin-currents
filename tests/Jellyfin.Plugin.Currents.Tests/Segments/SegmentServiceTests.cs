@@ -89,6 +89,37 @@ public sealed class SegmentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Identical_repeated_failures_are_recorded_once_and_a_different_one_again()
+    {
+        var broken = new FakeSegmentSource("Broken", 0) { Error = new SegmentSourceException("Broken answered 429 (too many requests).") };
+        var service = Create(broken);
+
+        await Assert.ThrowsAsync<SegmentSourceException>(() => service.GetAsync(Movie, CancellationToken.None));
+        await Assert.ThrowsAsync<SegmentSourceException>(() => service.GetAsync(Movie, CancellationToken.None));
+        Assert.Single(_diagnostics.Recent(), e => e.Area == "Skip markers");
+
+        broken.Error = new SegmentSourceException("Broken returned 502.");
+        await Assert.ThrowsAsync<SegmentSourceException>(() => service.GetAsync(Movie, CancellationToken.None));
+        Assert.Equal(2, _diagnostics.Recent().Count(e => e.Area == "Skip markers"));
+    }
+
+    [Fact]
+    public async Task A_success_clears_the_sources_last_error()
+    {
+        var flaky = new FakeSegmentSource("Flaky", 0) { Error = new SegmentSourceException("Flaky returned 502.") };
+        var service = Create(flaky);
+
+        await Assert.ThrowsAsync<SegmentSourceException>(() => service.GetAsync(Movie, CancellationToken.None));
+        flaky.Error = null;
+        await service.GetAsync(Movie, CancellationToken.None);
+        _time.Advance(TimeSpan.FromDays(9));
+        flaky.Error = new SegmentSourceException("Flaky returned 502.");
+        await Assert.ThrowsAsync<SegmentSourceException>(() => service.GetAsync(Movie, CancellationToken.None));
+
+        Assert.Equal(2, _diagnostics.Recent().Count(e => e.Area == "Skip markers"));
+    }
+
+    [Fact]
     public async Task Results_and_misses_are_cached_per_title()
     {
         var source = new FakeSegmentSource("Only", 2);
@@ -98,7 +129,7 @@ public sealed class SegmentServiceTests : IDisposable
         Assert.Empty((await service.GetAsync(Movie, CancellationToken.None)).Markers);
         Assert.Equal(1, source.Calls);
 
-        _time.Advance(TimeSpan.FromDays(1) + TimeSpan.FromSeconds(1));
+        _time.Advance(TimeSpan.FromDays(7 * 1.2) + TimeSpan.FromSeconds(1));
         await service.GetAsync(Movie, CancellationToken.None);
         Assert.Equal(2, source.Calls);
     }

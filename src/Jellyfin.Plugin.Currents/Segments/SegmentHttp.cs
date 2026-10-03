@@ -18,8 +18,15 @@ internal static class SegmentHttp
     };
 
     /// <summary>Sends a GET.</summary>
-    /// <returns>The body, or null for 404.</returns>
-    public static async Task<byte[]?> GetAsync(IHttpClientFactory factory, HttpRequestMessage request, string source, int maxBytes, Action<RetryConditionHeaderValue?>? onRateLimited, CancellationToken cancellationToken)
+    /// <param name="factory">The HTTP client factory.</param>
+    /// <param name="request">The request.</param>
+    /// <param name="source">The source's name, for error texts.</param>
+    /// <param name="maxBytes">The body size limit.</param>
+    /// <param name="onRateLimited">Called with the Retry-After header on 429.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <param name="onRejected">When set, a 401 or 403 calls it with the status and gives null instead of throwing.</param>
+    /// <returns>The body, or null for 404 (and for 401/403 when <paramref name="onRejected"/> is set).</returns>
+    public static async Task<byte[]?> GetAsync(IHttpClientFactory factory, HttpRequestMessage request, string source, int maxBytes, Action<RetryConditionHeaderValue?>? onRateLimited, CancellationToken cancellationToken, Action<HttpStatusCode>? onRejected = null)
     {
         var client = factory.CreateClient(HttpClientNames.Segments);
         HttpResponseMessage response;
@@ -36,6 +43,12 @@ internal static class SegmentHttp
         {
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
+                return null;
+            }
+
+            if (onRejected is not null && response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                onRejected(response.StatusCode);
                 return null;
             }
 

@@ -1,4 +1,5 @@
 using System.Net;
+using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Segments;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
@@ -10,6 +11,7 @@ public sealed class PublicMetaDbSourceTests : IDisposable
 {
     private readonly FakeSettings _settings = new();
     private readonly List<HttpRequestMessage> _sent = [];
+    private readonly DiagnosticsLog _diagnostics = new(new ManualTimeProvider(new DateTimeOffset(2026, 10, 3, 0, 0, 0, TimeSpan.Zero)));
     private readonly PublicMetaDbSource _source;
     private Func<HttpRequestMessage, HttpResponseMessage> _respond = _ => new HttpResponseMessage(HttpStatusCode.NotFound);
 
@@ -22,7 +24,8 @@ public sealed class PublicMetaDbSourceTests : IDisposable
                 _sent.Add(r);
                 return _respond(r);
             })),
-            _settings);
+            _settings,
+            _diagnostics);
     }
 
     public void Dispose() => _source.Dispose();
@@ -69,13 +72,42 @@ public sealed class PublicMetaDbSourceTests : IDisposable
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, """{"error":"Invalid API key format"}""")]
+    [InlineData(HttpStatusCode.BadGateway, "{}")]
     [InlineData(HttpStatusCode.OK, "<!doctype html>")]
-    public async Task Rejections_and_non_json_answers_throw(HttpStatusCode status, string body)
+    public async Task Server_errors_and_non_json_answers_throw(HttpStatusCode status, string body)
     {
         _respond = _ => StubHttpHandler.Json(body, status);
 
         await Assert.ThrowsAsync<SegmentSourceException>(() => _source.GetAsync(new SegmentRequest(MediaKind.Movie, "tmdb", "1", null, null), null, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task A_rejected_key_gives_no_markers_and_is_recorded_once(HttpStatusCode status)
+    {
+        _respond = _ => StubHttpHandler.Json("""{"error":"Invalid API key format"}""", status);
+        var request = new SegmentRequest(MediaKind.Movie, "tmdb", "1", null, null);
+
+        Assert.Null(await _source.GetAsync(request, null, CancellationToken.None));
+        Assert.Null(await _source.GetAsync(request, null, CancellationToken.None));
+
+        var entry = Assert.Single(_diagnostics.Recent());
+        Assert.Equal("Skip markers", entry.Area);
+        Assert.Contains("PublicMetaDB rejected the API key", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("pmdb-key", entry.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Each_distinct_rejection_status_is_recorded()
+    {
+        var request = new SegmentRequest(MediaKind.Movie, "tmdb", "1", null, null);
+        _respond = _ => StubHttpHandler.Json("{}", HttpStatusCode.Unauthorized);
+        await _source.GetAsync(request, null, CancellationToken.None);
+        _respond = _ => StubHttpHandler.Json("{}", HttpStatusCode.Forbidden);
+        await _source.GetAsync(request, null, CancellationToken.None);
+
+        Assert.Equal(2, _diagnostics.Recent().Count);
     }
 
     [Fact]

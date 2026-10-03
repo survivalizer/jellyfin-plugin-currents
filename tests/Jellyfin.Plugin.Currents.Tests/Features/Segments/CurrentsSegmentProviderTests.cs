@@ -57,7 +57,7 @@ public sealed class CurrentsSegmentProviderTests : IDisposable
             new DiagnosticsLog(_time),
             NullLogger<SegmentService>.Instance);
         var services = new ServiceCollection().AddSingleton(_library.Instance).BuildServiceProvider();
-        return new CurrentsSegmentProvider(services, new CurrentsItemLocator(_settings, _time), service, _settings);
+        return new CurrentsSegmentProvider(services, new CurrentsItemLocator(_settings, _time), service, _settings, NullLogger<CurrentsSegmentProvider>.Instance);
     }
 
     private static MediaSegmentGenerationRequest Request(Guid itemId, IReadOnlyList<MediaSegmentDto>? existing = null) =>
@@ -101,11 +101,12 @@ public sealed class CurrentsSegmentProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task A_source_failure_propagates_so_jellyfin_keeps_stored_segments()
+    public async Task A_source_failure_returns_the_existing_segments_so_jellyfin_keeps_them()
     {
         _source.Error = new SegmentSourceException("down");
+        IReadOnlyList<MediaSegmentDto> existing = [new MediaSegmentDto { ItemId = _movie.Id, Type = MediaSegmentType.Intro, StartTicks = 0, EndTicks = 10 }];
 
-        await Assert.ThrowsAsync<SegmentSourceException>(() => Create().GetMediaSegments(Request(_movie.Id), CancellationToken.None));
+        Assert.Same(existing, await Create().GetMediaSegments(Request(_movie.Id, existing), CancellationToken.None));
     }
 
     [Fact]

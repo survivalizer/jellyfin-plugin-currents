@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Metadata;
 using Jellyfin.Plugin.Currents.Streams;
@@ -18,6 +19,7 @@ public sealed class SegmentService
     private readonly MetaCache _metas;
     private readonly DiagnosticsLog _diagnostics;
     private readonly ILogger<SegmentService> _logger;
+    private readonly ConcurrentDictionary<string, string> _lastErrors = new(StringComparer.Ordinal);
 
     public SegmentService(IEnumerable<ISegmentSource> sources, SegmentStore store, MetaCache metas, DiagnosticsLog diagnostics, ILogger<SegmentService> logger)
     {
@@ -50,15 +52,29 @@ public sealed class SegmentService
         var target = MetaMapper.ParseRuntimeTicks(meta?.Runtime);
         var answers = await Task.WhenAll(applicable.Select(s => AskAsync(s, request, target, cancellationToken))).ConfigureAwait(false);
 
+        foreach (var answer in answers.Where(a => a.Error is null))
+        {
+            _lastErrors.TryRemove(answer.Source.Name, out _);
+        }
+
         var failed = answers.Where(a => a.Error is not null).ToList();
         if (failed.Count > 0)
         {
+            // A source that keeps failing the same way is reported once; the same text again only reaches the debug log.
             foreach (var answer in failed)
             {
+                var repeated = _lastErrors.TryGetValue(answer.Source.Name, out var previous) && string.Equals(previous, answer.Error, StringComparison.Ordinal);
+                _lastErrors[answer.Source.Name] = answer.Error!;
+                if (repeated)
+                {
+                    _logger.LogDebug("Skip markers for {Id} not updated: {Error}", title.StremioId, answer.Error);
+                    continue;
+                }
+
                 _diagnostics.Record("Skip markers", $"{title.StremioId}: {answer.Error}");
+                _logger.LogWarning("Skip markers for {Id} not updated: {Error}", title.StremioId, answer.Error);
             }
 
-            _logger.LogWarning("Skip markers for {Id} not updated: {Errors}", title.StremioId, string.Join("; ", failed.Select(a => a.Error)));
             throw new SegmentSourceException($"Skip-marker sources unavailable: {string.Join(", ", failed.Select(a => a.Source.Name))}.");
         }
 

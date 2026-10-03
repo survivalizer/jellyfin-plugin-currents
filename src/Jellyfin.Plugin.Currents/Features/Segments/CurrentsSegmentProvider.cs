@@ -8,6 +8,7 @@ using MediaBrowser.Controller.MediaSegments;
 using MediaBrowser.Model;
 using MediaBrowser.Model.MediaSegments;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Currents.Features.Segments;
 
@@ -23,9 +24,11 @@ public sealed class CurrentsSegmentProvider : IMediaSegmentProvider
     private readonly CurrentsItemLocator _locator;
     private readonly SegmentService _segments;
     private readonly ICurrentsSettings _settings;
+    private readonly ILogger<CurrentsSegmentProvider> _logger;
 
-    public CurrentsSegmentProvider(IServiceProvider services, CurrentsItemLocator locator, SegmentService segments, ICurrentsSettings settings)
+    public CurrentsSegmentProvider(IServiceProvider services, CurrentsItemLocator locator, SegmentService segments, ICurrentsSettings settings, ILogger<CurrentsSegmentProvider> logger)
     {
+        _logger = logger;
         _services = services;
         _locator = locator;
         _segments = segments;
@@ -45,8 +48,18 @@ public sealed class CurrentsSegmentProvider : IMediaSegmentProvider
             return request.ExistingSegments;
         }
 
-        // A SegmentSourceException propagates on purpose: Jellyfin then keeps the segments it stored earlier.
-        var lookup = await _segments.GetAsync(title, cancellationToken).ConfigureAwait(false);
+        SegmentLookup lookup;
+        try
+        {
+            lookup = await _segments.GetAsync(title, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SegmentSourceException ex)
+        {
+            // Returning the existing segments makes Jellyfin keep what it stored earlier; the failure is already in the diagnostics.
+            _logger.LogDebug("Skip markers for {Id} unavailable: {Reason}", title.StremioId, SecretMasker.Mask(ex.Message));
+            return request.ExistingSegments;
+        }
+
         return lookup.Markers
             .Select(m => new MediaSegmentDto
             {
