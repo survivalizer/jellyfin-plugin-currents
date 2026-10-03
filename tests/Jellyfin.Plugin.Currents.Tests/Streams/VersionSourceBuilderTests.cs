@@ -8,7 +8,7 @@ using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Streams;
 
-public class VersionSourceBuilderTests
+public sealed class VersionSourceBuilderTests : IDisposable
 {
     private const string Internal = "http://127.0.0.1:8096/jf";
     private static readonly Guid Item = Guid.Parse("11111111111111111111111111111111");
@@ -17,7 +17,15 @@ public class VersionSourceBuilderTests
     private readonly ManualTimeProvider _time = new(DateTimeOffset.Parse("2026-10-01T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
     private readonly ProbeCache _probes;
 
-    public VersionSourceBuilderTests() => _probes = new ProbeCache(_time);
+    public VersionSourceBuilderTests() => _probes = new ProbeCache(_settings, _time);
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_settings.DataFolderPath))
+        {
+            Directory.Delete(_settings.DataFolderPath, recursive: true);
+        }
+    }
 
     private static VersionEntry Entry(StreamResult? result = null)
     {

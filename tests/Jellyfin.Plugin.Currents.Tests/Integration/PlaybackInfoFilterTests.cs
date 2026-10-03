@@ -61,7 +61,7 @@ public sealed class PlaybackInfoFilterTests : IDisposable
 
     private PlaybackInfoFilter Create(Guid user)
     {
-        var probes = new ProbeCache(_time);
+        var probes = new ProbeCache(_settings, _time);
         var prober = new VersionProber(_media.Instance, _library.Instance, probes, new VersionSourceBuilder(_settings, _time, probes), new FixedUrl("http://127.0.0.1:8096"), _time, NullLogger<VersionProber>.Instance);
         var request = RequestContextTests.Create(RequestContextTests.Http(user, action: ("MediaInfo", "GetPostedPlaybackInfo")));
         return new PlaybackInfoFilter(_library.Instance, new CurrentsItemLocator(_settings, _time), _catalog, _registry, prober, request, _settings);

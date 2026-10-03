@@ -11,7 +11,7 @@ using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Integration;
 
-public class VersionProberTests
+public sealed class VersionProberTests : IDisposable
 {
     private static readonly Guid Item = Guid.Parse("11111111111111111111111111111111");
     private static readonly Guid Alice = Guid.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
@@ -22,7 +22,15 @@ public class VersionProberTests
     private readonly ProbeCache _probes;
     private readonly ListLogger<VersionProber> _logger = new();
 
-    public VersionProberTests() => _probes = new ProbeCache(_time);
+    public VersionProberTests() => _probes = new ProbeCache(_settings, _time);
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_settings.DataFolderPath))
+        {
+            Directory.Delete(_settings.DataFolderPath, recursive: true);
+        }
+    }
 
     private VersionProber Create() =>
         new(_media.Instance, _library.Instance, _probes, new VersionSourceBuilder(_settings, _time, _probes), new FixedUrl("http://127.0.0.1:8096"), _time, _logger);

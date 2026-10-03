@@ -55,7 +55,7 @@ public sealed class CurrentsMediaSourceManagerTests : IDisposable
         users.Update(Alice, r => r.Self.AioStreamsManifestUrl = AliceUrl);
         _registry = new VersionRegistry(_settings, _time);
         _catalog = new VersionCatalog(new StreamService(_client, _settings, _time, NullLogger<StreamService>.Instance), new StreamProfileResolver(users, _settings), _registry, _settings);
-        _probes = new ProbeCache(_time);
+        _probes = new ProbeCache(_settings, _time);
         _builder = new VersionSourceBuilder(_settings, _time, _probes);
         _locator = new CurrentsItemLocator(_settings, _time);
         _inner.Fake.On(nameof(IMediaSourceManager.GetStaticMediaSources), _ => _innerSources);
