@@ -47,6 +47,14 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .RemoveAllLoggers();
         serviceCollection.AddSingleton<IRemuxDbClient, RemuxDbClient>();
         serviceCollection.AddSingleton<RemuxDbCache>();
+        serviceCollection.AddHttpClient(HttpClientNames.Subtitles, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(15);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { MaxAutomaticRedirections = 5, AutomaticDecompression = System.Net.DecompressionMethods.All })
+            .RemoveAllLoggers();
+        serviceCollection.AddSingleton<SubtitleDownloader>();
         serviceCollection.AddHttpClient(HttpClientNames.Resolve, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(15);

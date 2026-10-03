@@ -23,14 +23,15 @@ public sealed class VersionSourceBuilder
         _remux = remux;
     }
 
+    private TimeSpan TokenLifetime => TimeSpan.FromHours(Math.Max(1, _settings.Current.VersionTokenHours));
+
     public static MediaSourceInfo Notice(Guid itemId, string message) => Unplayable(itemId, message, "currents://notice");
 
     public static MediaSourceInfo Pending(Guid itemId) => Unplayable(itemId, "Streams load when you open this title", "currents://pending");
 
     public string PlaybackUrl(VersionEntry entry, string internalBaseUrl)
     {
-        var lifetime = TimeSpan.FromHours(Math.Max(1, _settings.Current.VersionTokenHours));
-        var token = new VersionTokenSigner(_settings.Current.SigningSecret, _time).Create(entry.Ticket, lifetime);
+        var token = new VersionTokenSigner(_settings.Current.SigningSecret, _time).Create(entry.Ticket, TokenLifetime);
         return $"{internalBaseUrl.TrimEnd('/')}/{VersionTokenSigner.PathFor(token)}";
     }
 
@@ -46,6 +47,7 @@ public sealed class VersionSourceBuilder
     {
         var tracks = Tracks(entry, context.ItemRunTimeTicks);
         var streams = (context.ForPlayback ? tracks.Playback : tracks.Display).ToList();
+        streams.AddRange(ExternalSubtitles(entry, context));
 
         return new MediaSourceInfo
         {
@@ -72,6 +74,48 @@ public sealed class VersionSourceBuilder
             RequiredHttpHeaders = [],
             Formats = [],
         };
+    }
+
+    public string SubtitleUrl(VersionEntry entry, string subtitleKey, string internalBaseUrl)
+    {
+        var token = new VersionTokenSigner(_settings.Current.SigningSecret, _time).CreateSubtitle(entry.Ticket, subtitleKey, TokenLifetime);
+        return $"{internalBaseUrl.TrimEnd('/')}/{VersionTokenSigner.PathForSubtitle(token)}";
+    }
+
+    // Stream-attached subtitles become external SRT tracks. Jellyfin reads them server-side from the loopback route; clients only see a placeholder Path.
+    private IEnumerable<MediaStream> ExternalSubtitles(VersionEntry entry, VersionContext context)
+    {
+        if (!_settings.Current.EnableSubtitles)
+        {
+            yield break;
+        }
+
+        var usable = StreamSubtitles.Usable(entry.Stream.Result.Subtitles);
+        for (var i = 0; i < usable.Count; i++)
+        {
+            var index = TrackIndexes.StreamSubtitles + i;
+            var language = LanguageCodes.ToIso6392(usable[i].Lang);
+            yield return new MediaStream
+            {
+                Type = MediaStreamType.Subtitle,
+                Index = index,
+                Codec = "srt",
+                Language = language,
+                Title = language is null ? Label(usable[i].Lang) : null,
+                IsExternal = true,
+                SupportsExternalStream = true,
+                Path = context.RedactPath
+                    ? $"currents://subtitle/{entry.VersionId}/{index}"
+                    : SubtitleUrl(entry, StreamSubtitles.Key(usable[i].Url!), context.InternalBaseUrl),
+            };
+        }
+    }
+
+    // An unrecognised language label is shown as given, shortened.
+    private static string? Label(string? value)
+    {
+        var text = value?.Trim();
+        return string.IsNullOrEmpty(text) ? null : text.Length > 40 ? text[..40] : text;
     }
 
     private static MediaSourceInfo Unplayable(Guid itemId, string name, string path) => new()

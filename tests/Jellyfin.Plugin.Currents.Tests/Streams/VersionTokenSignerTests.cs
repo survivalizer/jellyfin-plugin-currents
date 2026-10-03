@@ -83,4 +83,19 @@ public class VersionTokenSignerTests
     {
         Assert.False(Signer().TryRead(new string('A', 5000) + ".x", out _));
     }
+
+    [Fact]
+    public void Subtitle_tokens_round_trip_and_never_pass_as_version_tokens()
+    {
+        var ticket = new VersionTicket(Guid.NewGuid(), "movie", "tt1", "k");
+        var subtitle = Signer().CreateSubtitle(ticket, "0123456789abcdef", TimeSpan.FromHours(1));
+        var version = Signer().Create(ticket, TimeSpan.FromHours(1));
+
+        Assert.True(Signer().TryReadSubtitle(subtitle, out var read, out var key));
+        Assert.Equal(ticket, read);
+        Assert.Equal("0123456789abcdef", key);
+        Assert.False(Signer().TryRead(subtitle, out _));
+        Assert.False(Signer().TryReadSubtitle(version, out _, out _));
+        Assert.Equal("Currents/subtitles/abc.srt", VersionTokenSigner.PathForSubtitle("abc"));
+    }
 }

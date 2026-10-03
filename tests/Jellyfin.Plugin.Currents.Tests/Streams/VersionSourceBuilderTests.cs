@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 using Jellyfin.Plugin.Currents.Clients.RemuxDb;
 using Jellyfin.Plugin.Currents.Streams;
@@ -202,5 +203,62 @@ public sealed class VersionSourceBuilderTests : IDisposable
     public void Pending_uses_the_item_id()
     {
         Assert.Equal(Item.ToString("N"), VersionSourceBuilder.Pending(Item).Id);
+    }
+
+    private static StreamResult WithSubtitles()
+    {
+        var result = Entry().Stream.Result;
+        result.Subtitles =
+        [
+            new StremioSubtitle { Id = "1", Url = "https://subs.example.com/file/1?key=SUBSECRET", Lang = "eng" },
+            new StremioSubtitle { Id = "2", Url = "https://subs.example.com/file/1?key=SUBSECRET", Lang = "eng" },
+            new StremioSubtitle { Id = "error.X", Url = "https://github.com/Viren070/AIOStreams", Lang = "[❌] X - failed" },
+            new StremioSubtitle { Id = "3", Url = "https://subs.example.com/file/3", Lang = "Klingon" },
+        ];
+        return result;
+    }
+
+    [Fact]
+    public void Stream_subtitles_become_external_srt_tracks_behind_signed_loopback_urls()
+    {
+        var entry = Entry(WithSubtitles());
+
+        var source = Create().Build(entry, Context() with { ForPlayback = true });
+
+        var subtitles = source.MediaStreams.Where(s => s.Type == MediaStreamType.Subtitle).ToList();
+        Assert.Equal(new[] { 1000, 1001 }, subtitles.Select(s => s.Index));
+        Assert.All(subtitles, s => Assert.True(s.IsExternal && s.SupportsExternalStream && s.Codec == "srt"));
+        Assert.Equal("eng", subtitles[0].Language);
+        Assert.Null(subtitles[0].Title);
+        Assert.Null(subtitles[1].Language);
+        Assert.Equal("Klingon", subtitles[1].Title);
+        Assert.StartsWith($"{Internal}/Currents/subtitles/", subtitles[0].Path, StringComparison.Ordinal);
+        Assert.EndsWith(".srt", subtitles[0].Path, StringComparison.Ordinal);
+        var token = subtitles[0].Path[(Internal.Length + "/Currents/subtitles/".Length)..^".srt".Length];
+        Assert.True(new VersionTokenSigner(_settings.Current.SigningSecret, _time).TryReadSubtitle(token, out var ticket, out var key));
+        Assert.Equal(entry.Ticket, ticket);
+        Assert.Equal(StreamSubtitles.Key("https://subs.example.com/file/1?key=SUBSECRET"), key);
+        Assert.DoesNotContain("SUBSECRET", subtitles[0].Path, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Client_facing_subtitle_paths_are_placeholders()
+    {
+        var source = Create().Build(Entry(WithSubtitles()), Context(redact: true));
+
+        var json = JsonSerializer.Serialize(source);
+        Assert.DoesNotContain("subs.example.com", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("/Currents/", json, StringComparison.Ordinal);
+        Assert.StartsWith("currents://subtitle/", source.MediaStreams.First(s => s.Index == 1000).Path, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Stream_subtitles_can_be_switched_off()
+    {
+        _settings.Current.EnableSubtitles = false;
+
+        var source = Create().Build(Entry(WithSubtitles()), Context());
+
+        Assert.DoesNotContain(source.MediaStreams, s => s.IsExternal);
     }
 }

@@ -69,4 +69,7 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets the RemuxDB server.</summary>
     public string RemuxDbUrl { get; set; } = "https://remuxdb.1632022.xyz";
+
+    /// <summary>Gets or sets a value indicating whether stream-attached subtitles become tracks and the Jellyfin subtitle search queries AIOStreams.</summary>
+    public bool EnableSubtitles { get; set; } = true;
 }

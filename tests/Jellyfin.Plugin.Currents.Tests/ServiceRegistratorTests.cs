@@ -48,6 +48,7 @@ public class ServiceRegistratorTests
     [InlineData(HttpClientNames.AioMetadata)]
     [InlineData(HttpClientNames.Posters)]
     [InlineData(HttpClientNames.RemuxDb)]
+    [InlineData(HttpClientNames.Subtitles)]
     public async Task Outbound_clients_never_log_request_urls(string name)
     {
         var logs = new CapturingLoggerProvider();
