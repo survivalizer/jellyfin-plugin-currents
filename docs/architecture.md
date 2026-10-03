@@ -319,7 +319,7 @@ Under "Currents" in Dashboard -> Scheduled Tasks: Sync AIOMetadata catalogs, Fet
 cache, Verify library, Purge Currents content. Their class names and namespaces are stable once released.
 
 ### Request walkthrough: skip markers, from fetch to the skip button
-1. **Fetch**: "Fetch skip markers" (or Jellyfin's "Extract media segments") calls `CurrentsSegmentProvider` for an item.
+1. **Fetch**: "Fetch skip markers" (or Jellyfin's "Media Segment Scan") calls `CurrentsSegmentProvider` for an item.
 2. **Lookup**: the provider calls `SegmentService`, which asks the sources that apply to the title's ids (TheIntroDB for
    TMDB/IMDb/TVDB ids, AniSkip for anime-provider ids, PublicMetaDB for TMDB ids with a key), merges, sanitises and
    stores the lookup. Jellyfin saves the markers in its database.

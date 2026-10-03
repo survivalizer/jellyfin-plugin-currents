@@ -68,7 +68,7 @@
           <h3>Skip markers</h3>
           <div class="checkboxContainer">
             <label><input is="emby-checkbox" type="checkbox" id="EnableSegments" /><span>Fetch skip-intro and credits markers from TheIntroDB and AniSkip (and PublicMetaDB with a key)</span></label>
-            <div class="fieldDescription">Markers are fetched by Jellyfin's "Extract media segments" task and by "Fetch skip markers" after each sync that adds titles. A version only gets them when its length matches the length the markers were made for.</div>
+            <div class="fieldDescription">Markers are fetched by Jellyfin's "Media Segment Scan" task and by "Fetch skip markers" after each sync that adds titles. A version only gets them when its length matches the length the markers were made for.</div>
           </div>
           <div class="inputContainer">
             <input is="emby-input" type="number" min="1" max="10" step="0.5" id="SegmentTolerancePercent" label="Allowed length difference (%)" />

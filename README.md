@@ -133,7 +133,7 @@ Currents only manages title folders that carry its `.currents` marker file:
   Settings under **Skip markers**: on or off (default on), *Allowed length difference* (default 2 %, 1-10 %),
   *Also offer markers when a version's length is unknown* (default off), and optional TheIntroDB and PublicMetaDB
   keys. TheIntroDB works without a key but limits anonymous use to 500 requests a day, so a big library fills over a
-  few days. Markers are fetched by Jellyfin's "Extract media segments" task and by "Fetch skip markers", never while
+  few days. Markers are fetched by Jellyfin's "Media Segment Scan" task and by "Fetch skip markers", never while
   you play.
 - **Collections.** Tick **Collection** on a catalog to keep a Jellyfin collection of its titles, in catalog order.
   The first one creates Jellyfin's Collections library and runs one library scan. Currents removes only its own titles
@@ -154,7 +154,7 @@ Currents only manages title folders that carry its `.currents` marker file:
   restart).
 
 Upgrading to 0.5.0: skip markers are on by default. The first run of "Fetch skip markers" (queued after the next sync
-that adds titles) or Jellyfin's "Extract media segments" fills them in. Turn them off under **Skip markers**.
+that adds titles) or Jellyfin's "Media Segment Scan" fills them in. Turn them off under **Skip markers**.
 
 ## Development
 See [`dev/README.md`](dev/README.md), [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/architecture.md`](docs/architecture.md).
