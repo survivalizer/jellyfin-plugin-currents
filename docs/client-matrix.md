@@ -50,7 +50,7 @@ shows an AIOMetadata card with a poster, and opening it adds the title and shows
 
 | Client | Version | Tracks shown before playback | Stream subtitle (External) plays | Subtitle search and download | Trailer button | Notes |
 |---|---|---|---|---|---|---|
-| Jellyfin Web | 12.1 (Chromium) | pending e2e | pending e2e | pending e2e | pending e2e | `docs/spikes/2026-10-m4-e2e.md` |
+| Jellyfin Web | 12.1 (Chromium) | pass | not exercised (dev config has no stream subtitles) | partial: search and download pass; web render of the downloaded subtitle not confirmed | pass | embedded text subtitle burn-in fails (Defect 1); `docs/spikes/2026-10-m4-e2e.md` |
 | Android TV | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
 | Swiftfin | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
 | Findroid | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
