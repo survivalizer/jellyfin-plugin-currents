@@ -40,3 +40,20 @@ shows an AIOMetadata card with a poster, and opening it adds the title and shows
 | Infuse | | untested (M6) | |
 | Streamyfin | | untested (M6) | |
 | External player (VLC/MX) | | untested (M6) | |
+
+## M4: media
+
+"Tracks shown before playback": the details page lists the Audio and Subtitles tracks of a version before it is played.
+"Stream subtitle (External) plays": a subtitle carried by a stream shows as an External track and renders.
+"Subtitle search and download": the subtitle dialog finds AIOStreams subtitles and a downloaded one plays.
+"Trailer button": a Currents title shows a Trailer button that plays.
+
+| Client | Version | Tracks shown before playback | Stream subtitle (External) plays | Subtitle search and download | Trailer button | Notes |
+|---|---|---|---|---|---|---|
+| Jellyfin Web | 12.1 (Chromium) | pending e2e | pending e2e | pending e2e | pending e2e | `docs/spikes/2026-10-m4-e2e.md` |
+| Android TV | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
+| Swiftfin | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
+| Findroid | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
+| Infuse | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
+| Streamyfin | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
+| External player (VLC/MX) | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |

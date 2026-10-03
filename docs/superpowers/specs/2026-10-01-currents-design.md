@@ -127,6 +127,8 @@ docs/                                  architecture, configuration, ADRs, client
 > - **PlaybackInfo** (an `Integration/` MVC filter) maps a stale or item-level `MediaSourceId` to the user's version (same stream when still offered, else the best one), probes that version when its parsed info is not enough (§5.5), and saves the item runtime when it is missing.
 > - **Pre-filled tracks** use `Index = -1` (no guessed stream index for ffmpeg to map), an estimated video bitrate and an explicit HDR range; without them remux turns into a full transcode or maps the wrong tracks.
 
+> **M4 amendment (2026-10-02).** Streams that require request headers (`requestHeaders`) are proxied by the loopback version route (`/Currents/play/s/{token}`). It relays `Range` and the `206` answer and only content headers, never follows redirects (a 3xx or 5xx answer is a 502), and drops `Authorization`, `Cookie` and `Proxy-Authorization` on a cross-origin redirect. `StreamHeaders` drops reserved headers (Host, Range, Content-Length, hop-by-hop) and values with CR/LF. The headers stay server-side: no client field carries them. Degraded `.strm` playback skips header-bound streams, because its URL reaches clients.
+
 ### 4.4 Degraded mode
 `.strm` resolve URLs carry no user. If the decorator is disabled (manually or by the compat guard), playing a title uses the global default config with auto-selection. Titles, metadata, and watch state are unaffected. `StrmBaseUrl` must be reachable by clients, because clients may direct-play the resolve URL themselves and follow its redirect (M0 S4).
 
@@ -137,11 +139,20 @@ docs/                                  architecture, configuration, ADRs, client
 ### 5.1 Subtitles
 `ISubtitleProvider` queries AIOStreams `subtitles` for the title (user from HTTP context when available, else default config). Stream-embedded `subtitles` become external tracks on that version, served via a plugin proxy route so URLs stay hidden. Error entries are filtered.
 
+> **M4 amendment (2026-10-02).** Subtitles are three things:
+> - **Stream subtitles** become external tracks (indexes 1000+). The server fetches them through a loopback route (`/Currents/subtitles/{token}.srt`) and converts them to SRT: 5 MB cap, 15 s for the whole download, gzip detected by magic bytes, cue times validated (malformed cues are skipped). An unreadable or non-subtitle upstream file gives 502.
+> - **The search provider** (`Features/Subtitles/CurrentsSubtitleProvider`) serves Jellyfin's subtitle dialog from AIOStreams' Stremio subtitles route, for the requesting user's config (the default config without a user). Results carry no URLs.
+> - **Downloaded subtitles** that Jellyfin saves next to the `.strm` appear in every version (indexes 2000+).
+>
+> Deferred: automated subtitle downloads (scheduled searches return nothing), and Jellyfin's subtitle dialog does not list the existing subtitles of a Currents item.
+
 ### 5.2 Skip intro / credits
 `IMediaSegmentProvider` (incl. `CleanupExtractedData`) sourcing markers from IntroDB and AniSkip (and PublicMetaDB when a key is configured). Applied only when the playing version's runtime is within tolerance (default ±2%) of the reference runtime.
 
 ### 5.3 Trailers
 AIOMetadata `trailers` → item `RemoteTrailers` via the metadata provider.
+
+> **M4 amendment (2026-10-02).** Trailers come from the metadata provider as `RemoteTrailers` (`https://www.youtube.com/watch?v={id}`, at most 5 per title). They are not written into the NFO, so titles added before 0.4.0 get them on the next metadata refresh.
 
 ### 5.4 Smart selection
 Pure `IStreamRanker`:
@@ -156,6 +167,11 @@ Map `parsedFile` → `MediaStream`s (video codec, resolution, HDR type, audio co
 > **M2 amendment (2026-10-01).**
 > - The **selected-version probe** and the **runtime fallback** moved into M2, because M0 showed that versions without tracks cannot play. The probe runs in the PlaybackInfo filter (never in the synchronous decorator, which list views reach), times out after 20 s with `AnalyzeDurationMs` 5000, remembers failures for 10 min and caches results in memory for 7 days. RemuxDB and persisting probe results across restarts stay in M4.
 > - **Runtimes from AIOMetadata** are set by a custom metadata provider (`Metadata/AioRuntimeProvider`), because Jellyfin's metadata merge drops `RunTimeTicks` for videos. When a title still has no runtime, the first probe (or the AIOStreams duration) saves it; without one, resume and HLS fail.
+
+> **M4 amendment (2026-10-02).**
+> - **Two track views per version.** Item DTOs (details page) list every known track with synthetic indexes 500-999 (display only). Sources for PlaybackInfo, streaming and ffmpeg carry either the probed tracks (real indexes) or the M2 `-1` stubs. PlaybackInfo probes and maps a synthetic choice to the probed track; if the probe fails, ffmpeg uses its default tracks. This replaces "pre-fill `MediaStreams`" for a version that has not been probed.
+> - **RemuxDB is looked up by title, not by info hash.** `GET {RemuxDbUrl}/api/media/{tt...|tmdb:...}[:S:E]/versions` with an `x-client-id` derived from the install secret (`currents-` + 32 hex); IMDb and TMDB ids only. Currents matches locally: same info hash (case-insensitive), then the same file index or file name; a candidate that names a different file never matches; the size fallback (within 1 %) applies only when a single candidate remains. RemuxDB data is display-only (crowd-sourced); playback still probes when a non-default track is chosen. The service receives only the ids and the client id. Timeout 5 s, body cap 8 MB, cache 6 h for a hit, 30 min for a miss, 60 s after any error; every failure is fail-soft (release-name tracks).
+> - **Probe results persist** in `{plugin data}/probes/{key}.json` for 30 days (at most 5000 files), keyed by stream identity, so a file is probed once per install, not once per restart. For AIOStreams-listed tracks the release-name reasons to probe (Dolby Vision tags, missing width, guessed channel layout) still apply.
 
 ### 5.6 Collections
 Per catalog, optional Jellyfin BoxSet kept in sync with catalog membership each run.
@@ -201,7 +217,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 - **Security**: secret-masking log enricher (UUIDs, passwords, tokens, debrid keys); assert no internal/debrid URLs in DTO/PlaybackInfo responses; self-service endpoints scoped to caller.
 - **Diagnostics panel**: connection tests, cache hit rate, recent errors, decorator active/degraded.
 
-> **M2 amendment (2026-10-01).** Streams that require request headers (`requestHeaders`) are still skipped; proxying them moves to M4.
+> **M2 amendment (2026-10-01).** Streams that require request headers (`requestHeaders`) are skipped. M4 proxies them (see the M4 amendment in section 4.3); degraded `.strm` playback still skips them.
 
 ## 8. Testing
 
@@ -241,6 +257,7 @@ Library visibility uses Jellyfin's native permissions. All users share the serve
 | AIOStreams rate limits with many users | Global throttle, per-user cache, docs for self-hosted limit tuning |
 | Search auto-add clutter | `addedBySearch` tag, per-user toggle, purge-by-tag |
 | Search-added titles created outside a scan are removed by a concurrent folder scan | created directly (ResolvePath + CreateItem), re-added once if a scan removed them, and found again by path or `Currents` id |
+| RemuxDB (single-maintainer, crowd-sourced, undocumented API) changes or disappears | Display-only, fail-soft (5 s timeout, 60 s error cache), switchable, playback probes before using a chosen track |
 | Segment data unavailable | IntroDB/AniSkip (optional PublicMetaDB) queried directly (M0 S3); feature degrades to no markers when a title has none |
 
 ## 12. Out of scope (v1)

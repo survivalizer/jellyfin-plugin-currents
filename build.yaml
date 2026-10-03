@@ -1,6 +1,6 @@
 name: "Currents"
 guid: "483F31F4-DB4A-4900-A3B5-EE0FBA5084AC"
-version: "0.3.1.0"
+version: "0.4.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 owner: "survivalizer"
@@ -11,4 +11,4 @@ description: >
 category: "General"
 artifacts:
   - "Jellyfin.Plugin.Currents.dll"
-changelog: "Fix: a catalog sync no longer forgets search-added titles, or rewrites search-added series into a local folder, while the Currents library folder is on an unmounted share."
+changelog: "Media: full track lists before playback (RemuxDB and AIOStreams media info); track choices that play the chosen track; probe results kept across restarts; stream subtitles and AIOStreams subtitle search; YouTube trailers; streams that need request headers."

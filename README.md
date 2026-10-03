@@ -67,6 +67,24 @@ admin has not locked them) -> an admin per-user override -> the server default -
 `StreamCacheMinutes` (60), `VersionTokenHours` (24), and per user an override config, preferences, auto-select
 (Inherit/Only best/Show all), lock self-service, and streams disabled.
 
+## Tracks, subtitles and trailers
+- **Before playback.** The details page lists every audio and subtitle track a version has, labeled by language name,
+  so you can choose before you press Play. Tracks come from RemuxDB when it knows the exact file, else from AIOStreams'
+  media info, else from the release name.
+- **First play.** The first play of a multi-track file probes it once (a few seconds) so your chosen track is the one that
+  plays. The result is kept for 30 days, also across restarts.
+- **RemuxDB.** Under **Media** on the plugin page you can switch RemuxDB off or change its server. Currents sends it
+  only the title's IMDb or TMDB id (with the season and episode) and an anonymous client id derived from your install; it
+  never sends your AIOStreams config or any stream URL. If RemuxDB is slow or down, the release-name tracks show.
+- **Subtitle search.** On a title, use the three-dot menu, **Edit subtitles**, then **Search**. Results named
+  `AIOStreams n (lang)` need a subtitle addon (for example OpenSubtitles) in the user's AIOStreams config. A downloaded
+  subtitle is saved next to the title's `.strm` and shows in every version.
+- **Stream subtitles.** Subtitles that a stream itself carries appear in the Subtitles select as "External" tracks.
+- **Trailers.** AIOMetadata trailers show as the Trailer button. Titles added before 0.4.0 get theirs after a metadata
+  refresh.
+- **Header-bound streams.** Streams that need request headers (usenet WebDAV, Google Drive) now play through the server.
+  Degraded `.strm` playback (versions off) still skips them.
+
 ### Self-service page
 Users manage their own AIOStreams manifest URL and preferences at **`/Currents/user`** on your Jellyfin address
 (for example `http://192.168.x.y:8096/Currents/user`, including Jellyfin's base URL path if you set one); the admin

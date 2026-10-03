@@ -207,6 +207,80 @@ place of the share. Opening its search id before that sync, or a known title who
   is false for a user with a maximum parental rating, blocked unrated items, blocked tags or allowed tags, because a
   remote result has no rating or tags Jellyfin could filter on. Both the search filter and the opener use `CanAdd`.
 
+## Media (M4)
+
+### Track sources and views
+Every version has two track views (`Streams/VersionTracks`):
+- **Display** (item DTOs, the details page): every known track with synthetic indexes 500-999. Never reaches ffmpeg.
+- **Playback** (PlaybackInfo, streaming, ffmpeg): the probed tracks with real indexes, or the M2 `-1` stubs.
+
+Index ranges per media source (`Streams/TrackIndexes`):
+
+| Range | Tracks |
+|---|---|
+| 0-499 | real ffprobe indexes (probed versions only) |
+| 500-999 | synthetic display indexes (display only, never in playback sources) |
+| 1000-1999 | stream-attached external subtitles: 1000 + position in the stream's usable subtitle list |
+| 2000+ | subtitles Jellyfin downloaded for the item: 2000 + Jellyfin's own stream index |
+| -1 | the playback stubs of unprobed versions (M2 behavior) |
+
+Sources of track data, in order of trust:
+- `Streams/ProbeCache`: memory plus disk (`{plugin data}/probes/{key}.json`, atomic tmp + move), kept 30 days, at most
+  5000 files, a disk miss remembered 10 min.
+- `Streams/RemuxDbCache` + `RemuxDbIndex`: per-title lookups. `GET {RemuxDbUrl}/api/media/{tt...|tmdb:...}[:S:E]/versions`
+  with the header `x-client-id: currents-` + 32 hex (HMAC of the install secret), 5 s timeout, 8 MB body cap. Cache 6 h for a
+  hit, 30 min for a miss, 60 s after any error. Any failure is fail-soft: the release-name tracks show. Matching is local:
+  same info hash (case-insensitive), then the same file index or file name; candidates that name a different file never
+  match; the size (1 %) fallback applies only with a single remaining candidate. RemuxDB only sees ids and the client id.
+- AIOStreams media info (`parsedFile` audio/subtitle tracks) and the release name (`MediaStreamMapper`).
+- `Streams/TrackComposer` merges these into the display tracks; `VersionTracks` carries `Display`, `Playback`,
+  `NeedsProbe`, `Container` and `RunTimeTicks`. For AIOStreams-listed tracks the release-name reasons to probe (Dolby
+  Vision tags, missing width, a guessed channel layout) still apply.
+- `Streams/TrackMatcher` maps a synthetic choice in a PlaybackInfo request to the probed track (same type and language, forced flag
+  preferred, then position among that language's tracks). If the probe failed, the choice is cleared and ffmpeg uses its default tracks.
+
+### Subtitles
+- **Stream-attached.** AIOStreams stream `subtitles` become external tracks 1000+. Clients see a placeholder path; the
+  server fetches `/Currents/subtitles/{token}.srt` (signed loopback token) through `SubtitleDownloader` (5 MB cap, 15 s for
+  the whole download, gzip by magic bytes) and `SubtitleText` (converts to SRT, validates cue times, skips malformed
+  cues). An unreadable or non-subtitle upstream file gives 502.
+- **Search provider.** `Features/Subtitles/CurrentsSubtitleProvider` (an `ISubtitleProvider`) asks AIOStreams'
+  subtitles route for the requesting user's config (default config without a user): at most 5 per language and 40 per
+  version; lists cached 1 h, failures 2 min. Results are named `AIOStreams n (lang)`, carry no URL, and download through
+  the same `SubtitleDownloader`.
+- **Downloaded files.** Jellyfin saves a download next to the `.strm`; `GetMediaStreams` copies it into every version at
+  index 2000 + its own index. A companion subtitle `{strm name}.....{srt|vtt|ass|ssa|sub|idx|sup|smi}` counts as a
+  plugin file for adoption and deletion.
+
+### Trailers
+`MetaMapper.Trailers` maps AIOMetadata trailers to `RemoteTrailers` (`https://www.youtube.com/watch?v={id}`, at most 5).
+They are not written into the NFO; a metadata refresh adds them to titles created earlier.
+
+### Header-bound streams
+`Streams/StreamHeaders` sanitises a stream's `requestHeaders`: it drops reserved headers (Host, Range, Content-Length,
+hop-by-hop) and values containing CR/LF. The resolver's `allowHeaders` flag decides whether a header-bound stream may be
+used: the loopback version route allows them, degraded `.strm` resolves skip them (their URL reaches clients).
+`Web/ProxyStreamResult` streams the upstream body: it never follows redirects (a 3xx or 5xx answer is a 502), relays
+`Range` and the 206 answer and only content headers, and the resolver drops `Authorization`, `Cookie` and
+`Proxy-Authorization` when a redirect crosses origins. Headers never appear in a client-facing field.
+
+### Request walkthrough (web client)
+1. **Details page**: `GET /Users/{U}/Items/{id}` returns the display tracks (synthetic indexes 500+), from RemuxDB or
+   AIOStreams media info when matched, else the release name.
+2. **Pick a French track** in the Audio select and press Play.
+3. **PlaybackInfo**: `VersionProber` probes the version (a few seconds, cached on disk), `TrackMatcher` maps the synthetic
+   audio index to the probed one; a failed probe (502) clears the choice to the default track (index 1).
+4. **Stream**: ffmpeg opens the loopback URL with `-map 0:1` (the real index of the chosen stream).
+5. **Subtitle fetch**: `/Videos/{id}/{versionId}/Subtitles/1000/0/Stream.vtt`; the decorator maps the index to the
+   stream subtitle and the server fetches the loopback SRT, which Jellyfin converts to VTT.
+
+### Known limitations
+- No automated subtitle downloads: scheduled or automatic subtitle searches return nothing.
+- Jellyfin's subtitle dialog does not list the existing subtitles of Currents items.
+- Loopback subtitle tokens appear in ffmpeg logs, like version tokens do (accepted, as in M2).
+- The companion-subtitle rule also matches a user's own `{strm name}.srt` in a Currents folder; it is then treated as a
+  plugin file and removed with the title.
+
 ## Admin API
 `Web/AdminController` (admin only), used by the configuration page:
 - `POST /Currents/admin/catalogs` with JSON body `{"ManifestUrl": "..."}` lists AIOMetadata catalogs.
@@ -239,6 +313,5 @@ and ffmpeg uses the internal loopback URL instead.
 - Secrets never reach logs (`Common/SecretMasker`).
 
 ## Planned (later milestones)
-M4 media info (RemuxDB, persisted probes), proxying header-bound streams, subtitles and trailers, M5
-segments/collections/maintenance/compat guard/diagnostics (including "Purge Currents content"), M6 releases, the
+M5 segments/collections/maintenance/compat guard/diagnostics (including "Purge Currents content"), M6 releases, the
 `/Search/Hints` decision and the `targetAbi` decision.
