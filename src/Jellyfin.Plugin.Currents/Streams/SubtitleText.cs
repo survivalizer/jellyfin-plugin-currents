@@ -145,6 +145,11 @@ public static partial class SubtitleText
             return null;
         }
 
+        if (hours > 99999 || minutes > 59 || whole > 59)
+        {
+            return null;
+        }
+
         var fraction = seconds.Length > 1 ? seconds[1].PadRight(3, '0')[..3] : "000";
         return int.TryParse(fraction, NumberStyles.None, CultureInfo.InvariantCulture, out var milliseconds)
             ? new TimeSpan(0, hours, minutes, whole, milliseconds)

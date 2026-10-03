@@ -32,4 +32,17 @@ public class SubtitleTextTests
 
     [Fact]
     public void Anything_else_is_null() => Assert.Null(SubtitleText.ToSrt("<html>not found</html>"));
+
+    [Fact]
+    public void Cues_with_implausible_times_are_skipped_without_throwing()
+    {
+        var srt = "1\n00:00:01,000 --> 00:00:02,000\nHi\n\n2\n999999999:00:00,000 --> 00:00:01,000\nBad\n";
+        var vtt = "WEBVTT\n\n00:01.000 --> 00:02.000\nHi\n\n999999999:00:00.000 --> 00:00:01.000\nBad\n";
+        var ass = Ass + "Dialogue: 0,999999999:00:00.00,0:00:04.00,Default,,0,0,0,,Bad\n";
+
+        Assert.Equal("1\n00:00:01,000 --> 00:00:02,000\nHi\n\n", SubtitleText.ToSrt(srt));
+        Assert.Equal("1\n00:00:01,000 --> 00:00:02,000\nHi\n\n", SubtitleText.ToSrt(vtt));
+        Assert.Equal(2, SubtitleText.ToSrt(ass)!.Split("-->").Length - 1);
+        Assert.Null(SubtitleText.ToSrt("1\n999999999:00:00,000 --> 00:00:01,000\nBad\n"));
+    }
 }

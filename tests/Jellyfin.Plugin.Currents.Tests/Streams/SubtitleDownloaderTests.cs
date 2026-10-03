@@ -50,4 +50,37 @@ public class SubtitleDownloaderTests
         Assert.Null(await unreachable.DownloadAsync(Url, CancellationToken.None));
         Assert.Null(await missing.DownloadAsync(new Uri("file:///etc/passwd"), CancellationToken.None));
     }
+
+    [Fact]
+    public async Task A_body_that_drips_past_the_timeout_is_null()
+    {
+        var slow = new SubtitleDownloader(
+            new FakeHttpClientFactory(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new HangingStream()) })),
+            TimeSpan.FromMilliseconds(100));
+
+        Assert.Null(await slow.DownloadAsync(Url, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_connection_dropped_mid_body_is_null()
+    {
+        var dropped = Create(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new ThrowingStream()) });
+
+        Assert.Null(await dropped.DownloadAsync(Url, CancellationToken.None));
+    }
+
+    private sealed class HangingStream : MemoryStream
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+    }
+
+    private sealed class ThrowingStream : MemoryStream
+    {
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            throw new IOException("connection reset");
+    }
 }

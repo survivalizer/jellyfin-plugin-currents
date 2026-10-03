@@ -10,7 +10,18 @@ public sealed class SubtitleDownloader
     internal const int MaxBytes = 5 * 1024 * 1024;
     private readonly IHttpClientFactory _httpClientFactory;
 
-    public SubtitleDownloader(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
+    private readonly TimeSpan _timeout;
+
+    public SubtitleDownloader(IHttpClientFactory httpClientFactory)
+        : this(httpClientFactory, TimeSpan.FromSeconds(15))
+    {
+    }
+
+    internal SubtitleDownloader(IHttpClientFactory httpClientFactory, TimeSpan timeout)
+    {
+        _httpClientFactory = httpClientFactory;
+        _timeout = timeout;
+    }
 
     /// <summary>Downloads the file.</summary>
     /// <param name="url">The upstream URL.</param>
@@ -23,17 +34,20 @@ public sealed class SubtitleDownloader
             return null;
         }
 
+        // The timeout covers the whole download, not just the response headers.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_timeout);
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             var client = _httpClientFactory.CreateClient(HttpClientNames.Subtitles);
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 return null;
             }
 
-            var bytes = await BoundedContent.ReadAsync(response.Content, MaxBytes, cancellationToken).ConfigureAwait(false);
+            var bytes = await BoundedContent.ReadAsync(response.Content, MaxBytes, timeout.Token).ConfigureAwait(false);
             if (bytes is [0x1F, 0x8B, ..])
             {
                 bytes = Gunzip(bytes);
@@ -41,7 +55,7 @@ public sealed class SubtitleDownloader
 
             return bytes is null ? null : Decode(bytes);
         }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidDataException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        catch (Exception ex) when (ex is HttpRequestException or IOException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             return null;
         }
