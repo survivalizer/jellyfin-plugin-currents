@@ -50,6 +50,11 @@ public sealed class SubtitleProxyController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden);
         }
 
+        if (!_settings.Current.EnableSubtitles)
+        {
+            return NotFound();
+        }
+
         var profile = _profiles.For(ticket.UserId == Guid.Empty ? null : ticket.UserId);
         var lookup = await _streams.GetAsync(profile, ticket.Type, ticket.StremioId, SearchWait, cancellationToken).ConfigureAwait(false);
         var subtitle = lookup.Streams.FirstOrDefault(s => s.Key == ticket.StreamKey)?.Result.Subtitles?

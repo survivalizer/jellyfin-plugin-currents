@@ -143,4 +143,15 @@ public sealed class CurrentsSubtitleProviderTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => provider.GetSubtitles("not-an-id", CancellationToken.None));
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetSubtitles(SubtitleSearchId.Encode(new CurrentsTitle("series", "tt1:1:2"), "0000000000000000"), CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Download_is_refused_when_subtitles_are_switched_off()
+    {
+        var provider = Create();
+        var id = (await provider.Search(Request("fre"), CancellationToken.None)).Single().Id;
+        _settings.Current.EnableSubtitles = false;
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetSubtitles(id, CancellationToken.None));
+        Assert.Equal("Currents subtitles are switched off.", ex.Message);
+    }
 }

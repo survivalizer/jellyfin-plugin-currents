@@ -98,6 +98,15 @@ public sealed class SubtitleProxyControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Switched_off_subtitles_are_not_found_and_nothing_is_fetched()
+    {
+        _settings.Current.EnableSubtitles = false;
+
+        Assert.IsType<NotFoundResult>(await Create().GetSubtitle(File(), CancellationToken.None));
+        Assert.Empty(_fetched);
+    }
+
+    [Fact]
     public async Task A_subtitle_the_stream_no_longer_offers_is_not_found()
     {
         Assert.IsType<NotFoundResult>(await Create().GetSubtitle(File("https://subs.example.com/gone"), CancellationToken.None));

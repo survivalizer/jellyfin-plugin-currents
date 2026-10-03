@@ -77,6 +77,11 @@ public sealed class CurrentsSubtitleProvider : ISubtitleProvider
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "Jellyfin's SubtitleManager owns and disposes the response stream.")]
     public async Task<SubtitleResponse> GetSubtitles(string id, CancellationToken cancellationToken)
     {
+        if (!_settings.Current.EnableSubtitles)
+        {
+            throw new InvalidOperationException("Currents subtitles are switched off.");
+        }
+
         if (!SubtitleSearchId.TryDecode(id, out var title, out var key))
         {
             throw new ArgumentException("Unknown Currents subtitle id.", nameof(id));

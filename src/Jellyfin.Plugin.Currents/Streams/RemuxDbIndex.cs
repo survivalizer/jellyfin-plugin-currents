@@ -37,8 +37,9 @@ public sealed class RemuxDbIndex
     }
 
     /// <summary>
-    /// Same info hash, and then: the same file index or file name, or (when neither side names the file) the only candidate
-    /// within 1 % of the stream's size. A candidate naming a different file never matches, and two matches are no match.
+    /// Same info hash, and then: the same file index or file name, or, when none matches exactly, the size fallback: only one
+    /// plausible candidate left (candidates naming a different file are already excluded) whose size is within 1 % of the stream's size.
+    /// A candidate naming a different file never matches, and two matches are no match.
     /// </summary>
     /// <param name="result">The stream.</param>
     /// <returns>The matching version, or null.</returns>
