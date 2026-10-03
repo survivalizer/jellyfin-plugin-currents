@@ -22,10 +22,10 @@
           <button is="emby-button" type="button" id="LoadCatalogs" class="raised button-alt"><span>Load catalogs</span></button>
           <div id="CatalogStatus" class="fieldDescription"></div>
           <table id="CatalogTable" class="detailTable" style="width:100%;margin:1em 0">
-            <thead><tr><th>Sync</th><th>Catalog</th><th>Type</th><th>Library</th><th>Max items</th></tr></thead>
+            <thead><tr><th>Sync</th><th>Catalog</th><th>Type</th><th>Library</th><th>Max items</th><th>Collection</th></tr></thead>
             <tbody></tbody>
           </table>
-          <div class="fieldDescription">Unticking a catalog removes its unwatched titles after the configured number of syncs.</div>
+          <div class="fieldDescription">Unticking a catalog removes its unwatched titles after the configured number of syncs. Collection: also keep a Jellyfin collection of the catalog's titles, in catalog order. The first collection creates Jellyfin's Collections library, which runs one library scan. Unticking Collection leaves the collection in place.</div>
 
           <h3>Search (AIOMetadata)</h3>
           <div class="checkboxContainer">
@@ -187,7 +187,12 @@
             max.style.width = '6em';
             max.value = existing ? existing.MaxItems : 100;
 
-            row.append(cell(sync), cell(option.Name), cell(option.Type), cell(target), cell(max));
+            const collection = document.createElement('input');
+            collection.type = 'checkbox';
+            collection.className = 'collection';
+            collection.checked = !!(existing && existing.MakeCollection);
+
+            row.append(cell(sync), cell(option.Name), cell(option.Type), cell(target), cell(max), cell(collection));
             body.appendChild(row);
           }
         }
@@ -201,6 +206,7 @@
               Name: row.dataset.name,
               Target: row.querySelector('.target').value,
               MaxItems: parseInt(row.querySelector('.max').value, 10) || 100,
+              MakeCollection: row.querySelector('.collection').checked,
               Enabled: true
             }));
         }

@@ -16,6 +16,9 @@ public class CatalogSelection
 
     public bool Enabled { get; set; } = true;
 
+    /// <summary>Gets or sets a value indicating whether Currents keeps a Jellyfin collection (BoxSet) of this catalog's titles.</summary>
+    public bool MakeCollection { get; set; }
+
     /// <summary>Gets the stable key used in sync state ("{Type}/{Id}").</summary>
     public string Key => $"{Type}/{Id}";
 }

@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
+using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Configuration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
@@ -18,6 +19,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
     private readonly FakeAioMetadataClient _client = new();
     private readonly FakePlayedLookup _played = new();
     private readonly FakeRefresher _refresher = new();
+    private readonly FakeCollectionSync _collections = new();
     private readonly FakeSettings _settings;
     private readonly TitleLibrary _titles;
     private readonly ListLogger<CatalogSyncService> _logger = new();
@@ -44,7 +46,7 @@ public sealed class CatalogSyncServiceTests : IDisposable
     }
 
     private CatalogSyncService CreateService() =>
-        new(_client, _played, _refresher, _settings, _titles, Time, _logger);
+        new(_client, _played, _refresher, _collections, _settings, _titles, new LibraryJobGate(), new DiagnosticsLog(Time), Time, _logger);
 
     private Task<SyncReport> SyncAsync() => CreateService().SyncAsync(new Progress<double>(), CancellationToken.None);
 
@@ -54,6 +56,62 @@ public sealed class CatalogSyncServiceTests : IDisposable
 
     private string[] MovieFolders() =>
         Directory.Exists(MoviesDir) ? Directory.GetDirectories(MoviesDir).Select(d => Path.GetFileName(d)).Order(StringComparer.Ordinal).ToArray() : [];
+
+    [Fact]
+    public async Task Ticked_catalogs_get_a_collection_plan_in_catalog_order_after_the_refresh()
+    {
+        _settings.Current.Catalogs[0].MakeCollection = true;
+        _settings.Current.Catalogs[0].Name = "Top movies";
+        _client.Catalogs[MovieCatalog] = [Movie("tt2", "Beta"), Movie("tt1", "Alpha")];
+
+        await SyncAsync();
+
+        var plan = Assert.Single(Assert.Single(_collections.Runs));
+        Assert.Equal(MovieCatalog, plan.CatalogKey);
+        Assert.Equal("Top movies", plan.Name);
+        Assert.Equal(new[] { "movie/tt2", "movie/tt1" }, plan.Titles.Select(t => t.StateId));
+        Assert.Single(_refresher.Refreshed);
+    }
+
+    [Fact]
+    public async Task Unticked_and_failed_catalogs_get_no_plan()
+    {
+        _settings.Current.Catalogs[1].MakeCollection = true;
+        _client.Failing.Add(ShowCatalog);
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Alpha")];
+
+        await SyncAsync();
+
+        Assert.Empty(_collections.Runs);
+    }
+
+    [Fact]
+    public async Task A_failing_collection_sync_does_not_fail_the_sync()
+    {
+        _settings.Current.Catalogs[0].MakeCollection = true;
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Alpha")];
+        _collections.Error = new InvalidOperationException("collections broke");
+
+        var report = await SyncAsync();
+
+        Assert.Equal(1, report.Written);
+        Assert.Contains(_logger.Entries, e => e.Message.Contains("collections", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Duplicate_catalog_names_get_their_type()
+    {
+        var names = CatalogSyncService.CollectionNames(
+        [
+            new CatalogSelection { Type = "movie", Id = "tmdb.top", Name = "Popular" },
+            new CatalogSelection { Type = "series", Id = "tmdb.top", Name = "popular" },
+            new CatalogSelection { Type = "movie", Id = "mal.airing", Name = " " },
+        ]);
+
+        Assert.Equal("Popular (movie)", names["movie/tmdb.top"]);
+        Assert.Equal("popular (series)", names["series/tmdb.top"]);
+        Assert.Equal("mal.airing", names["movie/mal.airing"]);
+    }
 
     [Fact]
     public async Task Writes_movies_and_series_and_refreshes_both_roots()
@@ -617,6 +675,19 @@ public sealed class CatalogSyncServiceTests : IDisposable
 
         public bool IsPlayedByAnyone(string absoluteFolder, MediaKind kind) =>
             PlayedFolderNames.Contains(Path.GetFileName(absoluteFolder));
+    }
+
+    private sealed class FakeCollectionSync : ICollectionSync
+    {
+        public List<IReadOnlyList<CollectionPlan>> Runs { get; } = [];
+
+        public Exception? Error { get; set; }
+
+        public Task SyncAsync(IReadOnlyList<CollectionPlan> plans, CancellationToken cancellationToken)
+        {
+            Runs.Add(plans);
+            return Error is null ? Task.CompletedTask : Task.FromException(Error);
+        }
     }
 
     private sealed class FakeRefresher : ILibraryRefresher

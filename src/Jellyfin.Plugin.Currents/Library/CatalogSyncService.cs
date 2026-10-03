@@ -14,8 +14,11 @@ public sealed class CatalogSyncService
     private readonly IAioMetadataClient _client;
     private readonly IPlayedLookup _played;
     private readonly ILibraryRefresher _refresher;
+    private readonly ICollectionSync _collections;
     private readonly ICurrentsSettings _settings;
     private readonly TitleLibrary _titles;
+    private readonly LibraryJobGate _jobs;
+    private readonly DiagnosticsLog _diagnostics;
     private readonly TimeProvider _time;
     private readonly ILogger<CatalogSyncService> _logger;
 
@@ -23,16 +26,22 @@ public sealed class CatalogSyncService
         IAioMetadataClient client,
         IPlayedLookup played,
         ILibraryRefresher refresher,
+        ICollectionSync collections,
         ICurrentsSettings settings,
         TitleLibrary titles,
+        LibraryJobGate jobs,
+        DiagnosticsLog diagnostics,
         TimeProvider time,
         ILogger<CatalogSyncService> logger)
     {
         _client = client;
         _played = played;
         _refresher = refresher;
+        _collections = collections;
         _settings = settings;
         _titles = titles;
+        _jobs = jobs;
+        _diagnostics = diagnostics;
         _time = time;
         _logger = logger;
     }
@@ -40,6 +49,7 @@ public sealed class CatalogSyncService
     [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "A malformed upstream item or catalog (e.g. null entries) must only fail that title or catalog, never the whole sync; cancellation still propagates.")]
     public async Task<SyncReport> SyncAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
+        using var job = await _jobs.EnterAsync(cancellationToken).ConfigureAwait(false);
         var config = _settings.Current;
         if (!AioMetadataEndpoint.TryParse(config.AioMetadataManifestUrl, out var endpoint, out var error))
         {
@@ -53,6 +63,9 @@ public sealed class CatalogSyncService
         var failed = new HashSet<string>(StringComparer.Ordinal);
         var protectedIds = new HashSet<string>(StringComparer.Ordinal);
         int written = 0, unchanged = 0;
+
+        // Catalog order per catalog key, for collections.
+        var members = new Dictionary<string, List<string>>(StringComparer.Ordinal);
 
         // Taken before any catalog write: writing a catalog title recreates a missing root (e.g. an unmounted share).
         var mountedKinds = Enum.GetValues<MediaKind>().Where(k => Directory.Exists(paths.RootFor(k))).ToHashSet();
@@ -83,6 +96,12 @@ public sealed class CatalogSyncService
                         continue;
                     }
 
+                    var order = members.TryGetValue(catalog.Key, out var list) ? list : members[catalog.Key] = [];
+                    if (!order.Contains(key.StateId, StringComparer.Ordinal))
+                    {
+                        order.Add(key.StateId);
+                    }
+
                     bool changed;
                     try
                     {
@@ -111,6 +130,7 @@ public sealed class CatalogSyncService
             {
                 _logger.LogWarning(ex, "Catalog {Catalog} failed; its titles are left unchanged this run", catalog.Key);
                 failed.Add(catalog.Key);
+                _diagnostics.Record("Sync", $"Catalog {catalog.Key} failed: {ex.Message}");
             }
 
             progress.Report((i + 1) * 90.0 / catalogs.Count);
@@ -138,6 +158,7 @@ public sealed class CatalogSyncService
         }
 
         await _refresher.RefreshAsync([paths.Movies, paths.Shows], cancellationToken).ConfigureAwait(false);
+        await SyncCollectionsAsync(catalogs, members, failed, cancellationToken).ConfigureAwait(false);
         progress.Report(100);
 
         var report = new SyncReport(written, unchanged, pruned, failed.Order(StringComparer.Ordinal).ToList());
@@ -150,9 +171,51 @@ public sealed class CatalogSyncService
         return report;
     }
 
+    /// <summary>Names collections after their catalogs; ticked catalogs that share a name get their type appended.</summary>
+    /// <param name="catalogs">The ticked catalogs.</param>
+    /// <returns>Names by catalog key.</returns>
+    internal static Dictionary<string, string> CollectionNames(IReadOnlyList<CatalogSelection> catalogs)
+    {
+        static string BaseName(CatalogSelection c) => string.IsNullOrWhiteSpace(c.Name) ? c.Id : c.Name.Trim();
+        var counts = catalogs
+            .GroupBy(BaseName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+        return catalogs.ToDictionary(
+            c => c.Key,
+            c => counts[BaseName(c)] > 1 ? $"{BaseName(c)} ({c.Type})" : BaseName(c),
+            StringComparer.Ordinal);
+    }
+
     /// <summary>AIOMetadata reports catalog errors as fake items whose id starts with "aiom.error.".</summary>
     private static bool IsErrorItem(StremioMeta meta) =>
         meta.Id?.StartsWith("aiom.error.", StringComparison.Ordinal) == true;
+
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "Collections are an extra: a failure there must never fail the catalog sync; cancellation still propagates.")]
+    private async Task SyncCollectionsAsync(List<CatalogSelection> catalogs, Dictionary<string, List<string>> members, HashSet<string> failed, CancellationToken cancellationToken)
+    {
+        var wanted = catalogs.Where(c => c.MakeCollection && !failed.Contains(c.Key)).ToList();
+        if (wanted.Count == 0)
+        {
+            return;
+        }
+
+        var names = CollectionNames(wanted);
+        var plans = wanted
+            .Select(c => new CollectionPlan(
+                c.Key,
+                names[c.Key],
+                (members.TryGetValue(c.Key, out var ids) ? ids : []).Select(_titles.Get).OfType<TitleState>().ToList()))
+            .ToList();
+        try
+        {
+            await _collections.SyncAsync(plans, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Could not update the catalog collections");
+            _diagnostics.Record("Collections", ex.Message);
+        }
+    }
 
     private async Task<List<StremioMeta>> FetchCatalogAsync(AioMetadataEndpoint endpoint, CatalogSelection catalog, CancellationToken cancellationToken)
     {

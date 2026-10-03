@@ -115,4 +115,13 @@ public sealed class PagesTests : IDisposable
             Assert.Contains($"config.{id} =", html, StringComparison.Ordinal);
         }
     }
+
+    [Fact]
+    public void Admin_page_offers_a_collection_per_catalog()
+    {
+        var html = Resource("Jellyfin.Plugin.Currents.Configuration.configPage.html");
+
+        Assert.Contains("<th>Collection</th>", html, StringComparison.Ordinal);
+        Assert.Contains("MakeCollection:", html, StringComparison.Ordinal);
+    }
 }
