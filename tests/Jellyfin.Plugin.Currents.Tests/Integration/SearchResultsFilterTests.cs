@@ -49,17 +49,16 @@ public sealed class SearchResultsFilterTests : IDisposable
 
     private SearchResultsFilter Create(Guid? user, TimeSpan? wait = null)
     {
-        var http = RequestContextTests.Http(user);
         var host = InterfaceFake.Create<IServerApplicationHost>();
         host.Fake.On("get_SystemId", _ => ServerId);
-        return new SearchResultsFilter(
+        var planner = new SearchPlanner(
             new RemoteSearch(_client, _settings, new SearchResultRegistry(_time), _time, NullLogger<RemoteSearch>.Instance),
             _library,
             new StreamProfileResolver(_users, _settings),
-            RequestContextTests.Create(http),
-            host.Instance,
-            NullLogger<SearchResultsFilter>.Instance,
+            RequestContextTests.Create(RequestContextTests.Http(user)),
+            NullLogger<SearchPlanner>.Instance,
             wait ?? TimeSpan.FromSeconds(5));
+        return new SearchResultsFilter(planner, host.Instance);
     }
 
     private static ActionExecutingContext Context(Dictionary<string, object?> arguments, string action = "GetItems") =>

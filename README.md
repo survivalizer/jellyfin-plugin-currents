@@ -49,7 +49,8 @@ AIOMetadata results and cannot add titles, whatever their switch says: remote re
 Jellyfin could filter on.
 
 The Currents Movies and Shows folders must be in Movies/Shows libraries the user can see. Search covers the main
-`GET /Items` search used by Jellyfin Web, Android TV, Swiftfin and Findroid, not the legacy `/Search/Hints`.
+`GET /Items` search used by Jellyfin Web, Android TV, Swiftfin and Findroid. Clients that use Jellyfin's older
+search-hints API (`/Search/Hints`, used by some third-party apps) get the same remote results.
 
 ## Versions: every stream in the Version menu
 Opening a Currents title searches AIOStreams with **that user's** config and lists every stream as an entry in

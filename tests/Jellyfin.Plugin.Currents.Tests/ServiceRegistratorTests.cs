@@ -167,6 +167,8 @@ public class ServiceRegistratorTests
         Assert.Equal(typeof(SegmentRequestFilter), filters.Single(f => f.Order == -1002).ServiceType);
         Assert.Equal(typeof(SubtitleRequestFilter), filters.Single(f => f.Order == -997).ServiceType);
         Assert.NotNull(provider.GetRequiredService<SubtitleRequestFilter>());
+        Assert.Equal(typeof(SearchHintsFilter), filters.Single(f => f.Order == -996).ServiceType);
+        Assert.NotNull(provider.GetRequiredService<SearchHintsFilter>());
         Assert.NotNull(provider.GetRequiredService<SegmentRequestFilter>());
         Assert.NotNull(provider.GetRequiredService<SearchItemFilter>());
         Assert.NotNull(provider.GetRequiredService<SearchResultsFilter>());

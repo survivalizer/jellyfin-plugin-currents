@@ -149,6 +149,8 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<PosterCache>();
         serviceCollection.AddSingleton<SearchItemFilter>();
         serviceCollection.AddSingleton<SearchResultsFilter>();
+        serviceCollection.AddSingleton<SearchPlanner>();
+        serviceCollection.AddSingleton<SearchHintsFilter>();
 
         serviceCollection.AddSingleton<VersionProber>();
         serviceCollection.AddSingleton<SyntheticVersionIdFilter>();
@@ -167,6 +169,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             options.Filters.AddService<PlaybackInfoFilter>(order: -999);
             options.Filters.AddService<SearchResultsFilter>(order: -998);
             options.Filters.AddService<SubtitleRequestFilter>(order: -997);
+            options.Filters.AddService<SearchHintsFilter>(order: -996);
         });
 
         // Jellyfin registers IMediaSourceManager before plugins (ApplicationHost.cs:597 -> :492); wrap it last.

@@ -67,4 +67,23 @@ public class SearchDtoFactoryTests
         Assert.Matches("^currents[0-9a-f]{16}$", SearchDtoFactory.PosterTag(RpdbPoster));
         Assert.NotEqual(SearchDtoFactory.PosterTag(RpdbPoster), SearchDtoFactory.PosterTag(RpdbPoster + "&x=1"));
     }
+
+    [Fact]
+    public void Hint_mirrors_the_card_without_the_poster_url()
+    {
+        var result = SearchResults.For(
+            new TitleKey(MediaKind.Movie, "imdb", "tt0133093"),
+            new StremioMeta { Id = "tt0133093", Name = "The Matrix", Year = "1999", Poster = "https://img.example.com/p.jpg?key=SECRET" },
+            "movie");
+
+        var hint = SearchDtoFactory.Hint(result);
+
+        Assert.Equal(result.Id, hint.Id);
+#pragma warning disable CS0618 // Older clients read ItemId.
+        Assert.Equal(result.Id, hint.ItemId);
+#pragma warning restore CS0618
+        Assert.Equal(SearchDtoFactory.PosterTag("https://img.example.com/p.jpg?key=SECRET"), hint.PrimaryImageTag);
+        Assert.Equal(2.0 / 3.0, hint.PrimaryImageAspectRatio);
+        Assert.DoesNotContain("SECRET", System.Text.Json.JsonSerializer.Serialize(hint), StringComparison.Ordinal);
+    }
 }
