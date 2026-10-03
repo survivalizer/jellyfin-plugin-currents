@@ -153,6 +153,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<VersionProber>();
         serviceCollection.AddSingleton<SyntheticVersionIdFilter>();
         serviceCollection.AddSingleton<PlaybackInfoFilter>();
+        serviceCollection.AddSingleton<SubtitleRequestFilter>();
 
         // MVC is configured after plugins register, hence PostConfigure. The id filter must run before PlaybackInfoFilter.
         serviceCollection.PostConfigure<MvcOptions>(options =>
@@ -165,6 +166,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             options.Filters.AddService<SyntheticVersionIdFilter>(order: -1000);
             options.Filters.AddService<PlaybackInfoFilter>(order: -999);
             options.Filters.AddService<SearchResultsFilter>(order: -998);
+            options.Filters.AddService<SubtitleRequestFilter>(order: -997);
         });
 
         // Jellyfin registers IMediaSourceManager before plugins (ApplicationHost.cs:597 -> :492); wrap it last.
