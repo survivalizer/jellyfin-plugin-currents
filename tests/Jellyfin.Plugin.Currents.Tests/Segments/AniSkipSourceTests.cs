@@ -53,12 +53,12 @@ public sealed class AniSkipSourceTests : IDisposable
         Assert.Equal(
             new[]
             {
-                new SkipMarker(MarkerKind.Intro, 186_231, 276_231),
+                new SkipMarker(MarkerKind.Intro, 310_571, 400_571),
                 new SkipMarker(MarkerKind.Recap, 132_773, 201_296),
                 new SkipMarker(MarkerKind.Outro, 1_396_006, 1_434_000),
             },
             result!.Markers);
-        Assert.Equal((long)Math.Round(1439.98 * TimeSpan.TicksPerSecond), result.ReferenceTicks);
+        Assert.Equal((long)Math.Round(1443.984 * TimeSpan.TicksPerSecond), result.ReferenceTicks);
     }
 
     [Fact]
@@ -73,6 +73,20 @@ public sealed class AniSkipSourceTests : IDisposable
         var result = await _source.GetAsync(Anime("mal", "21", 1), TimeSpan.FromMinutes(24).Ticks, CancellationToken.None);
 
         Assert.Equal(new[] { new SkipMarker(MarkerKind.Outro, 1_310_000, 1_410_000) }, result!.Markers);
+    }
+
+    [Fact]
+    public async Task A_plain_type_within_one_percent_of_the_anchor_beats_a_nearer_mixed_one()
+    {
+        _respond = _ => StubHttpHandler.Json("""
+            {"found":true,"results":[
+             {"interval":{"startTime":10,"endTime":100},"skipType":"op","skipId":"a","episodeLength":1450},
+             {"interval":{"startTime":20,"endTime":110},"skipType":"mixed-op","skipId":"b","episodeLength":1439.9}]}
+            """);
+
+        var result = await _source.GetAsync(Anime("mal", "21", 1), TimeSpan.FromMinutes(24).Ticks, CancellationToken.None);
+
+        Assert.Equal(new[] { new SkipMarker(MarkerKind.Intro, 10_000, 100_000) }, result!.Markers);
     }
 
     [Fact]
