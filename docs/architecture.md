@@ -186,8 +186,9 @@ place of the share. Opening its search id before that sync, or a known title who
 
 ### Request walkthrough (web client)
 1. **Search**: `GET /Items?searchTerm=T&includeItemTypes=...&limit=800&userId=U` (after jellyfin-web's 500 ms
-   debounce; it never calls `/Search/Hints`). `SearchResultsFilter` checks the user's search switch, starts the remote
-   search, lets Jellyfin answer, then appends cards for results not already present.
+   debounce; jellyfin-web never calls `/Search/Hints`, which M6 covers for other clients, see "Release hardening (M6)").
+   `SearchResultsFilter` checks the user's search switch, starts the remote search, lets Jellyfin answer, then appends
+   cards for results not already present.
 2. **Card poster**: `GET /Items/{searchId}/Images/Primary`. `SearchItemFilter` answers with the proxied poster
    (`image/jpeg`, png, webp, gif or avif); the poster URL is never in any response.
 3. **Open**: the user clicks the card; `GET /Users/{U}/Items/{searchId}` (and `GET /Items/{searchId}?userId=U` from
@@ -201,7 +202,6 @@ place of the share. Opening its search id before that sync, or a known title who
 ### Known limitations
 - A search id for a title that was never opened, cached in a browser across a server restart, gets a 404 until the
   user searches again (the id is only recomputable once the title is in `state.json`).
-- `/Search/Hints` is not covered; legacy clients that use it see no AIOMetadata results (M6 client matrix).
 - The Currents folders must be in Movies/Shows libraries the user can see; otherwise nothing can be added for them.
 - Users with parental controls never see AIOMetadata results and cannot add titles: `JellyfinLibraryItems.CanAdd`
   is false for a user with a maximum parental rating, blocked unrated items, blocked tags or allowed tags, because a
@@ -262,8 +262,9 @@ They are not written into the NFO; a metadata refresh adds them to titles create
 `Streams/StreamHeaders` sanitises a stream's `requestHeaders`: it drops reserved headers (Host, Range, Content-Length,
 hop-by-hop) and values containing CR/LF. The resolver's `allowHeaders` flag decides whether a header-bound stream may be
 used: the loopback version route allows them, degraded `.strm` resolves skip them (their URL reaches clients).
-The resolver follows redirects (up to 5 hops) and drops `Authorization`, `Cookie` and `Proxy-Authorization` when the
-origin changes. `Web/ProxyStreamResult` then streams the resolved URL without following any redirect (a 3xx or 5xx
+The resolver follows redirects (up to 5 hops). When the origin changes, only an allowlist of harmless headers follows
+(M6, see "Release hardening (M6)"; M4 dropped only `Authorization`, `Cookie` and `Proxy-Authorization`).
+`Web/ProxyStreamResult` then streams the resolved URL without following any redirect (a 3xx or 5xx
 answer is a 502) and relays `Range` and the 206 answer and only content headers. Headers never appear in a client-facing field.
 
 ### Request walkthrough (web client)
@@ -284,7 +285,8 @@ answer is a 502) and relays `Range` and the 206 answer and only content headers.
   probed subtitle streams, as Jellyfin does for library streams; without it Jellyfin chose burn-in and never extracted
   the file). The first request makes Jellyfin extract every subtitle stream of the version, which reads the whole remote
   file (about 21 min for 44.6 GB on the dev stack); the result is cached per version under `data/subtitles/`. Burn-in of
-  an embedded text subtitle waits for the same extraction before the video starts.
+  an embedded text subtitle waits for the same extraction before the video starts. Since M6, versions larger than
+  `EmbeddedSubtitleMaxGb` hide these subtitles and refuse their requests (see "Release hardening (M6)").
 - Loopback subtitle tokens appear in ffmpeg logs, like version tokens do (accepted, as in M2).
 - The companion-subtitle rule also matches a user's own `{strm name}.srt` in a Currents folder; it is then treated as a
   plugin file and removed with the title.
@@ -335,6 +337,8 @@ When either is unknown, "markers when the runtime is unknown" decides (default o
 clamped to 1-10 %. In degraded mode (versions off or the compat guard inactive) only that unknown-runtime setting applies.
 
 ### MVC filter order
+The order after M6 (registered in `ServiceRegistrator`):
+
 | Order | Filter |
 |---|---|
 | -1002 | `SegmentRequestFilter` (must see the version id before it is rewritten) |
@@ -342,6 +346,8 @@ clamped to 1-10 %. In degraded mode (versions off or the compat guard inactive) 
 | -1000 | `SyntheticVersionIdFilter` |
 | -999 | `PlaybackInfoFilter` |
 | -998 | `SearchResultsFilter` |
+| -997 | `SubtitleRequestFilter` (M6: runs after the item id was rewritten to the base item) |
+| -996 | `SearchHintsFilter` (M6) |
 
 ### Collections
 After each sync `CollectionPlan` lists, per ticked catalog, the titles in catalog order and `JellyfinCollectionSync`
@@ -364,6 +370,81 @@ call by the decorator, `PlaybackInfoFilter` and `SegmentRequestFilter`. See `doc
   new lookups a day; Currents pauses for the `Retry-After` of a 429, a failed lookup is retried on the next run, and a
   title found without markers is asked again after about a week (with markers, after about a month).
 - Diagnostics "Recent problems" is an in-memory list of the last 50 events, lost on restart.
+
+## Release hardening (M6)
+
+### Outbound address guard
+- `Clients/Http/PublicAddress` tells public internet addresses from loopback, private, link-local (cloud metadata),
+  shared, documentation, multicast and reserved ranges, IPv4 and IPv6. IPv4-mapped IPv6 addresses are judged as IPv4.
+- `Clients/Http/PublicOnlyConnector` is the `SocketsHttpHandler.ConnectCallback` of the `Currents.Posters` and
+  `Currents.Subtitles` clients (`ServiceRegistrator`), the two clients whose URLs come from upstream data. It resolves
+  the host itself and dials only public addresses. The check runs where the socket connects, so it holds on every
+  redirect hop and defeats DNS rebinding. A refusal throws "Refused to connect to a non-public address.", which names no
+  host, address or URL.
+- **Admin exemption.** `PublicOnlyConnector.AdminEndpoints` returns the exact host **and port** of
+  `AioStreamsManifestUrl` and `AioMetadataManifestUrl` (the scheme's default port when the URL has none), read per
+  connection. Those endpoints may be private, so a self-hosted AIOStreams or AIOMetadata on a LAN keeps serving its own
+  subtitles and posters. Another port or host on the same private network stays refused: trusting the whole host would
+  let upstream URLs reach any other local service. A user's self-service AIOStreams URL is not exempt.
+- **Proxy rule.** When the handler connects to an HTTP proxy (the connect target differs from the request's host), the
+  proxy the admin configured decides where the request may go; the connector does not filter it.
+- The guard covers only these two clients. The AIOStreams, AIOMetadata, RemuxDB, resolve and stream-proxy clients
+  connect as before.
+
+### Cross-origin header allowlist
+`Streams/StreamHeaders.For` sends all of a stream's request headers only to the stream's own origin (scheme, host and
+port). After a redirect to another origin only `User-Agent`, `Referer`, `Origin`, `Accept` and `Accept-Language`
+follow. Anything else (`Authorization`, `Cookie`, `X-Api-Key`, custom tokens) may be a credential. This replaces the M4
+rule that dropped only three known credential headers.
+
+### PlaybackInfo scrub carries `ApiKey`
+`PlaybackInfoFilter` scrubs any loopback URL from the PlaybackInfo answer. When a subtitle's `DeliveryUrl` is replaced,
+the new URL is the one Jellyfin builds itself, `/Videos/{item}/{source}/Subtitles/{index}/0/Stream.srt`, plus
+`?ApiKey=` and the caller's token (`Common/JellyfinClaims.GetToken`, claim `Jellyfin-Token`), as Jellyfin's
+`StreamInfo` does. Without a token (anonymous) no `ApiKey` is added. This is the one place a Jellyfin access token goes
+into a URL, and only into the caller's own answer.
+
+### Subtitle requests (`SubtitleRequestFilter`)
+`Integration/SubtitleRequestFilter` (order -997) guards `Subtitle.GetSubtitle`, `GetSubtitleWithTicks` and
+`GetSubtitlePlaylist` when versions are on and the compat guard is active. It reads the item, media source and index
+arguments, preferring the obsolete query arguments over the route ones, as Jellyfin does.
+- **Anonymous callers get 404** for any Currents version or item, including default-config versions. Jellyfin's
+  subtitle routes answer anonymous callers, and for a Currents item they would fail with a 500 on the empty pending
+  source.
+- **Built-in subtitles over the size limit get 404.** On a version where `VersionSourceBuilder.HidesBuiltInSubtitles`
+  is true, any index below 1000 (a built-in track) is refused, so Jellyfin never starts the whole-file extraction.
+  Stream-attached (1000+) and downloaded (2000+) subtitles are unaffected.
+
+### Subtitle size limit (`EmbeddedSubtitleMaxGb`)
+Jellyfin 12.1 has no way to deliver a built-in text subtitle without first reading the whole file
+(`SubtitleEncoder.ExtractAllExtractableSubtitles`). `VersionSourceBuilder` therefore hides built-in text subtitles of
+versions larger than `EmbeddedSubtitleMaxGb` (default 15, 1 GB = 10^9 bytes; 0 = never; a version of unknown size is
+never limited).
+- **Display view**: every built-in text subtitle is removed, including built-in subtitles of unknown codec.
+- **Playback view**: only the trailing run of built-in text subtitles is removed. ffmpeg maps an embedded stream by its
+  position among the source's streams that share its `Path` (`EncodingHelper.FindIndex`), not by `MediaStream.Index`,
+  so removing a subtitle that sits before an audio track would shift that track's `-map 0:N`. A non-trailing built-in
+  text subtitle stays in the playback view; its `External` fetch is still refused by `SubtitleRequestFilter`.
+- Picture-based subtitles stay: burning them in reads them from the same input without extraction.
+
+### `/Search/Hints`
+- `Integration/SearchPlanner` holds what `SearchResultsFilter` and `SearchHintsFilter` share: planning a remote search
+  for the requesting user (`SearchPlan`), starting it before the local search, waiting at most 3 s, and picking the
+  results not already in the local answer. Its rules: a signed-in user with search-add on, a term of at least
+  2 characters, the first page only, video media types only, and kinds the user can add.
+- `Integration/SearchHintsFilter` (order -996) wraps `Search.GetSearchHints` and replaces the `SearchHintResult` with
+  one that appends `SearchHint`s built by `SearchDtoFactory.Hint`. A hint's `Id` is the M3 search id, so
+  `SearchItemFilter` serves its poster and opens it. A page that already reaches `limit` is returned untouched (the
+  remote search still warms the cache).
+
+### Contract check
+Jellyfin.Api is not a NuGet package, so the filters' assumptions about Jellyfin's actions cannot be checked by
+reflection. `dev/check-contract.py` reads the OpenAPI document of a running Jellyfin and checks that each action the
+filters match on still exists with the arguments they read. It matches actions by **operationId** only: Jellyfin names
+each operation after its controller method, while OpenAPI tags are groups such as "Library", not controller names.
+The script has 17 entries. The `*Legacy` actions the filters also match (for example `GetItemsByUserIdLegacy` and
+`GetItemLegacy`) are `[ApiExplorerSettings(IgnoreApi = true)]`, absent from the document, and cannot be checked. The `contract` job in `.github/workflows/ci.yml` starts the
+`jellyfin/jellyfin` image of the version the packages target and runs the script against it.
 
 ## Admin API
 `Web/AdminController` (admin only), used by the configuration page:
@@ -405,5 +486,19 @@ unknown" is on, because Currents cannot tell which file plays.
   user's dead self-hosted AIOStreams does not pause calls to other hosts.
 - Secrets never reach logs (`Common/SecretMasker`).
 
-## Planned (later milestones)
-M6 releases, the `/Search/Hints` decision and the `targetAbi` decision.
+## After 1.0
+Deliberately deferred in the M6 plan:
+- **Later, if asked for:**
+  - a per-version "allow built-in subtitles anyway" switch;
+  - answering windowed subtitle requests with a seeking ffmpeg run (untested cue and timestamp risks; jellyfin-web asks
+    for whole tracks anyway).
+- **Not planned:**
+  - release-please: releases stay tag-driven (`.github/workflows/release.yml` checks the tag against
+    `Directory.Build.props`);
+  - hiding non-trailing built-in text subtitles from the playback view (see "Subtitle size limit" above). Only a forced
+    burn-in of one of them still reads the whole file.
+- **Minor items from M5:**
+  - "Fetch skip markers" loads every library item;
+  - AniSkip and ARM share one pacer;
+  - small untested paths.
+- **Not yet tested:** Android TV and Moonfin on TV (see `docs/client-matrix.md`).
