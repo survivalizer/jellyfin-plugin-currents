@@ -3,6 +3,8 @@ using System.Net;
 using System.Text;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Jellyfin.Plugin.Currents.Tests.Streams;
@@ -11,8 +13,8 @@ public class SubtitleDownloaderTests
 {
     private static readonly Uri Url = new("https://subs.example.com/file/1");
 
-    private static SubtitleDownloader Create(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
-        new(new FakeHttpClientFactory(new StubHttpHandler(respond)));
+    private static SubtitleDownloader Create(Func<HttpRequestMessage, HttpResponseMessage> respond, ILogger<SubtitleDownloader>? logger = null) =>
+        new(new FakeHttpClientFactory(new StubHttpHandler(respond)), logger ?? NullLogger<SubtitleDownloader>.Instance);
 
     private static HttpResponseMessage Bytes(byte[] body) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(body) };
 
@@ -52,10 +54,27 @@ public class SubtitleDownloaderTests
     }
 
     [Fact]
+    public async Task A_failed_download_logs_the_host_but_not_the_path_or_query()
+    {
+        var logger = new ListLogger<SubtitleDownloader>();
+        var unreachable = Create(_ => throw new HttpRequestException("connection refused"), logger);
+
+        Assert.Null(await unreachable.DownloadAsync(new Uri("https://subs.example.com/secret-path/1?apikey=hunter2"), CancellationToken.None));
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Information, entry.Level);
+        Assert.Contains("subs.example.com", entry.Message, StringComparison.Ordinal);
+        Assert.Contains("HttpRequestException", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-path", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("hunter2", entry.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_body_that_drips_past_the_timeout_is_null()
     {
         var slow = new SubtitleDownloader(
             new FakeHttpClientFactory(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new HangingStream()) })),
+            NullLogger<SubtitleDownloader>.Instance,
             TimeSpan.FromMilliseconds(100));
 
         Assert.Null(await slow.DownloadAsync(Url, CancellationToken.None));

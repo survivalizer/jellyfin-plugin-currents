@@ -53,7 +53,7 @@ public sealed class CurrentsSubtitleProviderTests : IDisposable
     {
         var users = new UserStore(_settings, NullLogger<UserStore>.Instance);
         users.Update(Alice, r => r.Self.AioStreamsManifestUrl = AliceUrl);
-        var downloader = new SubtitleDownloader(new FakeHttpClientFactory(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(_download, Encoding.UTF8) })));
+        var downloader = new SubtitleDownloader(new FakeHttpClientFactory(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(_download, Encoding.UTF8) })), NullLogger<SubtitleDownloader>.Instance);
         return new CurrentsSubtitleProvider(
             new CurrentsItemLocator(_settings, _time),
             new StreamProfileResolver(users, _settings),

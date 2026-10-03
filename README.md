@@ -63,7 +63,7 @@ stream** reduces the menu to the top stream. See [configuration.md](docs/configu
 **Tracks, subtitles and trailers.** The details page lists each version's audio and subtitle tracks by language, from
 RemuxDB, AIOStreams' media info or the release name, so you can choose before you press Play. A stream's own subtitles
 and Jellyfin's subtitle search (results named `AIOStreams n (lang)`) both work. On files over 15 GB (the default
-limit), built-in text subtitles are hidden, because Jellyfin would read the whole file before showing one. AIOMetadata
+limit), built-in text subtitles are hidden, because Jellyfin would read the whole file before showing one (this applies only while versions are on and Currents is active; in degraded mode Jellyfin plays the `.strm` itself and the wait can come back). AIOMetadata
 trailers show as the Trailer button. Streams that need request headers (usenet WebDAV, Google Drive) play through the
 server. See [configuration.md](docs/configuration.md#media) and
 [Built-in subtitles on large files](docs/configuration.md#built-in-subtitles-on-large-files).
@@ -89,7 +89,7 @@ and how they did, is in [docs/client-matrix.md](docs/client-matrix.md).
 - Saved manifest URLs of users, and the admin's per-user overrides, are write-only: Currents shows only their host.
   The admin's own URLs and API keys are in Jellyfin's plugin settings, which only admins can read; the diagnostics
   panel shows only whether a key is set.
-- Poster and subtitle downloads go only to public internet addresses. The exception is the exact host and port of the
+- Search-result poster and stream (AIOStreams) subtitle downloads go only to public internet addresses. The exception is the exact host and port of the
   admin's AIOStreams and AIOMetadata manifest URLs. See [Network safety](docs/configuration.md#network-safety).
 - When a stream redirects to another site, only harmless request headers go with it.
 - To report a vulnerability, see [SECURITY.md](SECURITY.md).
@@ -106,7 +106,8 @@ More in [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Upgrading and uninstalling
 - Currents 1.0 needs Jellyfin 12.1. Upgrade Jellyfin first.
-- On a Jellyfin version outside 12.1 up to (not including) 13.0, Currents stands down: titles play through their
+- Upgrading to 1.0: it requires Jellyfin 12.1. Built-in text subtitles on files over 15 GB are hidden after the upgrade (set the limit to 0 to keep them).
+- On Jellyfin 13 or newer, Currents stands down: titles play through their
   `.strm` files, and a warning appears in the Dashboard activity log and as a banner on the plugin page. Tick
   **Run on this untested Jellyfin version** to turn Currents on anyway; no restart is needed.
 - Upgrading to 0.5.0: skip markers are on by default. The first run of "Fetch skip markers" (queued after the next

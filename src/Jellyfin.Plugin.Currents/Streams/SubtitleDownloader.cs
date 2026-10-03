@@ -1,25 +1,28 @@
 using System.IO.Compression;
 using System.Text;
 using Jellyfin.Plugin.Currents.Clients.Http;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Currents.Streams;
 
-/// <summary>Fetches one subtitle file and decodes it to text. Upstream URLs can embed keys, so nothing here is logged.</summary>
+/// <summary>Fetches one subtitle file and decodes it to text. Upstream URLs can embed keys, so logs name the host only.</summary>
 public sealed class SubtitleDownloader
 {
     internal const int MaxBytes = 5 * 1024 * 1024;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<SubtitleDownloader> _logger;
 
     private readonly TimeSpan _timeout;
 
-    public SubtitleDownloader(IHttpClientFactory httpClientFactory)
-        : this(httpClientFactory, TimeSpan.FromSeconds(15))
+    public SubtitleDownloader(IHttpClientFactory httpClientFactory, ILogger<SubtitleDownloader> logger)
+        : this(httpClientFactory, logger, TimeSpan.FromSeconds(15))
     {
     }
 
-    internal SubtitleDownloader(IHttpClientFactory httpClientFactory, TimeSpan timeout)
+    internal SubtitleDownloader(IHttpClientFactory httpClientFactory, ILogger<SubtitleDownloader> logger, TimeSpan timeout)
     {
         _httpClientFactory = httpClientFactory;
+        _logger = logger;
         _timeout = timeout;
     }
 
@@ -57,6 +60,7 @@ public sealed class SubtitleDownloader
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
+            _logger.LogInformation("Could not download a subtitle from {Host}: {Error}", url.Host, ex.GetType().Name);
             return null;
         }
     }

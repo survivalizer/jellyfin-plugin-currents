@@ -146,7 +146,7 @@ settings file.
 | **Using** | — | Which AIOStreams config the user gets: their own (with its host), your override (with its host), the server default, or none. |
 | **Override AIOStreams URL** | none | An AIOStreams manifest URL for this user only. It is checked with AIOStreams before saving and never shown again, only its host. Paste a new one to replace it; enter `-` to remove it. |
 | **Preferences** | default | A summary of the preferences you assigned to this user. |
-| **Show only best** | Inherit | **Only best** or **Show all** for this user, or **Inherit** the user's own choice or the default. |
+| **Show only best** | Inherit | **Only best** or **Show all** for this user, or **Inherit** the user's own choice or the default. An admin choice applies unless the user set their own choice and is not locked, as with the URL override. |
 | **Lock** | off | The user cannot change their settings on the user page, and their own saved settings are not used. |
 | **Streams off** | off | The user gets no streams at all. |
 | **Search add off** | off | The user sees no AIOMetadata search results and cannot add titles. |
@@ -179,7 +179,7 @@ folder. To change one, stop Jellyfin, edit the file, and start Jellyfin again.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `SigningSecret` | generated on first start | Signs the `.strm` files, version links and search ids. Keep it when you move or restore the server: a new secret breaks existing titles until the next sync rewrites their `.strm` files, and changes every search id. Treat it as a secret. |
+| `SigningSecret` | generated on first start | Signs the `.strm` files, version links and search ids. Keep it when you move or restore the server: a new secret makes existing titles unrecognized. Catalog titles come back when the next sync rewrites their `.strm` files, but titles added by search stay unrecognized until you purge and re-add them (a sync refreshes only search-added series, never movies), and every search id changes. Keep a copy of the secret when you move servers. Treat it as a secret. |
 | `VersionTokenHours` | 24 | How long a version link stays valid for Jellyfin's own player (at least 1 hour). |
 | `AioStreamsPermitsPer10Seconds` | 5 | The most AIOStreams requests in 10 seconds, for all users together. Needs a restart. |
 | `AioMetadataPermitsPer5Seconds` | 15 | The most AIOMetadata requests in 5 seconds. Needs a restart. |
@@ -242,11 +242,12 @@ What the limit does:
 - **Hide built-in text subtitles on files larger than** is 15 GB by default (1 GB = 1,000,000,000 bytes).
 - On a version larger than that, Currents hides the file's built-in text subtitles and refuses requests for them.
 - 0 never hides them. A version whose size is unknown is never limited.
+- The limit applies only while versions are on and Currents is active on this Jellyfin version. In degraded mode (versions off, or an untested Jellyfin not forced on) Jellyfin plays the `.strm` itself and the long wait can come back.
 
 What stays on large files:
 - subtitles that AIOStreams lists for the stream;
 - subtitles you downloaded with Jellyfin's subtitle search;
-- picture-based subtitles (PGS and similar). Jellyfin burns these in, which does not read the whole file first.
+- picture-based subtitles (PGS and similar). The server burns these in, which does not read the whole file first. A client that is set to draw PGS itself (jellyfin-web: Settings → Subtitles → render PGS) fetches the track as a file and gets nothing on these files, so turn that setting off.
 
 A rare case: some files have built-in text subtitles that are not at the end of the file's track list (for example
 before an audio track or cover art). Those stay in the player's track list, so the audio you picked still plays. A
@@ -257,7 +258,8 @@ request for one of them is still refused. Only forcing such a subtitle to be bur
 - **Posters and subtitles.** Currents downloads search posters and subtitles only from public internet addresses. It
   refuses loopback, private (LAN), link-local and other non-public addresses, also after a redirect.
 - **Your own servers.** One exception: the exact host **and port** of the two manifest URLs on this page (AIOStreams
-  and AIOMetadata). That keeps a self-hosted AIOStreams or AIOMetadata on your LAN working.
+  and AIOMetadata). That keeps a self-hosted AIOStreams or AIOMetadata on your LAN working. Only those two URLs are
+  exempt: a per-user **Override AIOStreams URL** and users' own URLs are not.
   - A URL without a port counts as port 443 for `https` and 80 for `http`.
   - Images or subtitles served from another port, or another host, on a private network are refused.
   - A user's own AIOStreams URL from the user page is not exempt.

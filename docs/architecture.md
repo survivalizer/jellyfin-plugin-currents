@@ -411,6 +411,7 @@ arguments, preferring the obsolete query arguments over the route ones, as Jelly
 - **Anonymous callers get 404** for any Currents version or item, including default-config versions. Jellyfin's
   subtitle routes answer anonymous callers, and for a Currents item they would fail with a 500 on the empty pending
   source.
+- **A version the caller may not play (another user's) gets 404.**
 - **Built-in subtitles over the size limit get 404.** On a version where `VersionSourceBuilder.HidesBuiltInSubtitles`
   is true, any index below 1000 (a built-in track) is refused, so Jellyfin never starts the whole-file extraction.
   Stream-attached (1000+) and downloaded (2000+) subtitles are unaffected.
@@ -425,7 +426,10 @@ never limited).
   position among the source's streams that share its `Path` (`EncodingHelper.FindIndex`), not by `MediaStream.Index`,
   so removing a subtitle that sits before an audio track would shift that track's `-map 0:N`. A non-trailing built-in
   text subtitle stays in the playback view; its `External` fetch is still refused by `SubtitleRequestFilter`.
-- Picture-based subtitles stay: burning them in reads them from the same input without extraction.
+- Picture-based subtitles stay and the server burns them in: that reads them from the same input without extraction. A
+  client that renders PGS itself (jellyfin-web 12.1 "Render PGS subtitles", or a native client listing `pgssub` as
+  External) fetches the track as a file, and `SubtitleRequestFilter` answers 404 (index below 1000), so those clients
+  show nothing for it on an over-limit version.
 
 ### `/Search/Hints`
 - `Integration/SearchPlanner` holds what `SearchResultsFilter` and `SearchHintsFilter` share: planning a remote search

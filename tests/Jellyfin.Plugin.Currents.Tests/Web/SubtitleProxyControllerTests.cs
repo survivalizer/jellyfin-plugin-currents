@@ -54,7 +54,7 @@ public sealed class SubtitleProxyControllerTests : IDisposable
         {
             _fetched.Add(r.RequestUri!);
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(_upstream, Encoding.UTF8) };
-        })));
+        })), NullLogger<SubtitleDownloader>.Instance);
         return new SubtitleProxyController(
             new StreamService(_client, _settings, new Jellyfin.Plugin.Currents.Common.DiagnosticsLog(_time), _time, NullLogger<StreamService>.Instance),
             new StreamProfileResolver(users, _settings),

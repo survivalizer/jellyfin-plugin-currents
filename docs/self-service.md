@@ -75,7 +75,7 @@ user which one is in use:
 
 In the **Users** table on the admin page, per user:
 - **Override AIOStreams URL**: a config for this user. The user's own config still wins unless the user is locked.
-- **Show only best**: Inherit, Only best, or Show all.
+- **Show only best**: Inherit, Only best, or Show all. It applies unless the user set their own choice and is not locked, like the URL override.
 - **Lock**: the user cannot change anything on this page, and their own saved settings are not used.
 - **Streams off**: the user gets no streams. The page says "Your admin has turned streams off for your account."
 - **Search add off**: the user sees no AIOMetadata search results and cannot add titles. This wins over the user's

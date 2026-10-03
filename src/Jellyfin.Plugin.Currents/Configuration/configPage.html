@@ -59,7 +59,7 @@
           </div>
           <div class="inputContainer">
             <input is="emby-input" type="number" min="0" step="1" id="EmbeddedSubtitleMaxGb" label="Hide built-in text subtitles on files larger than (GB, 0 = never hide)" />
-            <div class="fieldDescription">Before it can show a subtitle that is built into a file, Jellyfin reads the whole file: about 20 minutes for a 45 GB remux, while the player waits. Above this size Currents offers only AIOStreams and downloaded subtitles for that file. Picture-based subtitles (PGS) stay and are burned in.</div>
+            <div class="fieldDescription">Before it can show a subtitle that is built into a file, Jellyfin reads the whole file: about 20 minutes for a 45 GB remux, while the player waits. Above this size Currents offers only AIOStreams and downloaded subtitles for that file. Picture-based subtitles (PGS) stay and the server burns them in. A client set to draw PGS itself (jellyfin-web: Settings, Subtitles, render PGS) gets nothing for them on these files, so turn that setting off. The limit applies only while versions are on and Currents is active on this Jellyfin version.</div>
           </div>
           <div class="checkboxContainer">
             <label><input is="emby-checkbox" type="checkbox" id="EnableRemuxDb" /><span>Show full track lists from RemuxDB before playback</span></label>

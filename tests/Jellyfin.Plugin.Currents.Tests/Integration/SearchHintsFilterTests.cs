@@ -129,6 +129,7 @@ public sealed class SearchHintsFilterTests : IDisposable
         var hints = await Run(Create(Alice), Context(args), local);
 
         Assert.Same(local, hints);
+        Assert.NotEmpty(_client.SearchRequests); // the remote search still started, to warm the cache
     }
 
     [Theory]
