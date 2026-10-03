@@ -69,6 +69,14 @@ public class SubtitleDownloaderTests
         Assert.Null(await dropped.DownloadAsync(Url, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task A_corrupt_gzip_file_is_null()
+    {
+        var corrupt = Create(_ => Bytes([0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0xFF, 0xFF]));
+
+        Assert.Null(await corrupt.DownloadAsync(Url, CancellationToken.None));
+    }
+
     private sealed class HangingStream : MemoryStream
     {
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)

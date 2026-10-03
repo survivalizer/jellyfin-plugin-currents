@@ -55,7 +55,7 @@ public sealed class SubtitleDownloader
 
             return bytes is null ? null : Decode(bytes);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             return null;
         }
