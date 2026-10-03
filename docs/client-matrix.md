@@ -10,6 +10,7 @@ Result of manual playback testing per milestone. Legend: works / works with cave
 | Findroid | | — | |
 | Infuse | | — | |
 | Streamyfin | | — | |
+| Moonfin | | — | |
 | External player (VLC/MX) | | — | |
 
 ## M2: per-user versions
@@ -25,6 +26,7 @@ dropdown lists the user's streams. "Switch works": picking another version keeps
 | Swiftfin | | to test | to test | to test | to test | needs the maintainer's device |
 | Findroid | | to test | to test | to test | to test | needs the maintainer's device |
 | Infuse | | to test | to test | to test | to test | needs the maintainer's device |
+| Moonfin | | to test | to test | to test | to test | needs the maintainer's device |
 
 ## M3: search auto-add
 
@@ -39,6 +41,7 @@ shows an AIOMetadata card with a poster, and opening it adds the title and shows
 | Findroid | | untested (M6) | |
 | Infuse | | untested (M6) | |
 | Streamyfin | | untested (M6) | |
+| Moonfin | | untested (M6) | |
 | External player (VLC/MX) | | untested (M6) | |
 
 ## M4: media
@@ -56,6 +59,7 @@ shows an AIOMetadata card with a poster, and opening it adds the title and shows
 | Findroid | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
 | Infuse | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
 | Streamyfin | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
+| Moonfin | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
 | External player (VLC/MX) | | untested (M6) | untested (M6) | untested (M6) | untested (M6) | |
 
 ## M5: skip markers and collections
@@ -71,4 +75,5 @@ shows an AIOMetadata card with a poster, and opening it adds the title and shows
 | Findroid | | M6 | M6 | |
 | Infuse | | M6 | M6 | |
 | Streamyfin | | M6 | M6 | |
+| Moonfin | | M6 | M6 | |
 | External player (VLC/MX) | | M6 | M6 | |
