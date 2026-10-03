@@ -296,7 +296,7 @@ answer is a 502) and relays `Range` and the 206 answer and only content headers.
   with its own `SourcePacer` rate limit) feed `SegmentService`, which asks the sources that apply in parallel, keeps for
   each marker kind the markers of the highest-priority source that has it, sanitises them against the reference runtime
   (drops markers under 1 s, clamps to the runtime) and hands the result to `SegmentStore` (memory plus
-  `{plugin data}/segments/{key}.json`, fresh 7 days when found, 1 day when not). `SegmentGate` decides whether a title's
+  `{plugin data}/segments/{key}.json`, fresh about 30 days when found, about 7 when not, each scaled by a stable per-title factor of 0.8 to 1.2). `SegmentGate` decides whether a title's
   markers fit one version's runtime.
 - `Features/Segments/CurrentsSegmentProvider`: the `IMediaSegmentProvider` (name `Currents`, which keys the stored
   segments). Jellyfin builds it before the plugin is initialised, so it reads no settings in its constructor and resolves
@@ -360,8 +360,9 @@ call by the decorator, `PlaybackInfoFilter` and `SegmentRequestFilter`. See `doc
 - IMDb-keyed anime get no AniSkip markers (AniSkip needs an anime-provider id); TheIntroDB covers them.
 - Unticking Collection leaves the BoxSet in place.
 - The first collection creates Jellyfin's Collections library and runs one full library scan.
-- TheIntroDB's daily limit (500 requests anonymously) fills a large library over several days; Currents pauses for the
-  `Retry-After` of a 429 and the next run continues.
+- TheIntroDB's daily limit is about 500 requests anonymously (1000 with a key). A library converges at roughly that many
+  new lookups a day; Currents pauses for the `Retry-After` of a 429, a failed lookup is retried on the next run, and a
+  title found without markers is asked again after about a week (with markers, after about a month).
 - Diagnostics "Recent problems" is an in-memory list of the last 50 events, lost on restart.
 
 ## Admin API

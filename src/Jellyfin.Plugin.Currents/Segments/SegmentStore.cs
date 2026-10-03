@@ -9,13 +9,13 @@ using Jellyfin.Plugin.Currents.Streams;
 namespace Jellyfin.Plugin.Currents.Segments;
 
 /// <summary>
-/// Marker lookups per title, in memory and on disk ({data}/segments/{key}.json). A lookup with markers is fresh for 7 days,
-/// one without for 1 day. The gate still reads the reference runtime of a stale lookup: Jellyfin keeps the markers until the next fetch.
+/// Marker lookups per title, in memory and on disk ({data}/segments/{key}.json). A lookup with markers is fresh for about 30 days,
+/// one without for about 7, each scaled by a stable per-title factor in [0.8, 1.2] so a library's lookups do not all expire together. The gate still reads the reference runtime of a stale lookup: Jellyfin keeps the markers until the next fetch.
 /// </summary>
 public sealed class SegmentStore
 {
-    internal static readonly TimeSpan FoundTtl = TimeSpan.FromDays(7);
-    internal static readonly TimeSpan MissTtl = TimeSpan.FromDays(1);
+    internal static readonly TimeSpan FoundTtl = TimeSpan.FromDays(30);
+    internal static readonly TimeSpan MissTtl = TimeSpan.FromDays(7);
     private readonly ICurrentsSettings _settings;
     private readonly TimeProvider _time;
     private readonly ConcurrentDictionary<string, StoredLookup> _memory = new(StringComparer.Ordinal);
@@ -40,7 +40,7 @@ public sealed class SegmentStore
     public bool TryGetFresh(CurrentsTitle title, [NotNullWhen(true)] out SegmentLookup? lookup)
     {
         var stored = Load(title);
-        if (stored is not null && stored.SavedAt + (stored.Lookup.Markers.Count > 0 ? FoundTtl : MissTtl) > _time.GetUtcNow())
+        if (stored is not null && stored.SavedAt + ((stored.Lookup.Markers.Count > 0 ? FoundTtl : MissTtl) * Jitter(title)) > _time.GetUtcNow())
         {
             Interlocked.Increment(ref _hits);
             lookup = stored.Lookup;
@@ -89,8 +89,14 @@ public sealed class SegmentStore
         }
     }
 
-    internal static string Key(CurrentsTitle title) =>
-        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(title.Type + "/" + title.StremioId)))[..32];
+    internal static string Key(CurrentsTitle title) => Convert.ToHexStringLower(Hash(title))[..32];
+
+    /// <summary>A stable factor in [0.8, 1.2] per title, from the first byte of its key hash.</summary>
+    /// <param name="title">The title.</param>
+    /// <returns>The TTL scale for the title.</returns>
+    internal static double Jitter(CurrentsTitle title) => 0.8 + (0.4 * Hash(title)[0] / 255.0);
+
+    private static byte[] Hash(CurrentsTitle title) => SHA256.HashData(Encoding.UTF8.GetBytes(title.Type + "/" + title.StremioId));
 
     private StoredLookup? Load(CurrentsTitle title)
     {
