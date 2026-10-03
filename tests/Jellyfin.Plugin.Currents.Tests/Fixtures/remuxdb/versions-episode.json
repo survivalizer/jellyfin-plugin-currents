@@ -1,0 +1,21 @@
+[
+  {
+    "content_hash": "e7be95", "container": "matroska,webm", "duration": 3480.5, "size": 2000000000, "bitrate": 4597000,
+    "sources": [
+      { "kind": "torrent", "filename": "Show.S01.1080p/Show.S01E01.1080p.mkv", "torrent_info_hash": "F1C8B4BA4AE611494FFB09958241165AAF1F07DB", "torrent_file_idx": 0 }
+    ],
+    "tracks": [
+      { "kind": "video", "idx": 0, "codec": "h264", "width": 1920, "height": 1080, "pixel_format": "yuv420p", "color_transfer": "bt709", "is_default": true, "level": -99, "fps": 23.976 },
+      { "kind": "audio", "idx": 1, "codec": "eac3", "language": "eng", "channels": 6, "channel_layout": "5.1(side)", "sample_rate": 48000, "bit_rate": 640000, "is_default": true, "title": "Release Group Audio" },
+      { "kind": "audio", "idx": 2, "codec": "ac3", "language": "fra", "channels": 2, "channel_layout": "stereo", "is_default": false },
+      { "kind": "subtitle", "idx": 3, "codec": "subrip", "language": "eng", "is_forced": true },
+      { "kind": "subtitle", "idx": 4, "codec": "hdmv_pgs_subtitle", "language": "ger" },
+      { "kind": "subtitle", "idx": 5, "codec": "subrip", "language": "spa", "is_external": true }
+    ]
+  },
+  {
+    "container": "mov,mp4,m4a,3gp,3g2,mj2", "duration": 3479.9, "size": 900000000,
+    "sources": [ { "kind": "nzb", "filename": "Show.S01E01.720p.mp4" } ],
+    "tracks": [ { "kind": "video", "idx": 0, "codec": "hevc" } ]
+  }
+]

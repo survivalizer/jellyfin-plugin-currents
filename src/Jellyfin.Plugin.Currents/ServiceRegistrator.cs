@@ -2,6 +2,7 @@ using Jellyfin.Plugin.Currents.Clients.AioMetadata;
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Clients.Posters;
+using Jellyfin.Plugin.Currents.Clients.RemuxDb;
 using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
@@ -38,6 +39,14 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { MaxAutomaticRedirections = 5 })
             .RemoveAllLoggers();
+        serviceCollection.AddHttpClient(HttpClientNames.RemuxDb, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(5);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
+            })
+            .RemoveAllLoggers();
+        serviceCollection.AddSingleton<IRemuxDbClient, RemuxDbClient>();
+        serviceCollection.AddSingleton<RemuxDbCache>();
         serviceCollection.AddHttpClient(HttpClientNames.Resolve, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(15);

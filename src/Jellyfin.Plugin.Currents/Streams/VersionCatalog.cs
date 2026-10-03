@@ -10,19 +10,25 @@ public sealed class VersionCatalog
     private readonly StreamProfileResolver _profiles;
     private readonly VersionRegistry _registry;
     private readonly ICurrentsSettings _settings;
+    private readonly RemuxDbCache _remux;
 
-    public VersionCatalog(IStreamService streams, StreamProfileResolver profiles, VersionRegistry registry, ICurrentsSettings settings)
+    public VersionCatalog(IStreamService streams, StreamProfileResolver profiles, VersionRegistry registry, ICurrentsSettings settings, RemuxDbCache remux)
     {
         _streams = streams;
         _profiles = profiles;
         _registry = registry;
         _settings = settings;
+        _remux = remux;
     }
 
     public async Task<VersionList> GetAsync(Guid itemId, CurrentsTitle title, Guid userId, TimeSpan wait, CancellationToken cancellationToken)
     {
         var profile = _profiles.For(userId);
+
+        // RemuxDB is keyed by title alone, so it runs alongside the stream search and is bounded by its own 5 s timeout.
+        var remux = _remux.WarmAsync(title, cancellationToken);
         var lookup = await _streams.GetAsync(profile, title.Type, title.StremioId, wait, cancellationToken).ConfigureAwait(false);
+        await remux.ConfigureAwait(false);
         return Build(itemId, title, userId, profile, lookup);
     }
 

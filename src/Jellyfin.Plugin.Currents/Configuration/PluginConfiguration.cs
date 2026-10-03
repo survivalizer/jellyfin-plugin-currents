@@ -63,4 +63,10 @@ public class PluginConfiguration : BasePluginConfiguration
         new CatalogSelection { Type = "movie", Id = "search.movie", Name = "Movies", Target = CatalogTarget.Movies, MaxItems = 20 },
         new CatalogSelection { Type = "series", Id = "search.series", Name = "Series", Target = CatalogTarget.Shows, MaxItems = 20 },
     ];
+
+    /// <summary>Gets or sets a value indicating whether track lists are looked up on RemuxDB (only IMDb/TMDB ids are sent).</summary>
+    public bool EnableRemuxDb { get; set; } = true;
+
+    /// <summary>Gets or sets the RemuxDB server.</summary>
+    public string RemuxDbUrl { get; set; } = "https://remuxdb.1632022.xyz";
 }

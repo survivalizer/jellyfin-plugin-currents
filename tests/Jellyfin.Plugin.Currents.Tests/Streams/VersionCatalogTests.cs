@@ -18,6 +18,7 @@ public sealed class VersionCatalogTests : IDisposable
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     private readonly FakeAioStreamsClient _client = new();
     private readonly FakeSettings _settings = new();
+    private readonly FakeRemuxDbClient _remuxDb = new();
     private readonly ManualTimeProvider _time = new(DateTimeOffset.UnixEpoch);
     private readonly UserStore _users;
     private readonly VersionRegistry _registry;
@@ -35,7 +36,8 @@ public sealed class VersionCatalogTests : IDisposable
             new StreamService(_client, _settings, _time, NullLogger<StreamService>.Instance),
             new StreamProfileResolver(_users, _settings),
             _registry,
-            _settings);
+            _settings,
+            new RemuxDbCache(_remuxDb, _settings, _time, NullLogger<RemuxDbCache>.Instance));
     }
 
     public void Dispose()
@@ -44,6 +46,17 @@ public sealed class VersionCatalogTests : IDisposable
         {
             Directory.Delete(_settings.DataFolderPath, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task Remuxdb_is_looked_up_with_the_stream_search_but_never_by_peek()
+    {
+        _catalog.Peek(Item, Title, Alice);
+        Assert.Equal(0, _remuxDb.Calls);
+
+        await _catalog.GetAsync(Item, Title, Alice, TimeSpan.FromSeconds(10), CancellationToken.None);
+
+        Assert.Equal(1, _remuxDb.Calls);
     }
 
     [Fact]
