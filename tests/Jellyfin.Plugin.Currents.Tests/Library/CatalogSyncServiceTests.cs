@@ -86,6 +86,36 @@ public sealed class CatalogSyncServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_failing_skip_marker_queue_is_logged_and_does_not_fail_the_task()
+    {
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Alpha")];
+        var (tasks, fake) = InterfaceFake.Create<MediaBrowser.Model.Tasks.ITaskManager>();
+        fake.On("get_ScheduledTasks", _ => throw new InvalidOperationException("task manager broke"));
+        var logger = new ListLogger<CatalogSyncTask>();
+
+        await new CatalogSyncTask(CreateService(), tasks, _settings, logger).ExecuteAsync(new Progress<double>(), CancellationToken.None);
+
+        Assert.Contains(logger.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning && e.Message.Contains("task manager broke", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Duplicate_collection_catalogs_do_not_break_the_sync()
+    {
+        _settings.Current.Catalogs =
+        [
+            new CatalogSelection { Type = "movie", Id = "tmdb.top", Target = CatalogTarget.Movies, MaxItems = 100, MakeCollection = true },
+            new CatalogSelection { Type = "movie", Id = "tmdb.top", Target = CatalogTarget.Movies, MaxItems = 100, MakeCollection = true },
+        ];
+        _client.Catalogs[MovieCatalog] = [Movie("tt1", "Alpha")];
+
+        var report = await SyncAsync();
+
+        Assert.Equal(1, report.Written);
+        Assert.Single(Assert.Single(_collections.Runs));
+        Assert.DoesNotContain(_logger.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+    }
+
+    [Fact]
     public async Task A_failing_collection_sync_does_not_fail_the_sync()
     {
         _settings.Current.Catalogs[0].MakeCollection = true;

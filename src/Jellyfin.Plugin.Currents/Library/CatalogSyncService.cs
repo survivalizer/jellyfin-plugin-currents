@@ -188,21 +188,21 @@ public sealed class CatalogSyncService
     [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "Collections are an extra: a failure there must never fail the catalog sync; cancellation still propagates.")]
     private async Task SyncCollectionsAsync(List<CatalogSelection> catalogs, Dictionary<string, List<string>> members, HashSet<string> failed, CancellationToken cancellationToken)
     {
-        var wanted = catalogs.Where(c => c.MakeCollection && !failed.Contains(c.Key)).ToList();
+        var wanted = catalogs.Where(c => c.MakeCollection && !failed.Contains(c.Key)).DistinctBy(c => c.Key, StringComparer.Ordinal).ToList();
         if (wanted.Count == 0)
         {
             return;
         }
 
-        var names = CollectionNames(wanted);
-        var plans = wanted
-            .Select(c => new CollectionPlan(
-                c.Key,
-                names[c.Key],
-                (members.TryGetValue(c.Key, out var ids) ? ids : []).Select(_titles.Get).OfType<TitleState>().ToList()))
-            .ToList();
         try
         {
+            var names = CollectionNames(wanted);
+            var plans = wanted
+                .Select(c => new CollectionPlan(
+                    c.Key,
+                    names[c.Key],
+                    (members.TryGetValue(c.Key, out var ids) ? ids : []).Select(_titles.Get).OfType<TitleState>().ToList()))
+                .ToList();
             await _collections.SyncAsync(plans, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)

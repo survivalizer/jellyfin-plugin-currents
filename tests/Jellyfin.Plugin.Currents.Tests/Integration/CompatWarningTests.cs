@@ -23,6 +23,8 @@ public class CompatWarningTests
         Assert.Equal(LogLevel.Warning, entry.LogSeverity);
         Assert.Contains("13.0.0", entry.Overview, StringComparison.Ordinal);
         Assert.Contains("Run on this untested Jellyfin version", entry.Overview, StringComparison.Ordinal);
+        Assert.Contains("per-user versions and track mapping are off, and skip markers are hidden unless \"Also offer markers when a version's length is unknown\" is ticked", entry.Overview, StringComparison.Ordinal);
+        Assert.DoesNotContain("skip-marker gate", entry.Overview, StringComparison.Ordinal);
         Assert.Contains(_logger.Entries, e => e.Level == LogLevel.Warning);
     }
 

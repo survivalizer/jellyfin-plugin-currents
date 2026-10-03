@@ -34,7 +34,7 @@ public sealed class CompatWarning : IHostedService
             var forced = _compat.ForceEnabled;
             var message = forced
                 ? $"Currents was tested with Jellyfin {CompatState.TestedFrom} up to (not including) {CompatState.TestedBefore}. This server runs {_compat.Server}; Currents runs anyway because \"Run on this untested Jellyfin version\" is on."
-                : $"Currents was tested with Jellyfin {CompatState.TestedFrom} up to (not including) {CompatState.TestedBefore}. This server runs {_compat.Server}, so per-user versions, track mapping and the skip-marker gate are off and titles play their default stream. An admin can turn on \"Run on this untested Jellyfin version\" on the Currents page.";
+                : $"Currents was tested with Jellyfin {CompatState.TestedFrom} up to (not including) {CompatState.TestedBefore}. This server runs {_compat.Server}, so per-user versions and track mapping are off, and skip markers are hidden unless \"Also offer markers when a version's length is unknown\" is ticked. Titles play their default stream. An admin can turn on \"Run on this untested Jellyfin version\" on the Currents page.";
             _logger.LogWarning("{Message}", message);
             await _activity.CreateAsync(new ActivityLog("Currents: untested Jellyfin version", "CurrentsCompat", Guid.Empty)
             {

@@ -187,6 +187,29 @@ public sealed class LibraryMaintenanceTests : IDisposable
     }
 
     [Fact]
+    public async Task Purge_keeps_titles_whose_library_root_is_not_mounted()
+    {
+        var alpha = AddMovie("tt1", "Alpha");
+        var moviesRoot = Path.Combine(_settings.Current.LibraryRoot, "Movies");
+        var parked = moviesRoot + "-offline";
+        Directory.Move(moviesRoot, parked);
+        var show = new TitleState { StateId = "series/tt9", Kind = MediaKind.Series, StremioId = "tt9", Folder = Path.Combine("Shows", "S (2000)"), Catalogs = [] };
+        Directory.CreateDirectory(Path.Combine(_settings.Current.LibraryRoot, "Shows"));
+        _titles.Use(state =>
+        {
+            state.Upsert(show);
+            state.Save();
+        });
+
+        var removed = await Create().PurgeAsync(new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal(1, removed);
+        Assert.NotNull(_titles.Get(alpha.StateId));
+        Assert.Null(_titles.Get(show.StateId));
+        Assert.True(Directory.Exists(Path.Combine(parked, Path.GetFileName(alpha.Folder))));
+    }
+
+    [Fact]
     public async Task Purge_skips_titles_jellyfin_has_no_item_for()
     {
         var alpha = AddMovie("tt1", "Alpha");

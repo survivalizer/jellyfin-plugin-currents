@@ -134,12 +134,20 @@ public sealed class LibraryMaintenance
         using var job = await _jobs.EnterAsync(cancellationToken).ConfigureAwait(false);
         var writer = _titles.CreateWriter();
         var itemIds = new List<Guid>();
-        var root = LibraryPaths.FromSettings(_settings).Root;
+        var libraryPaths = LibraryPaths.FromSettings(_settings);
+        var root = libraryPaths.Root;
         var removed = _titles.Use(state =>
         {
             var count = 0;
             foreach (var title in state.Titles)
             {
+                if (!Directory.Exists(libraryPaths.RootFor(title.Kind)))
+                {
+                    // An unmounted library root looks like an empty one; forgetting the title would orphan its folder for good.
+                    _logger.LogInformation("Purge: keeping {Folder} because its library folder is not available", title.Folder);
+                    continue;
+                }
+
                 try
                 {
                     // Only a folder Currents manages (marker present) and actually removed gives up its Jellyfin item.

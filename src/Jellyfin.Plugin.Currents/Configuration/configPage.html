@@ -344,9 +344,13 @@
 
         // Re-renders only the saved row, so unsaved edits in other rows stay.
         function refreshUserRow(id, row) {
-          ApiClient.getJSON(ApiClient.getUrl('Currents/admin/users')).then((rows) => {
+          return ApiClient.getJSON(ApiClient.getUrl('Currents/admin/users')).then((rows) => {
             const fresh = rows.find((u) => u.Id === id);
-            if (fresh) { row.replaceWith(userRow(fresh, 'Saved')); }
+            if (fresh) {
+              row.replaceWith(userRow(fresh, 'Saved'));
+            } else {
+              row.lastElementChild.lastElementChild.textContent = 'Saved';
+            }
           });
         }
 
@@ -373,7 +377,7 @@
             banner.textContent = 'This Jellyfin (' + d.Compat.Server + ') is outside the range Currents was tested with (' + d.Compat.TestedRange + '). '
               + (d.Compat.Active
                 ? 'Currents runs anyway because "Run on this untested Jellyfin version" is ticked.'
-                : 'Per-user versions, track mapping and the skip-marker gate are off; titles play their default stream. Tick "Run on this untested Jellyfin version" under Versions to turn them on.');
+                : 'Per-user versions and track mapping are off, and skip markers are hidden unless "Also offer markers when a version\'s length is unknown" is ticked; titles play their default stream. Tick "Run on this untested Jellyfin version" under Versions to turn them on.');
             setText('#DiagnosticsState', 'Versions: ' + (d.VersionsEnabled && d.Compat.Active ? 'active' : 'degraded')
               + ' · Skip markers: ' + (d.SegmentsEnabled ? 'on' : 'off')
               + ' · TheIntroDB key: ' + (d.TheIntroDbKeySet ? 'set' : 'none')
@@ -387,7 +391,7 @@
               li.textContent = p ? new Date(p.At).toLocaleString() + ' · ' + p.Area + ' · ' + p.Message : 'No problems recorded since Jellyfin started.';
               list.appendChild(li);
             }
-          });
+          }).catch(() => setText('#DiagnosticsState', 'Could not load diagnostics.'));
         }
 
         function loadPaths() {
