@@ -72,7 +72,7 @@ public sealed partial class RemuxDbCache
             var versions = await _client.VersionsAsync(id, CancellationToken.None).ConfigureAwait(false);
             _cache.Set(id, RemuxDbIndex.Create(versions), versions.Count > 0 ? HitTtl : MissTtl);
         }
-        catch (Exception ex) when (ex is RemuxDbException or HttpRequestException or CircuitOpenException or OperationCanceledException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _cache.Set(id, RemuxDbIndex.Empty, ErrorTtl);
             _logger.LogInformation("RemuxDB lookup for {Id} failed; using the release name's tracks: {Reason}", id, SecretMasker.Mask(ex.Message));

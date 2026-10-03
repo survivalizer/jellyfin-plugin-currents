@@ -62,6 +62,22 @@ public class RemuxDbCacheTests
     }
 
     [Fact]
+    public async Task Unexpected_failures_also_fall_back_quietly_and_are_cached()
+    {
+        _client.Exception = new IOException("connection reset");
+        var cache = Create();
+
+        await cache.WarmAsync(Episode, CancellationToken.None);
+        await cache.WarmAsync(Episode, CancellationToken.None);
+        Assert.Null(cache.Match(Episode, Stream()));
+        Assert.Equal(1, _client.Calls);
+
+        _time.Advance(TimeSpan.FromSeconds(61));
+        await cache.WarmAsync(Episode, CancellationToken.None);
+        Assert.Equal(2, _client.Calls);
+    }
+
+    [Fact]
     public async Task Misses_are_kept_for_thirty_minutes()
     {
         var cache = Create();

@@ -60,6 +60,16 @@ public sealed class VersionCatalogTests : IDisposable
     }
 
     [Fact]
+    public async Task Versions_are_still_listed_when_remuxdb_fails_unexpectedly()
+    {
+        _remuxDb.Exception = new IOException("connection reset");
+
+        var list = await _catalog.GetAsync(Item, Title, Alice, Wait, CancellationToken.None);
+
+        Assert.NotEmpty(list.Versions);
+    }
+
+    [Fact]
     public async Task Builds_at_most_max_versions_with_per_user_ids_and_registers_them()
     {
         _settings.Current.MaxVersions = 5;
