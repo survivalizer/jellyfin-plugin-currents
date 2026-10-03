@@ -8,4 +8,9 @@ public interface IStreamService
     Task<StreamLookup> GetAsync(StreamProfile profile, string type, string stremioId, TimeSpan wait, CancellationToken cancellationToken);
 
     StreamLookup? Peek(StreamProfile profile, string type, string stremioId);
+
+    /// <summary>Forgets every cached stream list and search failure.</summary>
+    void Clear();
+
+    StreamCacheStats Stats();
 }

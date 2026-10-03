@@ -32,7 +32,7 @@ public sealed class StreamResolverTests : IDisposable
         var time = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
         var users = new UserStore(_settings, NullLogger<UserStore>.Instance);
         return new(
-            new StreamService(_streams, _settings, time, NullLogger<StreamService>.Instance),
+            new StreamService(_streams, _settings, new Jellyfin.Plugin.Currents.Common.DiagnosticsLog(time), time, NullLogger<StreamService>.Instance),
             new StreamProfileResolver(users, _settings),
             _factory,
             _settings,

@@ -33,7 +33,7 @@ public sealed class VersionCatalogTests : IDisposable
         _users.Update(Alice, r => r.Self.AioStreamsManifestUrl = AliceUrl);
         _registry = new VersionRegistry(_settings, _time);
         _catalog = new VersionCatalog(
-            new StreamService(_client, _settings, _time, NullLogger<StreamService>.Instance),
+            new StreamService(_client, _settings, new Jellyfin.Plugin.Currents.Common.DiagnosticsLog(_time), _time, NullLogger<StreamService>.Instance),
             new StreamProfileResolver(_users, _settings),
             _registry,
             _settings,

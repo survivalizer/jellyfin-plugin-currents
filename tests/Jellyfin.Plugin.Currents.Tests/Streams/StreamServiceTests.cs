@@ -1,6 +1,7 @@
 using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 using Jellyfin.Plugin.Currents.Clients.Http;
+using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using Jellyfin.Plugin.Currents.Users;
@@ -15,9 +16,11 @@ public class StreamServiceTests
     private readonly FakeAioStreamsClient _client = new();
     private readonly FakeSettings _settings = new();
     private readonly ManualTimeProvider _time = new(DateTimeOffset.UnixEpoch);
+    private readonly DiagnosticsLog _diagnostics;
 
     public StreamServiceTests()
     {
+        _diagnostics = new DiagnosticsLog(_time);
         _client.Outcome = new SearchOutcome(
             [Result("a", "720p"), Result("b", "2160p"), Result("c", "1080p")],
             []);
@@ -32,7 +35,7 @@ public class StreamServiceTests
         return new StreamProfile(ProfileSource.Default, creds, prefs ?? new StreamPreferences(), AutoSelect: false, Disabled: false);
     }
 
-    private StreamService Create() => new(_client, _settings, _time, NullLogger<StreamService>.Instance);
+    private StreamService Create() => new(_client, _settings, _diagnostics, _time, NullLogger<StreamService>.Instance);
 
     private static string[] Names(StreamLookup lookup) => lookup.Streams.Select(s => s.Result.Filename!).ToArray();
 
@@ -218,5 +221,49 @@ public class StreamServiceTests
         await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
 
         Assert.Equal(1, _client.Calls);
+    }
+
+    [Fact]
+    public async Task Counts_hits_and_misses_and_entries()
+    {
+        var service = Create();
+
+        await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+        await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+        await service.GetAsync(Profile(), "movie", "tt2", Wait, CancellationToken.None);
+
+        Assert.Equal(new StreamCacheStats(1, 2, 2), service.Stats());
+    }
+
+    [Fact]
+    public async Task Clear_forgets_results_and_failures()
+    {
+        var service = Create();
+        await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+        _client.Exception = new HttpRequestException("down");
+        await service.GetAsync(Profile(), "movie", "tt2", Wait, CancellationToken.None);
+        _client.Exception = null;
+
+        service.Clear();
+        var again = await service.GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+        var recovered = await service.GetAsync(Profile(), "movie", "tt2", Wait, CancellationToken.None);
+
+        Assert.Null(again.Error);
+        Assert.Null(recovered.Error);
+        Assert.Equal(4, _client.Calls);
+        Assert.Equal(2, service.Stats().Entries);
+    }
+
+    [Fact]
+    public async Task Search_failures_are_recorded_for_diagnostics_without_credentials()
+    {
+        _client.Exception = new HttpRequestException("connect failed to https://aio.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/pw/stream/movie/tt1.json");
+
+        await Create().GetAsync(Profile(), "movie", "tt1", Wait, CancellationToken.None);
+
+        var entry = Assert.Single(_diagnostics.Recent());
+        Assert.Equal("Streams", entry.Area);
+        Assert.Contains("tt1", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("/pw/", entry.Message, StringComparison.Ordinal);
     }
 }

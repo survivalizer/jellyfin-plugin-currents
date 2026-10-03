@@ -47,7 +47,7 @@ public sealed class SegmentRequestFilterTests : IDisposable
         users.Update(Alice, r => r.Self.AioStreamsManifestUrl = AliceUrl);
         var remux = new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance);
         _registry = new VersionRegistry(_settings, _time);
-        _catalog = new VersionCatalog(new StreamService(_client, _settings, _time, NullLogger<StreamService>.Instance), new StreamProfileResolver(users, _settings), _registry, _settings, remux);
+        _catalog = new VersionCatalog(new StreamService(_client, _settings, new Jellyfin.Plugin.Currents.Common.DiagnosticsLog(_time), _time, NullLogger<StreamService>.Instance), new StreamProfileResolver(users, _settings), _registry, _settings, remux);
         _builder = new VersionSourceBuilder(_settings, _time, new ProbeCache(_settings, _time), remux);
         _store = new SegmentStore(_settings, _time);
         _store.Set(Title, new SegmentLookup([new SkipMarker(MarkerKind.Intro, 0, 5_000)], TimeSpan.FromMinutes(120).Ticks));

@@ -6,4 +6,10 @@ public static class TaskKeys
     public const string CatalogSync = "CurrentsCatalogSync";
 
     public const string SkipMarkers = "CurrentsSkipMarkers";
+
+    public const string ClearStreamCache = "CurrentsClearStreamCache";
+
+    public const string VerifyLibrary = "CurrentsVerifyLibrary";
+
+    public const string PurgeContent = "CurrentsPurgeContent";
 }

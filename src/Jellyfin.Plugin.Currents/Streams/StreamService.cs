@@ -13,16 +13,20 @@ public sealed class StreamService : IStreamService
     private static readonly TimeSpan FailureTtl = TimeSpan.FromSeconds(30);
     private readonly IAioStreamsClient _client;
     private readonly ICurrentsSettings _settings;
+    private readonly DiagnosticsLog _diagnostics;
     private readonly TimeProvider _time;
     private readonly ILogger<StreamService> _logger;
     private readonly TtlCache<string, SearchOutcome> _results;
     private readonly TtlCache<string, string> _failures;
     private readonly ConcurrentDictionary<string, Lazy<Task<SearchOutcome>>> _inFlight = new(StringComparer.Ordinal);
+    private long _hits;
+    private long _misses;
 
-    public StreamService(IAioStreamsClient client, ICurrentsSettings settings, TimeProvider time, ILogger<StreamService> logger)
+    public StreamService(IAioStreamsClient client, ICurrentsSettings settings, DiagnosticsLog diagnostics, TimeProvider time, ILogger<StreamService> logger)
     {
         _client = client;
         _settings = settings;
+        _diagnostics = diagnostics;
         _time = time;
         _logger = logger;
         _results = new TtlCache<string, SearchOutcome>(time);
@@ -39,9 +43,11 @@ public sealed class StreamService : IStreamService
         var key = CacheKey(profile.Credentials!, type, stremioId);
         if (_results.TryGet(key, out var cached))
         {
+            Interlocked.Increment(ref _hits);
             return Rank(cached, profile.Preferences);
         }
 
+        Interlocked.Increment(ref _misses);
         if (_failures.TryGet(key, out var error))
         {
             return StreamLookup.Fail(error);
@@ -77,6 +83,16 @@ public sealed class StreamService : IStreamService
             ? Rank(cached, profile.Preferences)
             : null;
     }
+
+    public void Clear()
+    {
+        _results.Clear();
+        _failures.Clear();
+        Interlocked.Exchange(ref _hits, 0);
+        Interlocked.Exchange(ref _misses, 0);
+    }
+
+    public StreamCacheStats Stats() => new(Interlocked.Read(ref _hits), Interlocked.Read(ref _misses), _results.Count);
 
     private static StreamLookup? Unavailable(StreamProfile profile)
     {
@@ -137,6 +153,7 @@ public sealed class StreamService : IStreamService
         {
             _logger.LogWarning("AIOStreams search failed for {Type} {Id}: {Reason}", type, stremioId, SecretMasker.Mask(ex.Message));
             _failures.Set(key, Describe(ex), FailureTtl);
+            _diagnostics.Record("Streams", $"Search for {type} {stremioId} failed: {ex.Message}");
             throw;
         }
     }

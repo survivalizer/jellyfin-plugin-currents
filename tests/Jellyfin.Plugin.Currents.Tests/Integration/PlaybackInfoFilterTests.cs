@@ -41,7 +41,7 @@ public sealed class PlaybackInfoFilterTests : IDisposable
         var users = new UserStore(_settings, NullLogger<UserStore>.Instance);
         users.Update(Alice, r => r.Self.AioStreamsManifestUrl = AliceUrl);
         _registry = new VersionRegistry(_settings, _time);
-        _catalog = new VersionCatalog(new StreamService(_client, _settings, _time, NullLogger<StreamService>.Instance), new StreamProfileResolver(users, _settings), _registry, _settings, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
+        _catalog = new VersionCatalog(new StreamService(_client, _settings, new Jellyfin.Plugin.Currents.Common.DiagnosticsLog(_time), _time, NullLogger<StreamService>.Instance), new StreamProfileResolver(users, _settings), _registry, _settings, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
     }
 
     public void Dispose()
