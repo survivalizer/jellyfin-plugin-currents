@@ -148,6 +148,31 @@ public class TrackComposerTests
     }
 
     [Fact]
+    public void Aiostreams_tracks_still_probe_for_dolby_vision_tags()
+    {
+        var result = Release("English");
+        result.ParsedFile!.Subtitles = [];
+        result.ParsedFile.VisualTags = ["DV"];
+        result.ParsedFile.AudioTracks = [new MediaTrack { Lang = "eng", Codec = "eac3", Channels = "5.1" }];
+
+        var tracks = TrackComposer.Compose(result, null, null, null);
+
+        Assert.Equal(TrackOrigin.AioStreams, tracks.Origin);
+        Assert.True(tracks.NeedsProbe);
+    }
+
+    [Fact]
+    public void Aiostreams_track_without_channels_on_a_release_without_channels_asks_for_a_probe()
+    {
+        var result = Release("English");
+        result.ParsedFile!.Subtitles = [];
+        result.ParsedFile.AudioChannels = [];
+        result.ParsedFile.AudioTracks = [new MediaTrack { Lang = "eng", Codec = "eac3" }];
+
+        Assert.True(TrackComposer.Compose(result, null, null, null).NeedsProbe);
+    }
+
+    [Fact]
     public void Each_call_returns_new_objects()
     {
         var first = TrackComposer.Compose(Release("English"), null, null, Remux());

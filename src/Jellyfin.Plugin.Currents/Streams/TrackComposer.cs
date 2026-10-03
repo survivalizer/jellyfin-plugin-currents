@@ -68,7 +68,8 @@ public static class TrackComposer
             || subtitles > 0
             || (origin == TrackOrigin.ReleaseName
                 ? prefill.NeedsProbe
-                : video.Codec is null || audio.Codec is null || runtime is null || bitrate is null);
+                : video.Codec is null || audio.Codec is null || runtime is null || bitrate is null
+                    || (origin == TrackOrigin.AioStreams && prefill.NeedsProbe));
         return new VersionTracks(display, [video, audio], container, runtime, bitrate, size, origin, needsProbe);
     }
 
