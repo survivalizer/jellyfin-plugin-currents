@@ -46,7 +46,7 @@ def load(source):
 
 def operations(document):
     for path in document.get("paths", {}).values():
-        for method, op in path.items():
+        for op in path.values():
             if isinstance(op, dict) and "operationId" in op:
                 names = {p.get("name") for p in op.get("parameters", [])}
                 yield op["operationId"], names

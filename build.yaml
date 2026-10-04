@@ -1,6 +1,6 @@
 name: "Currents"
 guid: "483F31F4-DB4A-4900-A3B5-EE0FBA5084AC"
-version: "1.0.0.0"
+version: "1.0.1.0"
 targetAbi: "12.1.0.0"
 framework: "net10.0"
 owner: "survivalizer"
@@ -11,4 +11,4 @@ description: >
 category: "General"
 artifacts:
   - "Jellyfin.Plugin.Currents.dll"
-changelog: "1.0: requires Jellyfin 12.1. Poster and subtitle downloads reach only public addresses (plus your AIOStreams/AIOMetadata host and port); stream redirects to another site carry only harmless headers; built-in text subtitles are hidden on files over 15 GB (configurable) so playback never waits for Jellyfin to read the whole file; /Search/Hints lists AIOMetadata results; anonymous subtitle requests get 404 instead of 500; new configuration, self-service and troubleshooting guides."
+changelog: "1.0.1: built-in subtitles stay hidden on large files after a server restart; subtitle requests for ids that name no version of the item get 404 instead of 500; IPv6-only servers behind DNS64 can download posters and subtitles again; library artwork downloads only from public addresses (plus your AIOStreams/AIOMetadata host and port); \"Fetch skip markers\" no longer loads the whole library; AniSkip and ARM have separate rate limits."

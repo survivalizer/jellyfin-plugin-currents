@@ -34,6 +34,7 @@ jobs:
       - name: Start the targeted Jellyfin
         run: |
           version="$(sed -n 's:.*Include="Jellyfin.Controller" Version="\([0-9]*\.[0-9]*\)\..*:\1:p' src/Jellyfin.Plugin.Currents/Jellyfin.Plugin.Currents.csproj)"
+          if [ -z "$version" ]; then echo "::error::Could not read the Jellyfin.Controller version from the csproj"; exit 1; fi
           echo "Jellyfin ${version}"
           docker run -d --name jellyfin -p 8096:8096 "jellyfin/jellyfin:${version}"
           for i in $(seq 1 90); do
