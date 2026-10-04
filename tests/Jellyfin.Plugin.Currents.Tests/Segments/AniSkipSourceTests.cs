@@ -90,6 +90,23 @@ public sealed class AniSkipSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task Arm_lookups_do_not_use_up_aniskip_permits()
+    {
+        // One permit per hour each: with a shared limiter the AniSkip call after the ARM lookup would wait an hour.
+        _respond = r => r.RequestUri!.Host == "arm.haglund.dev"
+            ? StubHttpHandler.Json("""{"anidb":23,"anilist":21,"kitsu":7442,"myanimelist":21}""")
+            : StubHttpHandler.Json(Mal21Answer);
+        using var skipTimes = new SourcePacer(1, TimeSpan.FromHours(1));
+        using var arm = new SourcePacer(1, TimeSpan.FromHours(1));
+        using var source = new AniSkipSource(new FakeHttpClientFactory(new StubHttpHandler(r => _respond(r))), _time, skipTimes, arm);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var markers = await source.GetAsync(Anime("kitsu", "7442", 1), null, timeout.Token);
+
+        Assert.NotNull(markers);
+    }
+
+    [Fact]
     public async Task Kitsu_ids_are_mapped_through_arm_once()
     {
         _respond = r => r.RequestUri!.Host == "arm.haglund.dev"

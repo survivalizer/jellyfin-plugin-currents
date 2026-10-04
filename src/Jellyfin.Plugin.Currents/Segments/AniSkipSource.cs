@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
 using Jellyfin.Plugin.Currents.Common;
@@ -15,13 +16,23 @@ public sealed class AniSkipSource : ISegmentSource, IDisposable
     private static readonly TimeSpan MappingTtl = TimeSpan.FromDays(7);
     private static readonly TimeSpan MissingMappingTtl = TimeSpan.FromDays(1);
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly SourcePacer _pacer = new(5, TimeSpan.FromSeconds(1));
+    private readonly SourcePacer _pacer;
+    private readonly SourcePacer _armPacer;
     private readonly TtlCache<string, Mapping> _malIds;
 
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "The pacers are owned by the instance and disposed in Dispose.")]
     public AniSkipSource(IHttpClientFactory httpClientFactory, TimeProvider time)
+        : this(httpClientFactory, time, new SourcePacer(5, TimeSpan.FromSeconds(1)), new SourcePacer(5, TimeSpan.FromSeconds(1)))
+    {
+    }
+
+    // AniSkip and ARM are separate services with separate limits; one shared limiter halved AniSkip's throughput on cold lookups.
+    internal AniSkipSource(IHttpClientFactory httpClientFactory, TimeProvider time, SourcePacer skipTimes, SourcePacer arm)
     {
         _httpClientFactory = httpClientFactory;
         _malIds = new TtlCache<string, Mapping>(time);
+        _pacer = skipTimes;
+        _armPacer = arm;
     }
 
     public string Name => "AniSkip";
@@ -46,7 +57,11 @@ public sealed class AniSkipSource : ISegmentSource, IDisposable
         return body is null ? null : Choose(SegmentHttp.Parse<Answer>(body, Name).Results ?? [], targetRunTimeTicks);
     }
 
-    public void Dispose() => _pacer.Dispose();
+    public void Dispose()
+    {
+        _pacer.Dispose();
+        _armPacer.Dispose();
+    }
 
     private static SourceMarkers? Choose(List<Result> results, long? targetRunTimeTicks)
     {
@@ -110,7 +125,7 @@ public sealed class AniSkipSource : ISegmentSource, IDisposable
             return cached.MalId;
         }
 
-        await _pacer.WaitAsync("ARM", cancellationToken).ConfigureAwait(false);
+        await _armPacer.WaitAsync("ARM", cancellationToken).ConfigureAwait(false);
         using var message = new HttpRequestMessage(HttpMethod.Get, new Uri($"{ArmBase}?source={request.Provider}&id={request.Id}"));
         var body = await SegmentHttp.GetAsync(_httpClientFactory, message, "ARM", 64 * 1024, null, cancellationToken).ConfigureAwait(false);
         ArmIds? ids;

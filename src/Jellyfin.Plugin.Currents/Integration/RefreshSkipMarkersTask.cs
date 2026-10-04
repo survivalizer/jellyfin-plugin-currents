@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Currents.Common;
+using Jellyfin.Plugin.Currents.Library;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaSegments;
@@ -44,11 +45,25 @@ public sealed class RefreshSkipMarkersTask : IScheduledTask
             return;
         }
 
+        // Only the Currents folders: a full-library query would load every movie and episode the server has.
+        var paths = LibraryPaths.FromSettings(_settings);
+        var roots = new[] { paths.Movies, paths.Shows }
+            .Select(p => _library.FindByPath(p, isFolder: true))
+            .OfType<Folder>()
+            .Select(f => f.Id)
+            .ToArray();
+        if (roots.Length == 0)
+        {
+            progress.Report(100);
+            return;
+        }
+
         var items = _library.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Episode],
             Recursive = true,
             IsVirtualItem = false,
+            AncestorIds = roots,
         })
             .Where(i => _locator.TryGetTitle(i, out _))
             .ToList();

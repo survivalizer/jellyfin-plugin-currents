@@ -19,6 +19,7 @@ public sealed class RefreshSkipMarkersTaskTests : IDisposable
     private readonly (ILibraryManager Instance, InterfaceFake Fake) _library = InterfaceFake.Create<ILibraryManager>();
     private readonly (IMediaSegmentManager Instance, InterfaceFake Fake) _segments = InterfaceFake.Create<IMediaSegmentManager>();
     private readonly List<BaseItem> _items = [];
+    private readonly Folder _moviesFolder = new() { Id = Guid.Parse("cccccccccccccccccccccccccccccccc") };
 
     public RefreshSkipMarkersTaskTests()
     {
@@ -27,6 +28,8 @@ public sealed class RefreshSkipMarkersTaskTests : IDisposable
         _items.Add(new Movie { Id = Guid.NewGuid(), Path = Path.Combine(_settings.DataFolderPath, "own.mkv"), Name = "Own" });
         _items.Add(CurrentsMovie("B", "tt2"));
         _library.Fake.On(nameof(ILibraryManager.GetItemList), _ => (IReadOnlyList<BaseItem>)_items);
+        _library.Fake.On(nameof(ILibraryManager.FindByPath), args =>
+            (string)args[0]! == LibraryPaths.FromSettings(_settings).Movies ? _moviesFolder : null);
         _library.Fake.On(nameof(ILibraryManager.GetLibraryOptions), _ => new LibraryOptions());
     }
 
@@ -57,6 +60,25 @@ public sealed class RefreshSkipMarkersTaskTests : IDisposable
         var calls = _segments.Fake.Calls(nameof(IMediaSegmentManager.RunSegmentPluginProviders));
         Assert.Equal(new[] { "A", "B" }, calls.Select(c => ((BaseItem)c[0]!).Name));
         Assert.All(calls, c => Assert.False((bool)c[2]!));
+    }
+
+    [Fact]
+    public async Task Only_items_under_the_currents_folders_are_queried()
+    {
+        await Create().ExecuteAsync(new Progress<double>(), CancellationToken.None);
+
+        var query = (InternalItemsQuery)Assert.Single(_library.Fake.Calls(nameof(ILibraryManager.GetItemList)))[0]!;
+        Assert.Equal(new[] { _moviesFolder.Id }, query.AncestorIds);
+    }
+
+    [Fact]
+    public async Task No_currents_folder_means_no_query()
+    {
+        _library.Fake.On(nameof(ILibraryManager.FindByPath), _ => null);
+
+        await Create().ExecuteAsync(new Progress<double>(), CancellationToken.None);
+
+        Assert.Empty(_library.Fake.Calls(nameof(ILibraryManager.GetItemList)));
     }
 
     [Fact]
