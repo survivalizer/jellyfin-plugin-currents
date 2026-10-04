@@ -89,8 +89,8 @@ and how they did, is in [docs/client-matrix.md](docs/client-matrix.md).
 - Saved manifest URLs of users, and the admin's per-user overrides, are write-only: Currents shows only their host.
   The admin's own URLs and API keys are in Jellyfin's plugin settings, which only admins can read; the diagnostics
   panel shows only whether a key is set.
-- Search-result posters, stream (AIOStreams) subtitles and library artwork go only to public internet addresses. The exception is the exact host and port of the
-  admin's AIOStreams and AIOMetadata manifest URLs. See [Network safety](docs/configuration.md#network-safety).
+- Search-result posters, stream (AIOStreams) subtitles and library artwork go only to public internet addresses.
+  The exception is the exact host and port of the admin's AIOStreams and AIOMetadata manifest URLs. See [Network safety](docs/configuration.md#network-safety).
 - When a stream redirects to another site, only harmless request headers go with it.
 - To report a vulnerability, see [SECURITY.md](SECURITY.md).
 

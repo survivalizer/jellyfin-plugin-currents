@@ -53,7 +53,7 @@ public class ServiceRegistratorTests
     [InlineData(HttpClientNames.Posters)]
     [InlineData(HttpClientNames.Subtitles)]
     [InlineData(HttpClientNames.Artwork)]
-    public async Task Poster_and_subtitle_clients_dial_only_public_addresses(string name)
+    public async Task Guarded_clients_dial_only_public_addresses(string name)
     {
         await using var provider = Register().BuildServiceProvider();
         var options = provider.GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>().Get(name);

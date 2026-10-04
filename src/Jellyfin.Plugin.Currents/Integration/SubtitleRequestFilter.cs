@@ -1,5 +1,6 @@
 using Jellyfin.Plugin.Currents.Common;
 using Jellyfin.Plugin.Currents.Streams;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
@@ -13,7 +14,8 @@ namespace Jellyfin.Plugin.Currents.Integration;
 /// otherwise fail with a 500 on a placeholder source, on another user's version, or on an id that names no version of
 /// the item; all get 404 instead. A built-in subtitle of a version over the admin's size limit also gets 404, so
 /// Jellyfin never starts reading the whole remote file to extract it (stream-attached 1000+ and downloaded 2000+
-/// subtitles are unaffected). A version id the registry forgot (restart, expiry) is looked up again first.
+/// subtitles are unaffected). A version id the registry forgot (restart, expiry) is looked up again first, and the item id as a source
+/// maps to the caller's first version, as <c>CurrentsMediaSourceManager.GetMediaSource</c> does.
 /// </summary>
 public sealed class SubtitleRequestFilter : IAsyncActionFilter
 {
@@ -54,6 +56,8 @@ public sealed class SubtitleRequestFilter : IAsyncActionFilter
         await next().ConfigureAwait(false);
     }
 
+    private static VersionEntry? First(IReadOnlyList<VersionEntry> versions) => versions.Count > 0 ? versions[0] : null;
+
     private static object? Arg(IDictionary<string, object?> args, string key) => args.TryGetValue(key, out var value) ? value : null;
 
     private async Task<bool> RefuseAsync(IDictionary<string, object?> args, CancellationToken cancellationToken)
@@ -77,11 +81,9 @@ public sealed class SubtitleRequestFilter : IAsyncActionFilter
             return true;
         }
 
-        // A forgotten id (restart, expiry): ask the catalog, as Jellyfin's own fallback would right after this filter (same cached result).
-        if (version is null && sourceId is not null && currentsItem)
+        if (version is null && currentsItem)
         {
-            await _catalog.GetAsync(item!.Id, title!, _request.UserId, SearchWait, cancellationToken).ConfigureAwait(false);
-            version = _registry.TryGet(sourceId, out var found) ? found : null;
+            version = await ResolveAsync(item!, title!, sourceId, cancellationToken).ConfigureAwait(false);
         }
 
         // An id that names no version of this item (a placeholder, another item's version, an unknown id) would fail inside Jellyfin.
@@ -91,5 +93,26 @@ public sealed class SubtitleRequestFilter : IAsyncActionFilter
         }
 
         return index is < TrackIndexes.StreamSubtitles && _builder.HidesBuiltInSubtitles(version);
+    }
+
+    // Resolves a source id the registry does not know the way CurrentsMediaSourceManager would: the item id maps to the caller's first version.
+    // Only a signed-in user may trigger a search (the one Jellyfin's fallback runs right after, so it costs nothing extra); API-key and background callers use registered versions.
+    private async Task<VersionEntry?> ResolveAsync(BaseItem item, CurrentsTitle title, string? sourceId, CancellationToken cancellationToken)
+    {
+        var userId = _request.UserId;
+        var isItemId = string.Equals(sourceId, item.Id.ToString("N"), StringComparison.OrdinalIgnoreCase);
+        if (userId == Guid.Empty)
+        {
+            return isItemId ? First(_registry.ForItem(item.Id, Guid.Empty)) : null;
+        }
+
+        var list = await _catalog.GetAsync(item.Id, title, userId, SearchWait, cancellationToken).ConfigureAwait(false);
+        if (isItemId)
+        {
+            // A resumed playback keeps its versions when a fresh search comes back empty, as the decorator does.
+            return First(list.Versions) ?? First(_registry.ForItemAndUser(item.Id, userId));
+        }
+
+        return sourceId is not null && _registry.TryGet(sourceId, out var found) ? found : null;
     }
 }

@@ -180,11 +180,61 @@ public sealed class SubtitleRequestFilterTests : IDisposable
     public async Task Ids_that_name_no_version_of_this_item_get_404()
     {
         Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle("ffffffffffffffffffffffffffffffff", 2000)));
-        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2000)));
 
         var otherItem = Subtitle(_version.VersionId, 2000);
         otherItem["routeItemId"] = Guid.NewGuid();
         Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", otherItem));
+    }
+
+    [Fact]
+    public async Task The_item_id_resolves_to_the_callers_first_version()
+    {
+        var itemSource = _movie.Id.ToString("N");
+
+        // The first version is the 40 GB one, over the 15 GB limit: downloaded subtitles pass, built-in ones do not.
+        Assert.Null(await Run(Create(Alice), "GetSubtitle", Subtitle(itemSource, 2000)));
+        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle(itemSource, 2)));
+    }
+
+    [Fact]
+    public async Task The_item_id_falls_back_to_registered_versions_when_a_search_comes_back_empty()
+    {
+        _client.Outcome = new SearchOutcome([], []);
+        _time.Advance(TimeSpan.FromMinutes(2));
+        _registry.Register(_movie.Id, Alice, [_version]);
+
+        Assert.Null(await Run(Create(Alice), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2000)));
+        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2)));
+    }
+
+    [Fact]
+    public async Task The_item_id_of_a_user_without_versions_gets_404()
+    {
+        var bob = Guid.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+        Assert.IsType<NotFoundResult>(await Run(Create(bob), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2000)));
+    }
+
+    [Fact]
+    public async Task Anonymous_callers_never_trigger_a_search()
+    {
+        Assert.IsType<NotFoundResult>(await Run(Create(null), "GetSubtitle", Subtitle("ffffffffffffffffffffffffffffffff", 2000)));
+        Assert.Equal(0, _client.Calls);
+    }
+
+    [Fact]
+    public async Task Api_key_callers_never_trigger_a_search()
+    {
+        Assert.IsType<NotFoundResult>(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle("ffffffffffffffffffffffffffffffff", 2000)));
+        Assert.Equal(0, _client.Calls);
+    }
+
+    [Fact]
+    public async Task An_api_key_caller_resolves_the_item_id_from_registered_versions()
+    {
+        Assert.Null(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2000)));
+        Assert.IsType<NotFoundResult>(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2)));
+        Assert.Equal(0, _client.Calls);
     }
 
     [Fact]
@@ -198,11 +248,17 @@ public sealed class SubtitleRequestFilterTests : IDisposable
     [Fact]
     public async Task Query_arguments_win_over_route_ones()
     {
-        var args = Subtitle("ffffffffffffffffffffffffffffffff", 2000);
-        args["mediaSourceId"] = _version.VersionId;
-        args["index"] = 2;
+        // Route names a passing request (downloaded subtitle), query a refused one (built-in track over the limit).
+        var queryRefuses = Subtitle(_version.VersionId, 2000);
+        queryRefuses["mediaSourceId"] = _version.VersionId;
+        queryRefuses["index"] = 2;
+        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", queryRefuses));
 
-        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", args));
+        // The converse: route refused, query passing.
+        var queryPasses = Subtitle(_version.VersionId, 2);
+        queryPasses["mediaSourceId"] = _version.VersionId;
+        queryPasses["index"] = 2000;
+        Assert.Null(await Run(Create(Alice), "GetSubtitle", queryPasses));
     }
 
     [Fact]
