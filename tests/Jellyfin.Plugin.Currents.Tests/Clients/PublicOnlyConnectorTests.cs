@@ -101,4 +101,23 @@ public sealed class PublicOnlyConnectorTests : IDisposable
 
         Assert.Equal(expected, string.Join(",", PublicOnlyConnector.AdminEndpoints(config).Select(e => $"{e.Host}:{e.Port}")));
     }
+
+    [Fact]
+    public async Task A_proxy_connection_is_left_to_the_proxy()
+    {
+        // The loopback listener plays an HTTP proxy the admin configured; the target host is only ever seen by the proxy.
+        using var client = new HttpClient(new SocketsHttpHandler
+        {
+            UseProxy = true,
+            Proxy = new WebProxy(new Uri($"http://127.0.0.1:{Port}")),
+            ConnectCallback = PublicOnlyConnector.Create(() => []),
+        })
+        { Timeout = TimeSpan.FromSeconds(5) };
+        var server = ServeAsync();
+
+        using var response = await client.GetAsync(new Uri("http://posters.example.invalid/p.jpg"));
+        await server;
+
+        Assert.Equal("ok", await response.Content.ReadAsStringAsync());
+    }
 }

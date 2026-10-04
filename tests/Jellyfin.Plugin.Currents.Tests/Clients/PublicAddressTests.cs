@@ -35,8 +35,23 @@ public class PublicAddressTests
     [InlineData("ff02::1")]
     [InlineData("2001:db8::1")]
     [InlineData("2002:a00:1::1")]
+    [InlineData("64:ff9b::7f00:1")]
+    [InlineData("64:ff9b:1::1")]
+    [InlineData("2002:c0a8:101::1")]
+    [InlineData("fec0::1")]
+    [InlineData("::a00:1")]
     public void Private_reserved_and_local_addresses_are_not_public(string address) =>
         Assert.False(PublicAddress.IsPublic(IPAddress.Parse(address)));
+
+    [Theory]
+    [InlineData("64:ff9b::101:101", true)]
+    [InlineData("64:ff9b::808:808", true)]
+    [InlineData("64:ff9b::a00:1", false)]
+    [InlineData("64:ff9b::a9fe:a9fe", false)]
+    [InlineData("2002:101:101::1", true)]
+    [InlineData("2002:7f00:1::1", false)]
+    public void Nat64_and_6to4_are_judged_by_the_embedded_ipv4(string address, bool expected) =>
+        Assert.Equal(expected, PublicAddress.IsPublic(IPAddress.Parse(address)));
 
     [Theory]
     [InlineData("1.1.1.1")]

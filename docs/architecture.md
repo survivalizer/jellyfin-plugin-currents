@@ -375,7 +375,7 @@ call by the decorator, `PlaybackInfoFilter` and `SegmentRequestFilter`. See `doc
 
 ### Outbound address guard
 - `Clients/Http/PublicAddress` tells public internet addresses from loopback, private, link-local (cloud metadata),
-  shared, documentation, multicast and reserved ranges, IPv4 and IPv6. IPv4-mapped IPv6 addresses are judged as IPv4.
+  shared, documentation, multicast and reserved ranges, IPv4 and IPv6. IPv4-mapped IPv6 addresses, and the IPv4 address inside NAT64 (64:ff9b::/96) and 6to4 (2002::/16) addresses, are judged as IPv4, so an IPv6-only server behind DNS64 still reaches IPv4-only hosts.
 - `Clients/Http/PublicOnlyConnector` is the `SocketsHttpHandler.ConnectCallback` of the `Currents.Posters` and
   `Currents.Subtitles` clients (`ServiceRegistrator`), the two clients whose URLs come from upstream data. It resolves
   the host itself and dials only public addresses. The check runs where the socket connects, so it holds on every
