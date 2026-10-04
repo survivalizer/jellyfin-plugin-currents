@@ -193,4 +193,67 @@ public sealed class SearchHintsFilterTests : IDisposable
         Assert.Empty((await Run(Create(null), Context(Hints()), Local())).SearchHints);
         Assert.Empty(_client.SearchRequests);
     }
+
+    [Theory]
+    [InlineData("isMovie", false, "The Matrix Show")]
+    [InlineData("isSeries", false, "The Matrix")]
+    public async Task A_false_flag_removes_that_kind(string flag, bool value, string remaining)
+    {
+        var args = Hints();
+        args[flag] = value;
+
+        var hints = await Run(Create(Alice), Context(args), Local());
+
+        Assert.Equal(new[] { remaining }, hints.SearchHints.Select(h => h.Name));
+    }
+
+    [Fact]
+    public async Task A_video_media_type_filter_drops_series()
+    {
+        var args = Hints();
+        args["mediaTypes"] = new[] { MediaType.Video };
+
+        var hints = await Run(Create(Alice), Context(args), Local());
+
+        Assert.Equal(new[] { "The Matrix" }, hints.SearchHints.Select(h => h.Name));
+    }
+
+    [Fact]
+    public async Task Included_and_excluded_item_types_narrow_the_kinds()
+    {
+        var included = Hints();
+        included["includeItemTypes"] = new[] { BaseItemKind.Series };
+        Assert.Equal(new[] { "The Matrix Show" }, (await Run(Create(Alice), Context(included), Local())).SearchHints.Select(h => h.Name));
+
+        var excluded = Hints();
+        excluded["excludeItemTypes"] = new[] { BaseItemKind.Series };
+        Assert.Equal(new[] { "The Matrix" }, (await Run(Create(Alice), Context(excluded), Local())).SearchHints.Select(h => h.Name));
+    }
+
+    [Fact]
+    public async Task A_library_scope_searches_only_that_librarys_kind()
+    {
+        var movies = Guid.Parse("cccccccccccccccccccccccccccccccc");
+        _library.Libraries[movies] = [MediaKind.Movie];
+        var args = Hints();
+        args["parentId"] = movies;
+
+        var hints = await Run(Create(Alice), Context(args), Local());
+
+        Assert.Equal(new[] { "The Matrix" }, hints.SearchHints.Select(h => h.Name));
+        Assert.Equal(new[] { "movie/search.movie?matrix" }, _client.SearchRequests);
+    }
+
+    [Fact]
+    public async Task Both_movie_and_series_flags_true_add_nothing()
+    {
+        var args = Hints();
+        args["isMovie"] = true;
+        args["isSeries"] = true;
+
+        var hints = await Run(Create(Alice), Context(args), Local());
+
+        Assert.Empty(hints.SearchHints);
+        Assert.Empty(_client.SearchRequests);
+    }
 }
