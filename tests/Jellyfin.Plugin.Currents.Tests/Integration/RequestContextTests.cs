@@ -92,4 +92,35 @@ public class RequestContextTests
     [InlineData("Videos", "GetVideoStream", false)]
     public void Only_single_item_endpoints_may_search(string controller, string action, bool expected) =>
         Assert.Equal(expected, Create(Http(Alice, action: (controller, action))).IsSingleItemRequest);
+
+    [Theory]
+    [InlineData("user", "same", true)]
+    [InlineData("user", "other", false)]
+    [InlineData("user", "default", false)]
+    [InlineData("apikey", "other", true)]
+    [InlineData("apikey", "default", true)]
+    [InlineData("anonymous", "default", true)]
+    [InlineData("anonymous", "other", false)]
+    public void Callers_reach_only_the_versions_they_may_play(string caller, string owner, bool expected)
+    {
+        var alice = Guid.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        var http = caller switch
+        {
+            "user" => Http(alice),
+            "apikey" => Http(apiKey: true),
+            _ => Http(),
+        };
+        var ownerId = owner switch
+        {
+            "same" => alice,
+            "other" => Guid.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+            _ => Guid.Empty,
+        };
+
+        Assert.Equal(expected, Create(http).MayReach(ownerId));
+    }
+
+    [Fact]
+    public void Background_work_reaches_any_version() =>
+        Assert.True(Create(null).MayReach(Guid.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")));
 }

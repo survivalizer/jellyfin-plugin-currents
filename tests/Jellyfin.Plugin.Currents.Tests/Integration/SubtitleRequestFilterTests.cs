@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.Currents.Clients.AioStreams;
 using Jellyfin.Plugin.Currents.Clients.AioStreams.Models;
 using Jellyfin.Plugin.Currents.Clients.RemuxDb;
 using Jellyfin.Plugin.Currents.Common;
@@ -5,6 +6,7 @@ using Jellyfin.Plugin.Currents.Integration;
 using Jellyfin.Plugin.Currents.Library;
 using Jellyfin.Plugin.Currents.Streams;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
+using Jellyfin.Plugin.Currents.Users;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +23,9 @@ public sealed class SubtitleRequestFilterTests : IDisposable
     private readonly FakeSettings _settings = new();
     private readonly ManualTimeProvider _time = new(DateTimeOffset.Parse("2026-10-01T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
     private readonly (ILibraryManager Instance, InterfaceFake Fake) _library = InterfaceFake.Create<ILibraryManager>();
+    private const string AliceUrl = "https://aio.example.com/stremio/0b6c3c7e-1d2f-4a5b-9c8d-7e6f5a4b3c2d/alice/manifest.json";
+    private readonly FakeAioStreamsClient _client = new();
+    private readonly VersionCatalog _catalog;
     private readonly VersionRegistry _registry;
     private readonly Movie _movie;
     private readonly VersionEntry _version;
@@ -44,7 +49,30 @@ public sealed class SubtitleRequestFilterTests : IDisposable
             new CurrentsTitle("movie", "tt1"),
             new RankedStream(Key, new StreamResult { Url = "https://aio.example.com/play/a", Filename = "a.mkv", Size = 40_000_000_000 }));
         _registry.Register(_movie.Id, Alice, [_version]);
+
+        _client.Outcome = new SearchOutcome([Offer("big", 40_000_000_000), Offer("small", 4_000_000_000)], []);
+        var users = new UserStore(_settings, NullLogger<UserStore>.Instance);
+        users.Update(Alice, r => r.Self.AioStreamsManifestUrl = AliceUrl);
+        _catalog = new VersionCatalog(
+            new StreamService(_client, _settings, new DiagnosticsLog(_time), _time, NullLogger<StreamService>.Instance),
+            new StreamProfileResolver(users, _settings),
+            _registry,
+            _settings,
+            new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
     }
+
+    private static StreamResult Offer(string name, long size) => new()
+    {
+        Url = $"https://aio.example.com/play/{name}",
+        Filename = $"{name}.mkv",
+        Size = size,
+        Duration = 7_200_000,
+        ParsedFile = new ParsedFile { Resolution = "1080p", Encode = "AVC", AudioTags = ["AAC"] },
+    };
+
+    private async Task<VersionEntry> AliceVersion(long size) =>
+        (await _catalog.GetAsync(_movie.Id, new CurrentsTitle("movie", "tt1"), Alice, TimeSpan.FromSeconds(10), CancellationToken.None))
+            .Versions.Single(v => v.Stream.Result.Size == size);
 
     public void Dispose()
     {
@@ -59,7 +87,7 @@ public sealed class SubtitleRequestFilterTests : IDisposable
         var probes = new ProbeCache(_settings, _time);
         var builder = new VersionSourceBuilder(_settings, _time, probes, new RemuxDbCache(new FakeRemuxDbClient(), _settings, _time, NullLogger<RemuxDbCache>.Instance));
         var request = RequestContextTests.Create(RequestContextTests.Http(user, apiKey));
-        return new SubtitleRequestFilter(_library.Instance, new CurrentsItemLocator(_settings, _time), _registry, builder, request, _compat, _settings);
+        return new SubtitleRequestFilter(_library.Instance, new CurrentsItemLocator(_settings, _time), _registry, _catalog, builder, request, _compat, _settings);
     }
 
     private Dictionary<string, object?> Subtitle(string sourceId, int index) => new()
@@ -117,14 +145,46 @@ public sealed class SubtitleRequestFilterTests : IDisposable
         Assert.IsType<NotFoundResult>(await Run(Create(bob), "GetSubtitle", Subtitle(_version.VersionId, index)));
     }
 
-    [Theory]
-    [InlineData(40)]
-    [InlineData(0)]
-    public async Task An_api_key_caller_may_reach_any_version(int limitGb)
+    [Fact]
+    public async Task An_api_key_caller_may_reach_any_version()
     {
-        _settings.Current.EmbeddedSubtitleMaxGb = limitGb;
+        _settings.Current.EmbeddedSubtitleMaxGb = 0;
+        Assert.Null(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle(_version.VersionId, 2)));
 
-        Assert.Null(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle(_version.VersionId, 2000)));
+        _settings.Current.EmbeddedSubtitleMaxGb = 15;
+        Assert.IsType<NotFoundResult>(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle(_version.VersionId, 2)));
+    }
+
+    [Fact]
+    public async Task An_expired_version_is_looked_up_again_and_still_guarded()
+    {
+        var big = await AliceVersion(40_000_000_000);
+        _time.Advance(TimeSpan.FromHours(25));
+        Assert.False(_registry.TryGet(big.VersionId, out _));
+
+        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle(big.VersionId, 2)));
+        Assert.Null(await Run(Create(Alice), "GetSubtitle", Subtitle(big.VersionId, 2000)));
+        Assert.True(_registry.TryGet(big.VersionId, out _));
+    }
+
+    [Fact]
+    public async Task A_small_version_keeps_its_builtin_subtitles_after_a_restart()
+    {
+        var small = await AliceVersion(4_000_000_000);
+        _time.Advance(TimeSpan.FromHours(25));
+
+        Assert.Null(await Run(Create(Alice), "GetSubtitle", Subtitle(small.VersionId, 2)));
+    }
+
+    [Fact]
+    public async Task Ids_that_name_no_version_of_this_item_get_404()
+    {
+        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle("ffffffffffffffffffffffffffffffff", 2000)));
+        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2000)));
+
+        var otherItem = Subtitle(_version.VersionId, 2000);
+        otherItem["routeItemId"] = Guid.NewGuid();
+        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", otherItem));
     }
 
     [Fact]

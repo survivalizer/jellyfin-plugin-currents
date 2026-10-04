@@ -112,12 +112,7 @@ public sealed class CurrentsMediaSourceManager : IMediaSourceManager, IDisposabl
         var requester = _request.UserId;
         if (_registry.TryGet(mediaSourceId, out var entry) && entry.BaseItemId == item.Id)
         {
-            // A user may only reach their own versions and an anonymous HTTP caller only default-config ones;
-            // background callers with no request (sessions, timers) may look any up by id.
-            var allowed = requester == Guid.Empty
-                ? !_request.IsAnonymousRequest || entry.UserId == Guid.Empty
-                : requester == entry.UserId;
-            if (!allowed)
+            if (!_request.MayReach(entry.UserId))
             {
                 return null;
             }

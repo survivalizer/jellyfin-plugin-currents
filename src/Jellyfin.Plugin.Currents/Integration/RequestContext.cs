@@ -51,6 +51,18 @@ public sealed class RequestContext
     public bool IsAnonymousRequest =>
         Context() is { } context && UserId == Guid.Empty && !JellyfinClaims.IsApiKey(context.User);
 
+    /// <summary>
+    /// Gets whether this caller may reach a version owned by <paramref name="ownerId"/> (<see cref="Guid.Empty"/> = the
+    /// default config): a user only their own; background work and API keys any; an anonymous HTTP caller only
+    /// default-config ones. The one rule the media source decorator and the subtitle filter share.
+    /// </summary>
+    /// <param name="ownerId">The version's user id.</param>
+    /// <returns>True when the caller may reach it.</returns>
+    public bool MayReach(Guid ownerId) =>
+        UserId is var requester && requester == Guid.Empty
+            ? !IsAnonymousRequest || ownerId == Guid.Empty
+            : requester == ownerId;
+
     public User? User => UserId is var id && id != Guid.Empty ? _users.GetUserById(id) : null;
 
     /// <summary>Gets a value indicating whether this request is an item detail or PlaybackInfo call, the only places a cold AIOStreams search may run.</summary>

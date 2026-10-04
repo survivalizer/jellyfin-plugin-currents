@@ -412,6 +412,13 @@ arguments, preferring the obsolete query arguments over the route ones, as Jelly
   subtitle routes answer anonymous callers, and for a Currents item they would fail with a 500 on the empty pending
   source.
 - **A version the caller may not play (another user's) gets 404.**
+- **Ids that name no version of the routed item get 404**: a placeholder source, another item's version, or an unknown
+  id. Jellyfin would fail on them with a 500.
+- **Forgotten ids are looked up again.** After a restart, or once a version's registry entry expired
+  (`VersionTokenHours`), the filter asks `VersionCatalog` for the caller's versions of the item (the stream cache, or a
+  search bounded at 10 s) before judging, so the size limit still holds. Jellyfin's own fallback would run the same
+  lookup right after, so it costs nothing extra.
+- The access rule lives in one place, `RequestContext.MayReach`, shared with `CurrentsMediaSourceManager.GetMediaSource`.
 - **Built-in subtitles over the size limit get 404.** On a version where `VersionSourceBuilder.HidesBuiltInSubtitles`
   is true, any index below 1000 (a built-in track) is refused, so Jellyfin never starts the whole-file extraction.
   Stream-attached (1000+) and downloaded (2000+) subtitles are unaffected.
