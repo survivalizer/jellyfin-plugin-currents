@@ -11,4 +11,7 @@ public static class HttpClientNames
     public const string Subtitles = "Currents.Subtitles";
     public const string Proxy = "Currents.Proxy";
     public const string Segments = "Currents.Segments";
+
+    /// <summary>Library artwork (posters, backdrops, logos) Jellyfin's metadata refresh downloads through the AIOMetadata providers. Guarded like Posters.</summary>
+    public const string Artwork = "Currents.Artwork";
 }

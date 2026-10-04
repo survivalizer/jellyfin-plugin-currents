@@ -1,5 +1,5 @@
+using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Common;
-using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Providers;
@@ -46,5 +46,5 @@ public sealed class AioMetadataSeriesProvider : IRemoteMetadataProvider<Series, 
         Task.FromResult(Enumerable.Empty<RemoteSearchResult>());
 
     public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken) =>
-        _httpClientFactory.CreateClient(NamedClient.Default).GetAsync(new Uri(url), cancellationToken);
+        _httpClientFactory.CreateClient(HttpClientNames.Artwork).GetAsync(new Uri(url), cancellationToken);
 }

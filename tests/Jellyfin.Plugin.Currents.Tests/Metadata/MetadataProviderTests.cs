@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.Currents.Clients.AioMetadata.Models;
+using Jellyfin.Plugin.Currents.Clients.Http;
 using Jellyfin.Plugin.Currents.Metadata;
 using Jellyfin.Plugin.Currents.Tests.TestSupport;
 using MediaBrowser.Controller.Providers;
@@ -142,5 +143,20 @@ public class MetadataProviderTests
 
         Assert.Equal("Movie One", recovered!.Name);
         Assert.Equal(2, _client.MetaRequests.Count);
+    }
+
+    [Fact]
+    public async Task Artwork_downloads_use_the_guarded_client()
+    {
+        const string url = "https://img.example.com/p.jpg";
+        var factory = new FakeHttpClientFactory(new StubHttpHandler(_ => new HttpResponseMessage()));
+
+        using (await new AioMetadataMovieProvider(Cache(), factory).GetImageResponse(url, CancellationToken.None))
+        using (await new AioMetadataSeriesProvider(Cache(), factory).GetImageResponse(url, CancellationToken.None))
+        using (await new AioMetadataEpisodeProvider(Cache(), factory).GetImageResponse(url, CancellationToken.None))
+        using (await new AioMetadataImageProvider(Cache(), factory).GetImageResponse(url, CancellationToken.None))
+        {
+            Assert.Equal(Enumerable.Repeat(HttpClientNames.Artwork, 4), factory.RequestedNames);
+        }
     }
 }

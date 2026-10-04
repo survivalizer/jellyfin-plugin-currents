@@ -376,8 +376,7 @@ call by the decorator, `PlaybackInfoFilter` and `SegmentRequestFilter`. See `doc
 ### Outbound address guard
 - `Clients/Http/PublicAddress` tells public internet addresses from loopback, private, link-local (cloud metadata),
   shared, documentation, multicast and reserved ranges, IPv4 and IPv6. IPv4-mapped IPv6 addresses, and the IPv4 address inside NAT64 (64:ff9b::/96) and 6to4 (2002::/16) addresses, are judged as IPv4, so an IPv6-only server behind DNS64 still reaches IPv4-only hosts.
-- `Clients/Http/PublicOnlyConnector` is the `SocketsHttpHandler.ConnectCallback` of the `Currents.Posters` and
-  `Currents.Subtitles` clients (`ServiceRegistrator`), the two clients whose URLs come from upstream data. It resolves
+- `Clients/Http/PublicOnlyConnector` is the `SocketsHttpHandler.ConnectCallback` of the `Currents.Posters`, `Currents.Subtitles` and `Currents.Artwork` clients (`ServiceRegistrator.AddGuardedClient`), the three clients whose URLs come from upstream data. It resolves
   the host itself and dials only public addresses. The check runs where the socket connects, so it holds on every
   redirect hop and defeats DNS rebinding. A refusal throws "Refused to connect to a non-public address.", which names no
   host, address or URL.
@@ -388,7 +387,7 @@ call by the decorator, `PlaybackInfoFilter` and `SegmentRequestFilter`. See `doc
   let upstream URLs reach any other local service. A user's self-service AIOStreams URL is not exempt.
 - **Proxy rule.** When the handler connects to an HTTP proxy (the connect target differs from the request's host), the
   proxy the admin configured decides where the request may go; the connector does not filter it.
-- The guard covers only these two clients. The AIOStreams, AIOMetadata, RemuxDB, resolve and stream-proxy clients
+- The guard covers only these three clients; the AIOMetadata providers' `GetImageResponse` uses `Currents.Artwork`. The AIOStreams, AIOMetadata, RemuxDB, resolve and stream-proxy clients
   connect as before.
 
 ### Cross-origin header allowlist

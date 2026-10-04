@@ -42,17 +42,6 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 
         AddUpstreamClient(serviceCollection, HttpClientNames.AioStreams);
         AddUpstreamClient(serviceCollection, HttpClientNames.AioMetadata);
-        serviceCollection.AddHttpClient(HttpClientNames.Posters, client =>
-            {
-                client.Timeout = TimeSpan.FromSeconds(10);
-                client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
-            })
-            .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
-            {
-                MaxAutomaticRedirections = 5,
-                ConnectCallback = PublicOnlyConnector.Create(() => PublicOnlyConnector.AdminEndpoints(sp.GetRequiredService<ICurrentsSettings>().Current)),
-            })
-            .RemoveAllLoggers();
         serviceCollection.AddHttpClient(HttpClientNames.RemuxDb, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(5);
@@ -62,19 +51,10 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IRemuxDbClient, RemuxDbClient>();
         serviceCollection.AddSingleton<RemuxDbCache>();
 
-        // Subtitle and poster URLs come from upstream data: they may only reach public addresses (or the admin's own hosts).
-        serviceCollection.AddHttpClient(HttpClientNames.Subtitles, client =>
-            {
-                client.Timeout = TimeSpan.FromSeconds(15);
-                client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
-            })
-            .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
-            {
-                MaxAutomaticRedirections = 5,
-                AutomaticDecompression = System.Net.DecompressionMethods.All,
-                ConnectCallback = PublicOnlyConnector.Create(() => PublicOnlyConnector.AdminEndpoints(sp.GetRequiredService<ICurrentsSettings>().Current)),
-            })
-            .RemoveAllLoggers();
+        // Poster, subtitle and artwork URLs come from upstream data: they may only reach public addresses (or the admin's own host and port).
+        AddGuardedClient(serviceCollection, HttpClientNames.Posters, TimeSpan.FromSeconds(10), decompress: false);
+        AddGuardedClient(serviceCollection, HttpClientNames.Subtitles, TimeSpan.FromSeconds(15), decompress: true);
+        AddGuardedClient(serviceCollection, HttpClientNames.Artwork, TimeSpan.FromSeconds(30), decompress: false);
         serviceCollection.AddSingleton<SubtitleDownloader>();
         serviceCollection.AddSingleton<ISubtitleProvider, CurrentsSubtitleProvider>();
 
@@ -187,4 +167,18 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             .AddHttpMessageHandler(sp => sp.GetRequiredService<OutboundPolicies>().CreateHandler(name))
             .RemoveAllLoggers();
     }
+
+    private static void AddGuardedClient(IServiceCollection services, string name, TimeSpan timeout, bool decompress) =>
+        services.AddHttpClient(name, client =>
+            {
+                client.Timeout = timeout;
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(CurrentsPlugin.UserAgent);
+            })
+            .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
+            {
+                MaxAutomaticRedirections = 5,
+                AutomaticDecompression = decompress ? System.Net.DecompressionMethods.All : System.Net.DecompressionMethods.None,
+                ConnectCallback = PublicOnlyConnector.Create(() => PublicOnlyConnector.AdminEndpoints(sp.GetRequiredService<ICurrentsSettings>().Current)),
+            })
+            .RemoveAllLoggers();
 }

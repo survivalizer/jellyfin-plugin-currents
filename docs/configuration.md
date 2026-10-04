@@ -255,8 +255,7 @@ request for one of them is still refused. Only forcing such a subtitle to be bur
 
 ## Network safety
 
-- **Posters and subtitles.** Currents downloads search posters and subtitles only from public internet addresses. It
-  refuses loopback, private (LAN), link-local and other non-public addresses, also after a redirect.
+- **Posters, subtitles and artwork.** Currents downloads search posters, stream subtitles and the library artwork its metadata providers fetch only from public internet addresses. It refuses loopback, private (LAN), link-local and other non-public addresses, also after a redirect. (Images an admin picks by hand in Jellyfin's image editor are downloaded by Jellyfin itself.)
 - **Your own servers.** One exception: the exact host **and port** of the two manifest URLs on this page (AIOStreams
   and AIOMetadata). That keeps a self-hosted AIOStreams or AIOMetadata on your LAN working. Only those two URLs are
   exempt: a per-user **Override AIOStreams URL** and users' own URLs are not.
