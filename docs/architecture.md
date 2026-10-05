@@ -375,13 +375,14 @@ call by the decorator, `PlaybackInfoFilter` and `SegmentRequestFilter`. See `doc
 
 ### Outbound address guard
 - `Clients/Http/PublicAddress` tells public internet addresses from loopback, private, link-local (cloud metadata),
-  shared, documentation, multicast and reserved ranges, IPv4 and IPv6. IPv4-mapped IPv6 addresses, and the IPv4 address inside NAT64 (64:ff9b::/96) addresses, are judged as
-  IPv4, so an IPv6-only server behind DNS64 still reaches IPv4-only hosts. 6to4 (2002::/16) and Teredo stay refused
+  shared, documentation, multicast and reserved ranges, IPv4 and IPv6. IPv4-mapped IPv6 addresses, and the IPv4 address
+  inside NAT64 (64:ff9b::/96) addresses, are judged as IPv4, so an IPv6-only server behind DNS64 still reaches
+  IPv4-only hosts. 6to4 (2002::/16) and Teredo stay refused
   as a whole: a site may number its LAN inside a 6to4 prefix built from its own public IPv4 address.
 - `Clients/Http/PublicOnlyConnector` is the `SocketsHttpHandler.ConnectCallback` of the `Currents.Posters`,
   `Currents.Subtitles` and `Currents.Artwork` clients (`ServiceRegistrator.AddGuardedClient`), the three clients whose
-  URLs come from upstream data. It resolves the host itself and dials only public addresses. The check runs where the socket connects, so it holds on every
-  redirect hop and defeats DNS rebinding. A refusal throws "Refused to connect to a non-public address.", which names no
+  URLs come from upstream data. It resolves the host itself and dials only public addresses. The check runs where the
+  socket connects, so it holds on every redirect hop and defeats DNS rebinding. A refusal throws "Refused to connect to a non-public address.", which names no
   host, address or URL.
 - **Admin exemption.** `PublicOnlyConnector.AdminEndpoints` returns the exact host **and port** of
   `AioStreamsManifestUrl` and `AioMetadataManifestUrl` (the scheme's default port when the URL has none), read per
@@ -421,8 +422,9 @@ arguments, preferring the obsolete query arguments over the route ones, as Jelly
   cache, or a search bounded at 10 s) before judging, so the size limit still holds. Jellyfin's own fallback runs the
   same lookup right after, so it costs nothing extra. API-key and background callers never search: they use only the
   versions already registered.
-- **The item id as a media source** maps to the caller's first version, as `CurrentsMediaSourceManager.GetMediaSource`
-  does (404 when the caller has no version).
+- **An item id used as the media source gets 404.** It names no version, and Jellyfin's subtitle route cannot serve
+  it (Jellyfin resolves subtitle sources without the decorator's item-id fallback, so 1.0.0 answered 500). Clients use
+  the version ids from PlaybackInfo.
 - The access rule lives in one place, `RequestContext.MayReach`, shared with `CurrentsMediaSourceManager.GetMediaSource`.
 - **Built-in subtitles over the size limit get 404.** On a version where `VersionSourceBuilder.HidesBuiltInSubtitles`
   is true, any index below 1000 (a built-in track) is refused, so Jellyfin never starts the whole-file extraction.

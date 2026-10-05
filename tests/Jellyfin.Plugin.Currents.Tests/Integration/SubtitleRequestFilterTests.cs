@@ -187,24 +187,13 @@ public sealed class SubtitleRequestFilterTests : IDisposable
     }
 
     [Fact]
-    public async Task The_item_id_resolves_to_the_callers_first_version()
+    public async Task An_item_id_source_names_no_version()
     {
         var itemSource = _movie.Id.ToString("N");
 
-        // The first version is the 40 GB one, over the 15 GB limit: downloaded subtitles pass, built-in ones do not.
-        Assert.Null(await Run(Create(Alice), "GetSubtitle", Subtitle(itemSource, 2000)));
+        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle(itemSource, 2000)));
         Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle(itemSource, 2)));
-    }
-
-    [Fact]
-    public async Task The_item_id_falls_back_to_registered_versions_when_a_search_comes_back_empty()
-    {
-        _client.Outcome = new SearchOutcome([], []);
-        _time.Advance(TimeSpan.FromMinutes(2));
-        _registry.Register(_movie.Id, Alice, [_version]);
-
-        Assert.Null(await Run(Create(Alice), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2000)));
-        Assert.IsType<NotFoundResult>(await Run(Create(Alice), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2)));
+        Assert.IsType<NotFoundResult>(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle(itemSource, 2000)));
     }
 
     [Fact]
@@ -226,14 +215,6 @@ public sealed class SubtitleRequestFilterTests : IDisposable
     public async Task Api_key_callers_never_trigger_a_search()
     {
         Assert.IsType<NotFoundResult>(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle("ffffffffffffffffffffffffffffffff", 2000)));
-        Assert.Equal(0, _client.Calls);
-    }
-
-    [Fact]
-    public async Task An_api_key_caller_resolves_the_item_id_from_registered_versions()
-    {
-        Assert.Null(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2000)));
-        Assert.IsType<NotFoundResult>(await Run(Create(null, apiKey: true), "GetSubtitle", Subtitle(_movie.Id.ToString("N"), 2)));
         Assert.Equal(0, _client.Calls);
     }
 

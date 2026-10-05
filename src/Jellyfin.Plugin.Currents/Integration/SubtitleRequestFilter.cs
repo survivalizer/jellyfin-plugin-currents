@@ -14,8 +14,8 @@ namespace Jellyfin.Plugin.Currents.Integration;
 /// otherwise fail with a 500 on a placeholder source, on another user's version, or on an id that names no version of
 /// the item; all get 404 instead. A built-in subtitle of a version over the admin's size limit also gets 404, so
 /// Jellyfin never starts reading the whole remote file to extract it (stream-attached 1000+ and downloaded 2000+
-/// subtitles are unaffected). A version id the registry forgot (restart, expiry) is looked up again first, and the item id as a source
-/// maps to the caller's first version, as <c>CurrentsMediaSourceManager.GetMediaSource</c> does.
+/// subtitles are unaffected). A version id the registry forgot (restart, expiry) is looked up again first. The item id
+/// used as the media source names no version, and Jellyfin's subtitle route cannot serve it, so it gets 404 too.
 /// </summary>
 public sealed class SubtitleRequestFilter : IAsyncActionFilter
 {
@@ -56,8 +56,6 @@ public sealed class SubtitleRequestFilter : IAsyncActionFilter
         await next().ConfigureAwait(false);
     }
 
-    private static VersionEntry? First(IReadOnlyList<VersionEntry> versions) => versions.Count > 0 ? versions[0] : null;
-
     private static object? Arg(IDictionary<string, object?> args, string key) => args.TryGetValue(key, out var value) ? value : null;
 
     private async Task<bool> RefuseAsync(IDictionary<string, object?> args, CancellationToken cancellationToken)
@@ -95,24 +93,19 @@ public sealed class SubtitleRequestFilter : IAsyncActionFilter
         return index is < TrackIndexes.StreamSubtitles && _builder.HidesBuiltInSubtitles(version);
     }
 
-    // Resolves a source id the registry does not know the way CurrentsMediaSourceManager would: the item id maps to the caller's first version.
-    // Only a signed-in user may trigger a search (the one Jellyfin's fallback runs right after, so it costs nothing extra); API-key and background callers use registered versions.
+    // Resolves a source id the registry does not know: a signed-in user's forgotten version id is looked up again.
+    // The item id names no version (Jellyfin's subtitle route resolves sources without the decorator's item-id
+    // fallback), so it resolves to nothing and gets 404. Only a signed-in user may trigger a search; API-key and
+    // background callers use only registered versions, which the caller already checked.
     private async Task<VersionEntry?> ResolveAsync(BaseItem item, CurrentsTitle title, string? sourceId, CancellationToken cancellationToken)
     {
         var userId = _request.UserId;
-        var isItemId = string.Equals(sourceId, item.Id.ToString("N"), StringComparison.OrdinalIgnoreCase);
-        if (userId == Guid.Empty)
+        if (userId == Guid.Empty || sourceId is null)
         {
-            return isItemId ? First(_registry.ForItem(item.Id, Guid.Empty)) : null;
+            return null;
         }
 
-        var list = await _catalog.GetAsync(item.Id, title, userId, SearchWait, cancellationToken).ConfigureAwait(false);
-        if (isItemId)
-        {
-            // A resumed playback keeps its versions when a fresh search comes back empty, as the decorator does.
-            return First(list.Versions) ?? First(_registry.ForItemAndUser(item.Id, userId));
-        }
-
-        return sourceId is not null && _registry.TryGet(sourceId, out var found) ? found : null;
+        await _catalog.GetAsync(item.Id, title, userId, SearchWait, cancellationToken).ConfigureAwait(false);
+        return _registry.TryGet(sourceId, out var found) ? found : null;
     }
 }
